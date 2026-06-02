@@ -1,0 +1,35 @@
+// Cloudflare Worker configuration for mcp-gsc.
+//
+// Copy this file to `wrangler.jsonc` (gitignored) and fill in your own
+// values before deploying. See SETUP.md for the full walkthrough.
+{
+  "name": "mcp-gsc",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-05-19",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+  "kv_namespaces": [
+    {
+      "binding": "OAUTH_KV",
+      "id": "YOUR_OAUTH_KV_ID"
+    },
+    {
+      "binding": "USER_KV",
+      "id": "YOUR_USER_KV_ID"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "MCP_OBJECT",
+        "class_name": "GscMcpAgent"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["GscMcpAgent"]
+    }
+  ]
+}

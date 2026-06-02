@@ -1,0 +1,11 @@
+node_modules
+.wrangler
+.dev.vars
+.env*
+dist
+.DS_Store
+.env.test
+
+# Your live Worker config (copy from wrangler.example.jsonc). Contains your
+# own KV namespace ids — keep it out of git.
+wrangler.jsonc

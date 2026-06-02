@@ -1,0 +1,8 @@
+# Local development secrets for `wrangler dev`.
+# Copy this file to `.dev.vars` (gitignored) and fill in your own values.
+# In production these are set with `wrangler secret put <NAME>` instead.
+# See SETUP.md for how to obtain each value.
+
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+TOKEN_ENCRYPTION_KEY=
