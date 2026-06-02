@@ -115,11 +115,7 @@ export async function refreshAccessToken(
     } catch {
       // body was not JSON
     }
-    if (
-      parsedError === 'invalid_grant' ||
-      resp.status === 400 ||
-      resp.status === 401
-    ) {
+    if (parsedError === 'invalid_grant') {
       throw new GoogleRefreshTokenRevokedError();
     }
     throw new Error(`Failed to refresh Google access token: ${resp.status}`);

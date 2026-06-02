@@ -39,7 +39,7 @@ interface AgentProps extends Record<string, unknown> {
 
 export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
   server = new McpServer({
-    name: 'hosted-gsc-mcp',
+    name: 'mcp-gsc',
     version: '0.1.0',
   });
 
@@ -308,7 +308,7 @@ const defaultHandler = {
         });
       }
       return new Response(
-        'hosted-gsc-mcp — Hosted MCP server for Google Search Console.\n' +
+        'mcp-gsc — Hosted MCP server for Google Search Console.\n' +
           'Connect this URL as a custom MCP connector in Claude.ai:\n' +
           `${url.origin}/mcp\n`,
         { headers: { 'content-type': 'text/plain; charset=utf-8' } },

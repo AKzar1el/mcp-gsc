@@ -104,13 +104,13 @@ async function mcpCall(sessionId, body) {
   return JSON.parse(text);
 }
 
-test('CHECK 1: GET / returns 200 and contains "hosted-gsc-mcp"', async () => {
+test('CHECK 1: GET / returns 200 and contains "mcp-gsc"', async () => {
   const resp = await fetch(`${MCP_BASE_URL}/`);
   assert.equal(resp.status, 200);
   const body = await resp.text();
   assert.ok(
-    body.includes('hosted-gsc-mcp'),
-    `body did not contain 'hosted-gsc-mcp': ${body.slice(0, 200)}`,
+    body.includes('mcp-gsc'),
+    `body did not contain 'mcp-gsc': ${body.slice(0, 200)}`,
   );
 });
 
