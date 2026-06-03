@@ -85,6 +85,70 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
 
   async init() {
     this.server.registerTool(
+      'get_capabilities',
+      {
+        description:
+          "List every tool this server exposes and report whether the user's Google Search Console connection is currently authenticated. Call this first if you're unsure what tools are available or whether the user is connected. Returns the tool catalog plus an auth status of `connected` or `not_connected`. Takes no arguments.",
+        inputSchema: {},
+      },
+      async () => {
+        let authStatus: 'connected' | 'not_connected' | 'unknown';
+        try {
+          const googleId = this.props?.google_id;
+          if (!googleId) {
+            authStatus = 'not_connected';
+          } else {
+            const refreshToken = await getDecryptedRefreshToken(
+              this.env,
+              googleId,
+            );
+            authStatus = refreshToken ? 'connected' : 'not_connected';
+          }
+        } catch {
+          authStatus = 'unknown';
+        }
+        const capabilities = {
+          server: 'mcp-gsc',
+          version: '0.1.0',
+          auth_status: authStatus,
+          tools: [
+            {
+              name: 'list_sites',
+              description:
+                'List the Google Search Console properties (sites) the connected Google account can access.',
+            },
+            {
+              name: 'query_search_analytics',
+              description:
+                'Query Search Console search analytics (impressions, clicks, CTR, average position) over a date range, broken down by query, page, country, device, date, or search appearance.',
+            },
+            {
+              name: 'inspect_url',
+              description:
+                "Inspect a single URL's index status in Google: indexed state, last crawl, mobile usability, and rich-results eligibility.",
+            },
+            {
+              name: 'list_sitemaps',
+              description:
+                'List all sitemaps submitted for a property, with submission/processing status and warning and error counts.',
+            },
+            {
+              name: 'get_capabilities',
+              description:
+                "List every tool this server exposes and report whether the user's Google Search Console connection is currently authenticated.",
+            },
+          ],
+          hint: "If auth_status is not 'connected', the user should reconnect this connector in their MCP client to sign in with Google.",
+        };
+        return {
+          content: [
+            { type: 'text', text: JSON.stringify(capabilities, null, 2) },
+          ],
+        };
+      },
+    );
+
+    this.server.registerTool(
       'list_sites',
       {
         description:

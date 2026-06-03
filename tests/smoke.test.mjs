@@ -151,7 +151,7 @@ test('CHECK 4: POST /mcp without auth returns 401', async () => {
 });
 
 test(
-  'CHECK 5: tools/list contains all 4 expected tool names',
+  'CHECK 5: tools/list contains all 5 expected tool names',
   { skip: skipReason },
   async () => {
     const session = await mcpInitSession();
@@ -169,6 +169,7 @@ test(
       'query_search_analytics',
       'inspect_url',
       'list_sitemaps',
+      'get_capabilities',
     ];
     for (const name of expected) {
       assert.ok(

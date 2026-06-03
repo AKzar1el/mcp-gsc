@@ -8,7 +8,7 @@ These are **structural** smoke tests, not data tests. They assert things that sh
 
 - The Worker is reachable.
 - The unauthenticated endpoints (`/`, `/healthz`, malformed `/authorize`, unauthenticated `/mcp`) return the expected status codes.
-- With a real token, the MCP advertises all 4 expected tool names (`list_sites`, `query_search_analytics`, `inspect_url`, `list_sitemaps`).
+- With a real token, the MCP advertises all 5 expected tool names (`list_sites`, `query_search_analytics`, `inspect_url`, `list_sitemaps`, `get_capabilities`).
 - The `list_sites` tool returns a valid JSON array.
 
 They explicitly do **not** assert any specific GSC numbers — impressions, clicks, positions, query strings — because that data is live and changes daily. Any test that asserts a specific number will be flaky within a week and must be rejected at review.
