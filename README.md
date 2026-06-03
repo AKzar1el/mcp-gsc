@@ -8,10 +8,11 @@ It runs on [Cloudflare Workers](https://workers.cloudflare.com/) and ships with 
 
 ## Tools
 
-This server exposes four **read-only** tools:
+This server exposes five **read-only** tools:
 
 | Tool | What it does |
 |---|---|
+| **`get_capabilities`** | List every tool this server exposes and report whether your Google connection is currently authenticated (`connected` / `not_connected`). Takes no arguments — a good first call for discovery. |
 | **`list_sites`** | List the Search Console properties the connected Google account can access (`siteUrl`, `permissionLevel`). |
 | **`query_search_analytics`** | Impressions, clicks, CTR, and average position over a date range — broken down by query, page, country, device, date, or search appearance, with dimension filters and a selectable search type (web, image, video, news, discover). |
 | **`inspect_url`** | Google's URL Inspection report for a single page: index status, last crawl, mobile usability, rich-results eligibility, AMP. |
