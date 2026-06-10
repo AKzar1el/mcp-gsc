@@ -1,14 +1,33 @@
 {
   "name": "mcp-gsc",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "license": "MIT",
   "description": "Self-hostable MCP server for Google Search Console, with bring-your-own Google OAuth. Runs on Cloudflare Workers.",
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AKzar1el/mcp-gsc.git"
+  },
+  "homepage": "https://github.com/AKzar1el/mcp-gsc#readme",
+  "bugs": {
+    "url": "https://github.com/AKzar1el/mcp-gsc/issues"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "google-search-console",
+    "search-console",
+    "seo",
+    "cloudflare-workers",
+    "claude"
+  ],
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "typecheck": "tsc --noEmit",
+    "test": "npm run typecheck && npm run test:unit",
+    "test:unit": "tsx --test tests/unit.test.ts",
     "test:smoke": "node --test tests/smoke.test.mjs"
   },
   "devDependencies": {
@@ -16,6 +35,7 @@
     "@cloudflare/workers-types": "^4.20260520.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "agents": "^0.13.1",
+    "tsx": "^4.20.0",
     "typescript": "^6.0.3",
     "wrangler": "^4.93.0",
     "zod": "^4.4.3"

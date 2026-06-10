@@ -12,7 +12,7 @@ Thanks for taking the time to contribute! This is a small, focused project and w
 
 ```bash
 npm install
-npm run typecheck     # must pass before you open a PR
+npm test              # typecheck + offline unit tests — must pass before you open a PR
 npm run dev           # local Worker via wrangler dev
 ```
 
@@ -22,16 +22,17 @@ See [SETUP.md](SETUP.md) for deploying your own instance (Google OAuth + Cloudfl
 
 | Path | Purpose |
 |---|---|
-| `src/index.ts` | Worker entry: OAuth flow (`/authorize`, `/google/callback`) and the MCP agent with the four tools. |
+| `src/index.ts` | Worker entry: OAuth flow (`/authorize`, `/google/callback`) and the MCP agent with the five tools. |
 | `src/google.ts` | Google OAuth and Search Console API calls. |
 | `src/storage.ts` | KV-backed storage of pending auth and per-user encrypted refresh tokens. |
 | `src/crypto.ts` | AES-GCM encryption of refresh tokens. |
+| `tests/unit.test.ts` | Offline unit tests (mocked fetch, no deployment needed) — run in CI. |
 | `tests/smoke.test.mjs` | Structural smoke tests against a live deployment. |
 
 ## Pull request guidelines
 
 - Keep PRs focused — one logical change per PR.
-- Run `npm run typecheck` and make sure it passes.
+- Run `npm test` (typecheck + unit tests) and make sure it passes — CI runs the same.
 - Never commit secrets. `wrangler.jsonc`, `.dev.vars`, and `.env*` are gitignored for a reason.
 - Describe how you tested the change.
 

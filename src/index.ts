@@ -2,6 +2,7 @@ import { OAuthProvider } from '@cloudflare/workers-oauth-provider';
 import { McpAgent } from 'agents/mcp';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import pkg from '../package.json';
 import {
   buildAuthUrl,
   exchangeCodeForTokens,
@@ -37,16 +38,69 @@ interface AgentProps extends Record<string, unknown> {
   email: string;
 }
 
+const SERVER_NAME = 'mcp-gsc';
+const SERVER_VERSION = pkg.version;
+
+const NOT_AUTHENTICATED_MESSAGE =
+  'Not authenticated. Please reconnect this server in your MCP client (e.g. Claude.ai → Settings → Connectors).';
+
+// Every tool talks to the Google Search Console API and never writes anything.
+const READ_ONLY_ANNOTATIONS = {
+  readOnlyHint: true,
+  openWorldHint: true,
+} as const;
+
+const SITE_URL_DESCRIPTION =
+  "The Search Console property identifier, exactly as returned by list_sites. Two formats exist: domain properties use 'sc-domain:example.com'; URL-prefix properties use the full URL including protocol and trailing slash, e.g. 'https://www.example.com/'. Passing the wrong format returns a permission error even when the user owns the site — call list_sites first if unsure.";
+
+// One-line summaries surfaced by get_capabilities. Keep in sync with the
+// registerTool calls below (names are asserted by the smoke tests).
+const TOOL_CATALOG = [
+  {
+    name: 'list_sites',
+    description:
+      'List the Google Search Console properties (sites) the connected Google account can access.',
+  },
+  {
+    name: 'query_search_analytics',
+    description:
+      'Query Search Console search analytics (impressions, clicks, CTR, average position) over a date range, broken down by query, page, country, device, date, or search appearance. Supports filters and pagination.',
+  },
+  {
+    name: 'inspect_url',
+    description:
+      "Inspect a single URL's index status in Google: indexed state, last crawl, mobile usability, and rich-results eligibility.",
+  },
+  {
+    name: 'list_sitemaps',
+    description:
+      'List all sitemaps submitted for a property, with submission/processing status and warning and error counts.',
+  },
+  {
+    name: 'get_capabilities',
+    description:
+      "List every tool this server exposes and report whether the user's Google Search Console connection is currently authenticated.",
+  },
+] as const;
+
 export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
   server = new McpServer({
-    name: 'mcp-gsc',
-    version: '0.1.0',
+    name: SERVER_NAME,
+    version: SERVER_VERSION,
   });
 
   private accessTokenCache = new Map<
     string,
     { token: string; expires_at: number }
   >();
+
+  private requireGoogleId(): string {
+    const googleId = this.props?.google_id;
+    if (!googleId) {
+      throw new Error(NOT_AUTHENTICATED_MESSAGE);
+    }
+    return googleId;
+  }
 
   private async getAccessToken(googleId: string): Promise<string> {
     const now = Date.now();
@@ -87,9 +141,11 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     this.server.registerTool(
       'get_capabilities',
       {
+        title: 'Get server capabilities and auth status',
         description:
           "List every tool this server exposes and report whether the user's Google Search Console connection is currently authenticated. Call this first if you're unsure what tools are available or whether the user is connected. Returns the tool catalog plus an auth status of `connected` or `not_connected`. Takes no arguments.",
         inputSchema: {},
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       async () => {
         let authStatus: 'connected' | 'not_connected' | 'unknown';
@@ -108,37 +164,11 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           authStatus = 'unknown';
         }
         const capabilities = {
-          server: 'mcp-gsc',
-          version: '0.1.0',
+          server: SERVER_NAME,
+          version: SERVER_VERSION,
           auth_status: authStatus,
-          tools: [
-            {
-              name: 'list_sites',
-              description:
-                'List the Google Search Console properties (sites) the connected Google account can access.',
-            },
-            {
-              name: 'query_search_analytics',
-              description:
-                'Query Search Console search analytics (impressions, clicks, CTR, average position) over a date range, broken down by query, page, country, device, date, or search appearance.',
-            },
-            {
-              name: 'inspect_url',
-              description:
-                "Inspect a single URL's index status in Google: indexed state, last crawl, mobile usability, and rich-results eligibility.",
-            },
-            {
-              name: 'list_sitemaps',
-              description:
-                'List all sitemaps submitted for a property, with submission/processing status and warning and error counts.',
-            },
-            {
-              name: 'get_capabilities',
-              description:
-                "List every tool this server exposes and report whether the user's Google Search Console connection is currently authenticated.",
-            },
-          ],
-          hint: "If auth_status is not 'connected', the user should reconnect this connector in their MCP client to sign in with Google.",
+          tools: TOOL_CATALOG,
+          hint: "If auth_status is not 'connected', the user should reconnect this server in their MCP client to sign in with Google.",
         };
         return {
           content: [
@@ -151,17 +181,14 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     this.server.registerTool(
       'list_sites',
       {
+        title: 'List Search Console properties',
         description:
           "List the Google Search Console properties (sites) the connected Google account has access to. Returns an array of { siteUrl, permissionLevel }. Call this when the user asks 'what sites do I have?' or 'what properties are connected?', or when the user asks about SEO for a site and hasn't specified which property. Also useful as a discovery step before calling other tools that require a site_url argument.",
         inputSchema: {},
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       async () => {
-        const googleId = this.props?.google_id;
-        if (!googleId) {
-          throw new Error(
-            'Not authenticated. Please reconnect this connector in Claude.ai.',
-          );
-        }
+        const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         const sites = await listSites(accessToken);
         return {
@@ -175,20 +202,26 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     this.server.registerTool(
       'inspect_url',
       {
-        description: `Inspect a single URL's index status in Google. Returns: whether the URL is indexed, last crawl date, indexing state, mobile usability, rich-results eligibility, and any AMP results. Use this when the user asks 'is X indexed?', 'why isn't X showing in Google?', or wants a deep look at one specific page. For bulk checks across many URLs, call this tool repeatedly — there is no batch endpoint.`,
+        title: 'Inspect URL index status',
+        description: `Inspect a single URL's index status in Google. Returns: whether the URL is indexed, last crawl date, indexing state, mobile usability, rich-results eligibility, and any AMP results. Use this when the user asks 'is X indexed?', 'why isn't X showing in Google?', or wants a deep look at one specific page. For bulk checks across many URLs, call this tool repeatedly — there is no batch endpoint — but note Google caps URL inspection at roughly 2,000 calls per property per day.`,
         inputSchema: {
-          site_url: z.string(),
-          inspection_url: z.string(),
-          language_code: z.string().default('en-US'),
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          inspection_url: z
+            .string()
+            .describe(
+              'The fully-qualified URL to inspect. Must belong to the site_url property: same domain for sc-domain properties, same URL prefix for URL-prefix properties.',
+            ),
+          language_code: z
+            .string()
+            .default('en-US')
+            .describe(
+              "BCP-47 language code for translatable strings in the result, e.g. 'en-US' or 'de-DE'.",
+            ),
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url, inspection_url, language_code }) => {
-        const googleId = this.props?.google_id;
-        if (!googleId) {
-          throw new Error(
-            'Not authenticated. Please reconnect this connector in Claude.ai.',
-          );
-        }
+        const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         const result = await inspectUrl(
           accessToken,
@@ -207,19 +240,16 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     this.server.registerTool(
       'list_sitemaps',
       {
+        title: 'List submitted sitemaps',
         description:
           'List all sitemaps submitted for a Search Console property. Returns sitemap URLs, last submitted/downloaded dates, indexed URL counts, warning and error counts, and sitemap status. Use this when the user asks about sitemap health, submission status, or wants to audit which sitemaps are working.',
         inputSchema: {
-          site_url: z.string(),
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url }) => {
-        const googleId = this.props?.google_id;
-        if (!googleId) {
-          throw new Error(
-            'Not authenticated. Please reconnect this connector in Claude.ai.',
-          );
-        }
+        const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         const sitemaps = await listSitemaps(accessToken, site_url);
         return {
@@ -233,9 +263,13 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     this.server.registerTool(
       'query_search_analytics',
       {
+        title: 'Query search analytics',
         description: [
-          'Query Google Search Console search analytics data. Returns rows',
-          'broken down by the requested dimensions.',
+          'Query Google Search Console search analytics data. Returns',
+          '{ row_count, start_row, rows } where each row has keys (dimension',
+          'values), clicks, impressions, ctr, and position. When row_count',
+          'equals row_limit, the response includes next_start_row — pass it',
+          'back as start_row to fetch the next page.',
           '',
           'IMPORTANT BEHAVIORS — read before calling:',
           '- For SITE TOTALS (total impressions, total clicks, overall CTR,',
@@ -248,6 +282,10 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           '  matching dimension. Expect the returned rows to cover only a',
           '  subset of total impressions; this is normal Google behavior, not',
           '  a data error.',
+          '- DATA FRESHNESS: Search Console data lags about 2-3 days behind',
+          '  real time. If the user asks about "today" or "yesterday", expect',
+          '  empty or partial rows for the most recent days; the latest',
+          '  reliably-complete date is usually 3 days ago.',
           '- AVERAGE POSITION is impression-weighted. To compute an overall',
           '  position across multiple rows, use',
           '  sum(position * impressions) / sum(impressions). Never plain-average',
@@ -264,9 +302,17 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           '  non-preliminary data.',
         ].join('\n'),
         inputSchema: {
-          site_url: z.string(),
-          start_date: z.string(),
-          end_date: z.string(),
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          start_date: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format')
+            .describe('Start date (inclusive) in YYYY-MM-DD format.'),
+          end_date: z
+            .string()
+            .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format')
+            .describe(
+              'End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day data lag: the most recent complete date is usually 3 days ago.',
+            ),
           dimensions: z
             .array(
               z.enum([
@@ -278,15 +324,43 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
                 'searchAppearance',
               ]),
             )
-            .default(['query']),
-          row_limit: z.number().max(25000).default(1000),
-          data_state: z.enum(['all', 'final']).default('all'),
+            .default(['query'])
+            .describe(
+              'Dimensions to group rows by. Pass [] (empty array) to get a single row of true site-level totals.',
+            ),
+          row_limit: z
+            .number()
+            .int()
+            .min(1)
+            .max(25000)
+            .default(100)
+            .describe(
+              'Maximum rows to return (1-25000). Defaults to 100, which is plenty for most questions; raise it only for bulk exports and page through with start_row.',
+            ),
+          start_row: z
+            .number()
+            .int()
+            .min(0)
+            .default(0)
+            .describe(
+              'Zero-based row offset for pagination. When a response contains next_start_row, pass it here to fetch the next page.',
+            ),
+          data_state: z
+            .enum(['all', 'final'])
+            .default('all')
+            .describe(
+              "'all' includes fresh (preliminary) data and matches the GSC dashboard; 'final' returns only finalized data.",
+            ),
           search_type: z
             .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
-            .default('web'),
+            .default('web')
+            .describe('Which search index to query. Defaults to web.'),
           aggregation_type: z
             .enum(['auto', 'byPage', 'byProperty'])
-            .default('auto'),
+            .default('auto')
+            .describe(
+              "How Google aggregates metrics. Leave as 'auto' unless you specifically need byPage or byProperty semantics.",
+            ),
           dimension_filter_groups: z
             .array(
               z.object({
@@ -313,8 +387,12 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
                 ),
               }),
             )
-            .optional(),
+            .optional()
+            .describe(
+              "Optional filters ANDed together, e.g. [{ groupType: 'and', filters: [{ dimension: 'country', operator: 'equals', expression: 'usa' }] }]. Countries use ISO 3166-1 alpha-3 codes.",
+            ),
         },
+        annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({
         site_url,
@@ -322,23 +400,20 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         end_date,
         dimensions,
         row_limit,
+        start_row,
         data_state,
         search_type,
         aggregation_type,
         dimension_filter_groups,
       }) => {
-        const googleId = this.props?.google_id;
-        if (!googleId) {
-          throw new Error(
-            'Not authenticated. Please reconnect this connector in Claude.ai.',
-          );
-        }
+        const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         const rows = await querySearchAnalytics(accessToken, site_url, {
           startDate: start_date,
           endDate: end_date,
           dimensions,
           rowLimit: row_limit,
+          startRow: start_row,
           dataState: data_state,
           type: search_type,
           aggregationType: aggregation_type,
@@ -346,10 +421,18 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
             ? { dimensionFilterGroups: dimension_filter_groups }
             : {}),
         });
+        const payload: Record<string, unknown> = {
+          row_count: rows.length,
+          start_row,
+          rows,
+        };
+        if (rows.length === row_limit) {
+          payload.next_start_row = start_row + row_limit;
+        }
+        // Compact JSON on purpose: analytics responses are the largest this
+        // server produces, and pretty-printing them costs ~3x the tokens.
         return {
-          content: [
-            { type: 'text', text: JSON.stringify(rows, null, 2) },
-          ],
+          content: [{ type: 'text', text: JSON.stringify(payload) }],
         };
       },
     );
@@ -465,7 +548,6 @@ const defaultHandler = {
         await saveUser(env, userinfo.id, userinfo.email, tokens.refresh_token);
       } catch (err) {
         console.error('Save user failed', {
-          email: userinfo.email,
           google_id: userinfo.id,
           message: (err as Error).message,
         });
@@ -473,13 +555,24 @@ const defaultHandler = {
       }
 
       const claudeAuthReq = pending.claudeAuthRequest as any;
-      const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
-        request: claudeAuthReq,
-        userId: userinfo.id,
-        metadata: { email: userinfo.email },
-        scope: claudeAuthReq.scope,
-        props: { google_id: userinfo.id, email: userinfo.email },
-      });
+      let redirectTo: string;
+      try {
+        ({ redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
+          request: claudeAuthReq,
+          userId: userinfo.id,
+          metadata: { email: userinfo.email },
+          scope: claudeAuthReq.scope,
+          props: { google_id: userinfo.id, email: userinfo.email },
+        }));
+      } catch (err) {
+        console.error('completeAuthorization failed', {
+          google_id: userinfo.id,
+          message: (err as Error).message,
+        });
+        return new Response('Failed to complete authorization', {
+          status: 500,
+        });
+      }
       return Response.redirect(redirectTo, 302);
     }
 

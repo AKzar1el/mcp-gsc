@@ -35,7 +35,7 @@ export interface GoogleTokenResponse {
 }
 
 export const GSC_ACCESS_REVOKED_MESSAGE =
-  'Google access revoked. Please reconnect this connector in Claude.ai.';
+  'Google access revoked. Please reconnect this server in your MCP client (e.g. Claude.ai → Settings → Connectors).';
 
 export class GoogleRefreshTokenRevokedError extends Error {
   constructor() {
@@ -63,7 +63,8 @@ export async function exchangeCodeForTokens(
     body,
   });
   if (!resp.ok) {
-    throw new Error(`Token exchange failed: ${resp.status}`);
+    const text = await resp.text();
+    throw new Error(`Token exchange failed: ${resp.status} ${text}`);
   }
   const data = (await resp.json()) as Partial<GoogleTokenResponse>;
   if (!data.refresh_token) {
@@ -198,6 +199,7 @@ export interface SearchAnalyticsQuery {
   endDate: string;
   dimensions: SearchDimension[];
   rowLimit: number;
+  startRow?: number;
   dataState?: DataState;
   type?: SearchType;
   aggregationType?: AggregationType;

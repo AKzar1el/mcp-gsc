@@ -1,4 +1,11 @@
-# Smoke tests
+# Tests
+
+Two suites live here:
+
+- **`unit.test.ts`** — offline unit tests (crypto roundtrip, OAuth URL construction, Google error mapping, request encoding) with a mocked `fetch`. No deployment, no credentials. Run with `npm run test:unit`; CI runs these on every push.
+- **`smoke.test.mjs`** — structural smoke tests against a **live deployment**, described below.
+
+## Smoke tests
 
 A `node:test` script that exercises the deployed mcp-gsc Worker end-to-end to catch obvious regressions after every deploy. Runs in well under 30 seconds.
 
