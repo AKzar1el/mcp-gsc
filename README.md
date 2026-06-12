@@ -1,7 +1,34 @@
 # mcp-gsc
 
+<!-- Logo (referenced by the Cline/Glama submissions): add assets/logo.png (400x400),
+     then uncomment: <img src="assets/logo.png" alt="mcp-gsc logo" width="120" align="right"> -->
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-remote%20server-8A2BE2)](https://modelcontextprotocol.io)
+[![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.AKzar1el%2Fmcp--gsc-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.AKzar1el/mcp-gsc)
+
+### Connect in 30 seconds
+
+Every deployed instance exposes the same endpoint shape:
+
+```
+https://<your-worker>.workers.dev/mcp
+```
+
+**Claude Code**
+
+```bash
+claude mcp add --transport http gsc https://<your-worker>.workers.dev/mcp
+```
+
+**Cursor**
+
+<!-- The config param is base64 of {"url":"https://REPLACE-ME.workers.dev/mcp"}.
+     When the canonical hosted URL replaces the placeholder, regenerate it with:
+     node -e "console.log(Buffer.from(JSON.stringify({url:'https://<real-host>/mcp'})).toString('base64'))" -->
+[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=gsc&config=eyJ1cmwiOiJodHRwczovL1JFUExBQ0UtTUUud29ya2Vycy5kZXYvbWNwIn0%3D)
+
+**ChatGPT** — add it as a custom connector; see [Connect in your AI client](#connect-in-your-ai-client) below.
 
 A self-hostable [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for **Google Search Console**. Connect it to Claude.ai, Cursor, ChatGPT, or any MCP-compatible client and ask your AI assistant about your site's organic search performance — impressions, clicks, top queries, index status, and sitemap health — straight from your own Google account.
 
