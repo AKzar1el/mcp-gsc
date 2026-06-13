@@ -1,0 +1,47 @@
+name: Publish to MCP Registry
+
+on:
+  release:
+    types: [published]
+  pull_request:
+    paths:
+      - server.json
+      - .github/workflows/publish-mcp.yml
+
+jobs:
+  validate:
+    name: Validate server.json
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+      - name: Validate server.json against the registry schema
+        run: ./mcp-publisher validate server.json
+
+  publish:
+    name: Publish to registry
+    if: github.event_name == 'release'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fail if the placeholder URL is still present
+        run: |
+          if grep -q "REPLACE-ME" server.json; then
+            echo "::error file=server.json::server.json still points at the placeholder URL (REPLACE-ME.workers.dev). Replace it with the real deployed Worker URL before publishing to the MCP registry."
+            exit 1
+          fi
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+      - name: Log in to the registry (GitHub OIDC)
+        run: ./mcp-publisher login github-oidc
+      - name: Publish
+        run: ./mcp-publisher publish server.json
