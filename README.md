@@ -6,6 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-remote%20server-8A2BE2)](https://modelcontextprotocol.io)
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.AKzar1el%2Fmcp--gsc-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.AKzar1el/mcp-gsc)
+[![CI](https://github.com/AKzar1el/mcp-gsc/actions/workflows/ci.yml/badge.svg)](https://github.com/AKzar1el/mcp-gsc/actions/workflows/ci.yml)
 
 ### Connect in 30 seconds
 
@@ -110,4 +111,4 @@ Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
-*Built by the team behind [digestseo.com](https://digestseo.com) — weekly SEO digests for non-technical site owners.*
+*Built and maintained by [Tomi Šeregi](https://tomiseregi.si), the builder behind [digestseo.com](https://digestseo.com) — weekly SEO digests for non-technical site owners.*
