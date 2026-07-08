@@ -12,7 +12,14 @@
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://REPLACE-ME.workers.dev/mcp"
+      "url": "https://{worker_domain}/mcp",
+      "variables": {
+        "worker_domain": {
+          "description": "Hostname of your self-deployed Cloudflare Worker, as printed by `wrangler deploy` (see SETUP.md)",
+          "isRequired": true,
+          "placeholder": "mcp-gsc.your-subdomain.workers.dev"
+        }
+      }
     }
   ],
   "_meta": {
