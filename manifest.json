@@ -1,0 +1,44 @@
+{
+  "manifest_version": "0.2",
+  "name": "mcp-gsc",
+  "display_name": "Google Search Console MCP",
+  "version": "0.2.0",
+  "description": "Self-hostable MCP server for Google Search Console, with bring-your-own Google OAuth. Runs on Cloudflare Workers.",
+  "author": {
+    "name": "AKzar1el",
+    "url": "https://github.com/AKzar1el"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AKzar1el/mcp-gsc"
+  },
+  "homepage": "https://github.com/AKzar1el/mcp-gsc",
+  "license": "MIT",
+  "icon": "assets/logo.png",
+  "server": {
+    "type": "node",
+    "entry_point": "src/index.ts"
+  },
+  "tools": [
+    {
+      "name": "get_capabilities",
+      "description": "List every tool this server exposes and report whether your Google connection is currently authenticated."
+    },
+    {
+      "name": "list_sites",
+      "description": "List the Search Console properties the connected Google account can access."
+    },
+    {
+      "name": "query_search_analytics",
+      "description": "Impressions, clicks, CTR, and average position over a date range — broken down by query, page, country, device, date, or search appearance."
+    },
+    {
+      "name": "inspect_url",
+      "description": "Google's URL Inspection report for a single page: index status, last crawl, mobile usability, rich-results eligibility, AMP."
+    },
+    {
+      "name": "list_sitemaps",
+      "description": "All sitemaps submitted for a property, with submission/processing status and warning and error counts."
+    }
+  ]
+}

@@ -3,6 +3,28 @@
   "name": "io.github.AKzar1el/mcp-gsc",
   "title": "Google Search Console",
   "description": "Read-only MCP server for Google Search Console: search analytics, URL inspection, sites, sitemaps.",
+  "tools": [
+    {
+      "name": "get_capabilities",
+      "description": "List every tool this server exposes and report whether your Google connection is currently authenticated."
+    },
+    {
+      "name": "list_sites",
+      "description": "List the Search Console properties the connected Google account can access."
+    },
+    {
+      "name": "query_search_analytics",
+      "description": "Impressions, clicks, CTR, and average position over a date range."
+    },
+    {
+      "name": "inspect_url",
+      "description": "Google's URL Inspection report for a single page: index status, last crawl, mobile usability."
+    },
+    {
+      "name": "list_sitemaps",
+      "description": "All sitemaps submitted for a property, with status and warning/error counts."
+    }
+  ],
   "version": "0.2.0",
   "repository": {
     "url": "https://github.com/AKzar1el/mcp-gsc",
