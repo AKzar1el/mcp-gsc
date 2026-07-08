@@ -74,10 +74,11 @@ These steps happen in the user's browser at <https://console.cloud.google.com/> 
 3. Configure the OAuth consent screen (**APIs & Services → OAuth consent screen**):
    - **User type: External** → Create.
    - Fill in app name, user support email, developer contact email.
-   - On the **Scopes** step, add exactly this scope:
+   - On the **Scopes** step, add these scopes:
 
      ```
-     https://www.googleapis.com/auth/webmasters.readonly
+     https://www.googleapis.com/auth/webmasters
+     https://www.googleapis.com/auth/indexing
      ```
 
    - On the **Test users** step, add the user's own Google email address.

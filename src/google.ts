@@ -5,7 +5,8 @@ export const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinf
 export const SCOPES = [
   'openid',
   'email',
-  'https://www.googleapis.com/auth/webmasters.readonly',
+  'https://www.googleapis.com/auth/webmasters',
+  'https://www.googleapis.com/auth/indexing',
 ];
 
 export function buildAuthUrl(
@@ -312,3 +313,404 @@ export async function querySearchAnalytics(
   const data = (await resp.json()) as { rows?: SearchAnalyticsRow[] };
   return data.rows ?? [];
 }
+
+export async function addSite(
+  accessToken: string,
+  siteUrl: string,
+): Promise<void> {
+  const encoded = encodeURIComponent(siteUrl);
+  const resp = await fetch(
+    `https://www.googleapis.com/webmasters/v3/sites/${encoded}`,
+    {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${accessToken}` },
+    },
+  );
+  if (resp.status === 401) {
+    throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
+  }
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Add site failed: ${resp.status} ${text}`);
+  }
+}
+
+export async function deleteSite(
+  accessToken: string,
+  siteUrl: string,
+): Promise<void> {
+  const encoded = encodeURIComponent(siteUrl);
+  const resp = await fetch(
+    `https://www.googleapis.com/webmasters/v3/sites/${encoded}`,
+    {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${accessToken}` },
+    },
+  );
+  if (resp.status === 401) {
+    throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
+  }
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Delete site failed: ${resp.status} ${text}`);
+  }
+}
+
+export async function submitSitemap(
+  accessToken: string,
+  siteUrl: string,
+  feedpath: string,
+): Promise<void> {
+  const encodedSite = encodeURIComponent(siteUrl);
+  const encodedFeed = encodeURIComponent(feedpath);
+  const resp = await fetch(
+    `https://www.googleapis.com/webmasters/v3/sites/${encodedSite}/sitemaps/${encodedFeed}`,
+    {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${accessToken}` },
+    },
+  );
+  if (resp.status === 401) {
+    throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
+  }
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Submit sitemap failed: ${resp.status} ${text}`);
+  }
+}
+
+export async function deleteSitemap(
+  accessToken: string,
+  siteUrl: string,
+  feedpath: string,
+): Promise<void> {
+  const encodedSite = encodeURIComponent(siteUrl);
+  const encodedFeed = encodeURIComponent(feedpath);
+  const resp = await fetch(
+    `https://www.googleapis.com/webmasters/v3/sites/${encodedSite}/sitemaps/${encodedFeed}`,
+    {
+      method: 'DELETE',
+      headers: { authorization: `Bearer ${accessToken}` },
+    },
+  );
+  if (resp.status === 401) {
+    throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
+  }
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Delete sitemap failed: ${resp.status} ${text}`);
+  }
+}
+
+export async function getSitemap(
+  accessToken: string,
+  siteUrl: string,
+  feedpath: string,
+): Promise<SitemapEntry> {
+  const encodedSite = encodeURIComponent(siteUrl);
+  const encodedFeed = encodeURIComponent(feedpath);
+  const resp = await fetch(
+    `https://www.googleapis.com/webmasters/v3/sites/${encodedSite}/sitemaps/${encodedFeed}`,
+    {
+      headers: { authorization: `Bearer ${accessToken}` },
+    },
+  );
+  if (resp.status === 401) {
+    throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
+  }
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Get sitemap failed: ${resp.status} ${text}`);
+  }
+  return (await resp.json()) as SitemapEntry;
+}
+
+export interface QuickWinResult {
+  query: string;
+  page: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+}
+
+export function processQuickWins(
+  rows: SearchAnalyticsRow[],
+  minImpressions: number,
+  minPosition: number,
+  maxPosition: number,
+): QuickWinResult[] {
+  return rows
+    .filter(
+      (row) =>
+        row.keys.length >= 2 &&
+        row.position >= minPosition &&
+        row.position <= maxPosition &&
+        row.impressions >= minImpressions
+    )
+    .sort((a, b) => b.impressions - a.impressions)
+    .slice(0, 100)
+    .map((row) => ({
+      query: row.keys[0],
+      page: row.keys[1],
+      clicks: row.clicks,
+      impressions: row.impressions,
+      ctr: row.ctr,
+      position: row.position,
+    }));
+}
+
+export interface CannibalizationPage {
+  page: string;
+  clicks: number;
+  impressions: number;
+  ctr: number;
+  position: number;
+  impression_share: number;
+}
+
+export interface CannibalizationResult {
+  query: string;
+  total_clicks: number;
+  total_impressions: number;
+  pages: CannibalizationPage[];
+}
+
+export function processCannibalization(
+  rows: SearchAnalyticsRow[],
+  minImpressions: number,
+  minPagePercentage: number,
+): CannibalizationResult[] {
+  const queryGroups = new Map<string, Array<{ page: string; clicks: number; impressions: number; ctr: number; position: number }>>();
+  for (const row of rows) {
+    if (row.keys.length < 2) continue;
+    const query = row.keys[0];
+    const page = row.keys[1];
+    if (!queryGroups.has(query)) {
+      queryGroups.set(query, []);
+    }
+    queryGroups.get(query)!.push({
+      page,
+      clicks: row.clicks,
+      impressions: row.impressions,
+      ctr: row.ctr,
+      position: row.position,
+    });
+  }
+
+  const cannibalizationCandidates: CannibalizationResult[] = [];
+
+  for (const [query, pages] of queryGroups.entries()) {
+    const totalImpressions = pages.reduce((sum, p) => sum + p.impressions, 0);
+    const totalClicks = pages.reduce((sum, p) => sum + p.clicks, 0);
+
+    const competingPages = pages
+      .map((p) => ({
+        ...p,
+        impression_share: Math.round((p.impressions / totalImpressions) * 1000) / 10,
+      }))
+      .filter((p) => p.impressions >= minImpressions && p.impression_share >= minPagePercentage);
+
+    if (competingPages.length >= 2) {
+      cannibalizationCandidates.push({
+        query,
+        total_clicks: totalClicks,
+        total_impressions: totalImpressions,
+        pages: competingPages.sort((a, b) => b.impressions - a.impressions),
+      });
+    }
+  }
+
+  return cannibalizationCandidates
+    .sort((a, b) => b.total_impressions - a.total_impressions)
+    .slice(0, 100);
+}
+
+export interface DecayPageResult {
+  page: string;
+  previous_clicks: number;
+  recent_clicks: number;
+  click_difference: number;
+  click_decay_percentage: number;
+  previous_impressions: number;
+  recent_impressions: number;
+  impression_difference: number;
+  previous_position: number;
+  recent_position: number;
+}
+
+export function processContentDecay(
+  recentRows: SearchAnalyticsRow[],
+  previousRows: SearchAnalyticsRow[],
+): DecayPageResult[] {
+  const recentMap = new Map<string, { clicks: number; impressions: number; ctr: number; position: number }>();
+  for (const row of recentRows) {
+    if (row.keys.length < 1) continue;
+    recentMap.set(row.keys[0], {
+      clicks: row.clicks,
+      impressions: row.impressions,
+      ctr: row.ctr,
+      position: row.position,
+    });
+  }
+
+  const decayCandidates: DecayPageResult[] = [];
+
+  for (const row of previousRows) {
+    if (row.keys.length < 1) continue;
+    const page = row.keys[0];
+    const prevClicks = row.clicks;
+    const prevImps = row.impressions;
+    const prevPos = row.position;
+
+    const recent = recentMap.get(page);
+    const recClicks = recent ? recent.clicks : 0;
+    const recImps = recent ? recent.impressions : 0;
+    const recPos = recent ? recent.position : 0;
+
+    const clickDiff = recClicks - prevClicks;
+    const impDiff = recImps - prevImps;
+
+    if (clickDiff < 0) {
+      decayCandidates.push({
+        page,
+        previous_clicks: prevClicks,
+        recent_clicks: recClicks,
+        click_difference: clickDiff,
+        click_decay_percentage: prevClicks > 0 ? Math.round((Math.abs(clickDiff) / prevClicks) * 1000) / 10 : 0,
+        previous_impressions: prevImps,
+        recent_impressions: recImps,
+        impression_difference: impDiff,
+        previous_position: prevPos,
+        recent_position: recPos,
+      });
+    }
+  }
+
+  return decayCandidates
+    .sort((a, b) => a.click_difference - b.click_difference)
+    .slice(0, 100);
+}
+
+export async function requestIndexing(
+  accessToken: string,
+  url: string,
+): Promise<unknown> {
+  const resp = await fetch(
+    'https://indexing.googleapis.com/v3/urlNotifications:publish',
+    {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        url,
+        type: 'URL_UPDATED',
+      }),
+    },
+  );
+  if (resp.status === 401) {
+    throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
+  }
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Request indexing failed: ${resp.status} ${text}`);
+  }
+  return await resp.json();
+}
+
+export interface PerformanceComparisonRow {
+  key: string;
+  period_a: { clicks: number; impressions: number; ctr: number; position: number };
+  period_b: { clicks: number; impressions: number; ctr: number; position: number };
+  diff: {
+    clicks: number;
+    clicks_percentage: number;
+    impressions: number;
+    impressions_percentage: number;
+    ctr: number;
+    position: number;
+  };
+}
+
+export function processPerformanceComparison(
+  rowsA: SearchAnalyticsRow[],
+  rowsB: SearchAnalyticsRow[],
+): PerformanceComparisonRow[] {
+  const mapB = new Map<string, { clicks: number; impressions: number; ctr: number; position: number }>();
+  for (const row of rowsB) {
+    if (row.keys.length < 1) continue;
+    mapB.set(row.keys[0], {
+      clicks: row.clicks,
+      impressions: row.impressions,
+      ctr: row.ctr,
+      position: row.position,
+    });
+  }
+
+  const comparison: PerformanceComparisonRow[] = [];
+
+  for (const row of rowsA) {
+    if (row.keys.length < 1) continue;
+    const key = row.keys[0];
+    const clicksA = row.clicks;
+    const impsA = row.impressions;
+    const ctrA = row.ctr;
+    const posA = row.position;
+
+    const b = mapB.get(key) || { clicks: 0, impressions: 0, ctr: 0, position: 0 };
+    const clicksB = b.clicks;
+    const impsB = b.impressions;
+    const ctrB = b.ctr;
+    const posB = b.position;
+
+    const clicksDiff = clicksA - clicksB;
+    const impsDiff = impsA - impsB;
+
+    comparison.push({
+      key,
+      period_a: { clicks: clicksA, impressions: impsA, ctr: ctrA, position: posA },
+      period_b: { clicks: clicksB, impressions: impsB, ctr: ctrB, position: posB },
+      diff: {
+        clicks: clicksDiff,
+        clicks_percentage: clicksB > 0 ? Math.round((clicksDiff / clicksB) * 1000) / 10 : 0,
+        impressions: impsDiff,
+        impressions_percentage: impsB > 0 ? Math.round((impsDiff / impsB) * 1000) / 10 : 0,
+        ctr: Math.round((ctrA - ctrB) * 1000) / 1000,
+        position: Math.round((posA - posB) * 10) / 10,
+      },
+    });
+  }
+
+  const mapAKeys = new Set(rowsA.map((r) => r.keys[0]));
+  for (const row of rowsB) {
+    if (row.keys.length < 1) continue;
+    const key = row.keys[0];
+    if (mapAKeys.has(key)) continue;
+
+    const clicksB = row.clicks;
+    const impsB = row.impressions;
+    const ctrB = row.ctr;
+    const posB = row.position;
+
+    comparison.push({
+      key,
+      period_a: { clicks: 0, impressions: 0, ctr: 0, position: 0 },
+      period_b: { clicks: clicksB, impressions: impsB, ctr: ctrB, position: posB },
+      diff: {
+        clicks: -clicksB,
+        clicks_percentage: -100,
+        impressions: -impsB,
+        impressions_percentage: -100,
+        ctr: -ctrB,
+        position: -posB,
+      },
+    });
+  }
+
+  return comparison.sort((a, b) => b.period_a.clicks - a.period_a.clicks);
+}
+
+
+

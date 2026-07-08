@@ -4,7 +4,7 @@ This guide walks you through deploying your own instance of `mcp-gsc` on Cloudfl
 
 By the end you'll have a Worker at `https://<your-worker>.workers.dev/mcp` that you can connect as a custom MCP connector in Claude.ai, Cursor, or ChatGPT.
 
-> **Read [Step 7](#step-7--important-google-verification) before you start.** While your Google OAuth app is unverified, refresh tokens expire after **7 days** and you're capped at **100 users**. This is the single biggest reason self-hosting a Google Search Console MCP is heavier than a key-based MCP — it's how Google's OAuth works for the sensitive `webmasters.readonly` scope, not a limitation of this project.
+> **Read [Step 7](#step-7--important-google-verification) before you start.** While your Google OAuth app is unverified, refresh tokens expire after **7 days** and you're capped at **100 users**. This is the single biggest reason self-hosting a Google Search Console MCP is heavier than a key-based MCP — it's how Google's OAuth works for the sensitive `webmasters` and `indexing` scopes, not a limitation of this project.
 
 ## Prerequisites
 
@@ -47,13 +47,14 @@ npx wrangler login
 1. Go to **APIs & Services → OAuth consent screen**.
 2. Choose **User type: External**, then **Create**.
 3. Fill in the required app info (app name, user support email, developer contact email). The app name is what users see on the Google sign-in screen.
-4. On the **Scopes** step, click **Add or remove scopes** and add exactly this scope:
+4. On the **Scopes** step, click **Add or remove scopes** and add these scopes:
 
    ```
-   https://www.googleapis.com/auth/webmasters.readonly
+   https://www.googleapis.com/auth/webmasters
+   https://www.googleapis.com/auth/indexing
    ```
 
-   This is a **sensitive** scope. It grants read-only access to Search Console data and nothing else.
+   These are **sensitive** scopes. They grant read-write access to Search Console data and the Google Indexing API (required to manage sites, sitemaps, and request URL crawling).
 5. On the **Test users** step, click **Add users** and add your own Google email address (and any teammates who need access while the app is in Testing).
 6. Save. Leave the **Publishing status** as **Testing** for now — see [Step 7](#step-7--important-google-verification).
 
@@ -182,7 +183,7 @@ While your OAuth app's **Publishing status** is **Testing** (where it starts, an
 To remove all three limits you must move the app to **Publishing status: In production**:
 
 - In **APIs & Services → OAuth consent screen**, click **Publish app**.
-- Because `webmasters.readonly` is a **sensitive scope**, Google requires **OAuth verification**: you submit the app for review, justify the scope, and (for sensitive/restricted scopes) may need to verify domain ownership and complete a security assessment. **This review can take days to several weeks.**
+- Because `webmasters` and `indexing` are **sensitive scopes**, Google requires **OAuth verification**: you submit the app for review, justify the scopes, and (for sensitive/restricted scopes) may need to verify domain ownership and complete a security assessment. **This review can take days to several weeks.**
 - Once the app is **In production and verified**, the unverified-app screen goes away, the 100-user cap is lifted, and refresh tokens stop expiring on the 7-day clock.
 
 **Bottom line:** for personal use with one or two Google accounts, Testing mode is fine as long as you don't mind reconnecting roughly every 7 days. For anything shared or automated, you'll want to complete Google's verification — and that, not the code, is the heaviest part of self-hosting a Google Search Console MCP.

@@ -14,6 +14,16 @@ import {
   listSites,
   querySearchAnalytics,
   refreshAccessToken,
+  addSite,
+  deleteSite,
+  submitSitemap,
+  deleteSitemap,
+  getSitemap,
+  processQuickWins,
+  processCannibalization,
+  processContentDecay,
+  requestIndexing,
+  processPerformanceComparison,
 } from './google';
 import {
   deleteUser,
@@ -44,9 +54,13 @@ const SERVER_VERSION = pkg.version;
 const NOT_AUTHENTICATED_MESSAGE =
   'Not authenticated. Please reconnect this server in your MCP client (e.g. Claude.ai → Settings → Connectors).';
 
-// Every tool talks to the Google Search Console API and never writes anything.
+// Annotation utilities for read-only vs write actions.
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,
+  openWorldHint: true,
+} as const;
+
+const WRITE_ANNOTATIONS = {
   openWorldHint: true,
 } as const;
 
@@ -62,6 +76,16 @@ const TOOL_CATALOG = [
       'List the Google Search Console properties (sites) the connected Google account can access.',
   },
   {
+    name: 'add_site',
+    description:
+      'Add a new website property to your Google Search Console account.',
+  },
+  {
+    name: 'delete_site',
+    description:
+      'Remove an existing website property from your Google Search Console account.',
+  },
+  {
     name: 'query_search_analytics',
     description:
       'Query Search Console search analytics (impressions, clicks, CTR, average position) over a date range, broken down by query, page, country, device, date, or search appearance. Supports filters and pagination.',
@@ -75,6 +99,51 @@ const TOOL_CATALOG = [
     name: 'list_sitemaps',
     description:
       'List all sitemaps submitted for a property, with submission/processing status and warning and error counts.',
+  },
+  {
+    name: 'submit_sitemap',
+    description:
+      'Submit a new sitemap to your Google Search Console account.',
+  },
+  {
+    name: 'delete_sitemap',
+    description:
+      'Remove/delete a submitted sitemap from your Google Search Console account.',
+  },
+  {
+    name: 'get_sitemap',
+    description:
+      'Get status and details of a single sitemap submitted to Google Search Console.',
+  },
+  {
+    name: 'identify_quick_wins',
+    description:
+      'Find search queries that rank in positions 8-20 (page 2 / lower page 1) with high impressions but low CTR. These are ideal SEO optimization targets.',
+  },
+  {
+    name: 'detect_cannibalization',
+    description:
+      'Analyze search analytics to detect instances of keyword cannibalization, where multiple pages on your site compete for the same query.',
+  },
+  {
+    name: 'detect_content_decay',
+    description:
+      'Identify content decay by comparing search clicks for your site pages between two contiguous periods and finding the pages with the largest traffic drops.',
+  },
+  {
+    name: 'request_indexing',
+    description:
+      'Request Google to index or update a URL using the Google Indexing API.',
+  },
+  {
+    name: 'list_indexed_pages',
+    description:
+      'Retrieve a list of site pages that have received search impressions, serving as a proxy list of indexed pages on the site.',
+  },
+  {
+    name: 'compare_performance',
+    description:
+      'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension.',
   },
   {
     name: 'get_capabilities',
@@ -436,6 +505,342 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         };
       },
     );
+
+    this.server.registerTool(
+      'add_site',
+      {
+        title: 'Add Search Console property',
+        description: 'Add a new website property to your Google Search Console account. Note: Domain properties require sc-domain prefix (e.g., sc-domain:example.com), URL-prefix properties require full URL (e.g., https://example.com/).',
+        inputSchema: {
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+        },
+        annotations: WRITE_ANNOTATIONS,
+      },
+      async ({ site_url }) => {
+        const googleId = this.requireGoogleId();
+        const accessToken = await this.getAccessToken(googleId);
+        await addSite(accessToken, site_url);
+        return {
+          content: [{ type: 'text', text: `Successfully added site property: ${site_url}` }],
+        };
+      },
+    );
+
+    this.server.registerTool(
+      'delete_site',
+      {
+        title: 'Delete Search Console property',
+        description: 'Remove an existing website property from your Google Search Console account.',
+        inputSchema: {
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+        },
+        annotations: WRITE_ANNOTATIONS,
+      },
+      async ({ site_url }) => {
+        const googleId = this.requireGoogleId();
+        const accessToken = await this.getAccessToken(googleId);
+        await deleteSite(accessToken, site_url);
+        return {
+          content: [{ type: 'text', text: `Successfully deleted site property: ${site_url}` }],
+        };
+      },
+    );
+
+    this.server.registerTool(
+      'submit_sitemap',
+      {
+        title: 'Submit sitemap',
+        description: 'Submit a new sitemap to your Google Search Console account.',
+        inputSchema: {
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          feedpath: z.string().describe('The full URL of the sitemap file to submit, e.g. https://example.com/sitemap.xml'),
+        },
+        annotations: WRITE_ANNOTATIONS,
+      },
+      async ({ site_url, feedpath }) => {
+        const googleId = this.requireGoogleId();
+        const accessToken = await this.getAccessToken(googleId);
+        await submitSitemap(accessToken, site_url, feedpath);
+        return {
+          content: [{ type: 'text', text: `Successfully submitted sitemap: ${feedpath} for site: ${site_url}` }],
+        };
+      },
+    );
+
+    this.server.registerTool(
+      'delete_sitemap',
+      {
+        title: 'Delete sitemap',
+        description: 'Remove/delete a submitted sitemap from your Google Search Console account.',
+        inputSchema: {
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          feedpath: z.string().describe('The full URL of the sitemap file to delete, e.g. https://example.com/sitemap.xml'),
+        },
+        annotations: WRITE_ANNOTATIONS,
+      },
+      async ({ site_url, feedpath }) => {
+        const googleId = this.requireGoogleId();
+        const accessToken = await this.getAccessToken(googleId);
+        await deleteSitemap(accessToken, site_url, feedpath);
+        return {
+          content: [{ type: 'text', text: `Successfully deleted sitemap: ${feedpath} for site: ${site_url}` }],
+        };
+      },
+    );
+
+    this.server.registerTool(
+      'get_sitemap',
+      {
+        title: 'Get sitemap details',
+        description: 'Get status and details of a single sitemap submitted to Google Search Console.',
+        inputSchema: {
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          feedpath: z.string().describe('The full URL of the sitemap file, e.g. https://example.com/sitemap.xml'),
+        },
+        annotations: READ_ONLY_ANNOTATIONS,
+      },
+      async ({ site_url, feedpath }) => {
+        const googleId = this.requireGoogleId();
+        const accessToken = await this.getAccessToken(googleId);
+        const details = await getSitemap(accessToken, site_url, feedpath);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(details, null, 2) }],
+        };
+      },
+    );
+
+    this.server.registerTool(
+      'identify_quick_wins',
+      {
+        title: 'Identify SEO Quick Wins',
+        description: 'Find search queries that rank in positions 8-20 (page 2 / lower page 1) with high impressions but low CTR. These are ideal SEO optimization targets.',
+        inputSchema: {
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Start date (inclusive) in YYYY-MM-DD format.'),
+          end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
+          min_impressions: z.number().int().default(100).describe('Minimum impressions required to consider a query. Default is 100.'),
+          min_position: z.number().default(8).describe('Minimum average position to target (inclusive). Default is 8.'),
+          max_position: z.number().default(20).describe('Maximum average position to target (inclusive). Default is 20.'),
+        },
+        annotations: READ_ONLY_ANNOTATIONS,
+      },
+      async ({ site_url, start_date, end_date, min_impressions, min_position, max_position }) => {
+        const googleId = this.requireGoogleId();
+        const accessToken = await this.getAccessToken(googleId);
+        const rows = await querySearchAnalytics(accessToken, site_url, {
+          startDate: start_date,
+          endDate: end_date,
+          dimensions: ['query', 'page'],
+          rowLimit: 25000,
+        });
+
+        const quickWins = processQuickWins(rows, min_impressions, min_position, max_position);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(quickWins, null, 2) }],
+        };
+      },
+    );
+
+    this.server.registerTool(
+      'detect_cannibalization',
+      {
+        title: 'Detect Keyword Cannibalization',
+        description: 'Analyze search analytics to detect instances of keyword cannibalization, where multiple pages on your site compete for the same query.',
+        inputSchema: {
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Start date (inclusive) in YYYY-MM-DD format.'),
+          end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
+          min_impressions: z.number().int().default(50).describe('Minimum impressions for a page-query pair to be considered. Default is 50.'),
+          min_page_percentage: z.number().default(10).describe('Minimum percentage of total query impressions a page must have to count as a cannibalizing page. Default is 10%.'),
+        },
+        annotations: READ_ONLY_ANNOTATIONS,
+      },
+      async ({ site_url, start_date, end_date, min_impressions, min_page_percentage }) => {
+        const googleId = this.requireGoogleId();
+        const accessToken = await this.getAccessToken(googleId);
+        const rows = await querySearchAnalytics(accessToken, site_url, {
+          startDate: start_date,
+          endDate: end_date,
+          dimensions: ['query', 'page'],
+          rowLimit: 25000,
+        });
+
+        const cannibalizationCandidates = processCannibalization(rows, min_impressions, min_page_percentage);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(cannibalizationCandidates, null, 2) }],
+        };
+      },
+    );
+
+    this.server.registerTool(
+      'detect_content_decay',
+      {
+        title: 'Detect Content Decay',
+        description: 'Identify content decay by comparing search clicks for your site pages between two contiguous periods and finding the pages with the largest traffic drops.',
+        inputSchema: {
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          compare_days: z.number().int().default(30).describe('Number of days to compare (recent period vs previous period). Default is 30.'),
+        },
+        annotations: READ_ONLY_ANNOTATIONS,
+      },
+      async ({ site_url, compare_days }) => {
+        const googleId = this.requireGoogleId();
+        const accessToken = await this.getAccessToken(googleId);
+
+        const formatDate = (d: Date) => d.toISOString().split('T')[0];
+
+        const now = new Date();
+        const endRecentDate = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+        const startRecentDate = new Date(endRecentDate.getTime() - (compare_days - 1) * 24 * 60 * 60 * 1000);
+
+        const endPreviousDate = new Date(startRecentDate.getTime() - 24 * 60 * 60 * 1000);
+        const startPreviousDate = new Date(endPreviousDate.getTime() - (compare_days - 1) * 24 * 60 * 60 * 1000);
+
+        const recentStart = formatDate(startRecentDate);
+        const recentEnd = formatDate(endRecentDate);
+        const previousStart = formatDate(startPreviousDate);
+        const previousEnd = formatDate(endPreviousDate);
+
+        const recentRows = await querySearchAnalytics(accessToken, site_url, {
+          startDate: recentStart,
+          endDate: recentEnd,
+          dimensions: ['page'],
+          rowLimit: 25000,
+        });
+
+        const previousRows = await querySearchAnalytics(accessToken, site_url, {
+          startDate: previousStart,
+          endDate: previousEnd,
+          dimensions: ['page'],
+          rowLimit: 25000,
+        });
+
+        const decayResults = processContentDecay(recentRows, previousRows);
+
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              comparison_periods: {
+                recent: { start: recentStart, end: recentEnd },
+                previous: { start: previousStart, end: previousEnd },
+              },
+              decay_count: decayResults.length,
+              decay_results: decayResults,
+            }, null, 2),
+          }],
+        };
+      },
+    );
+
+    this.server.registerTool(
+      'request_indexing',
+      {
+        title: 'Request Indexing',
+        description: 'Request Google to index or update a URL using the Google Indexing API. Note: The Indexing API must be enabled in your Google Cloud Project, and typically is officially supported for pages containing JobPosting or BroadcastEvent markup.',
+        inputSchema: {
+          url: z.string().describe('The URL to submit for indexing/reindexing. Must belong to your property.'),
+        },
+        annotations: WRITE_ANNOTATIONS,
+      },
+      async ({ url }) => {
+        const googleId = this.requireGoogleId();
+        const accessToken = await this.getAccessToken(googleId);
+        const result = await requestIndexing(accessToken, url);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+        };
+      },
+    );
+
+    this.server.registerTool(
+      'list_indexed_pages',
+      {
+        title: 'List Indexed Pages',
+        description: 'Retrieve a list of site pages that have received search impressions, serving as a proxy list of indexed pages on the site.',
+        inputSchema: {
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Start date (inclusive) in YYYY-MM-DD format. Defaults to 30 days ago.'),
+          end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('End date (inclusive) in YYYY-MM-DD format. Defaults to 3 days ago. Note the 2-3 day data lag.'),
+          row_limit: z.number().int().min(1).max(25000).default(1000).describe('Maximum pages to retrieve (1-25000). Default is 1000.'),
+        },
+        annotations: READ_ONLY_ANNOTATIONS,
+      },
+      async ({ site_url, start_date, end_date, row_limit }) => {
+        const googleId = this.requireGoogleId();
+        const accessToken = await this.getAccessToken(googleId);
+
+        let start = start_date;
+        let end = end_date;
+        if (!start || !end) {
+          const formatDate = (d: Date) => d.toISOString().split('T')[0];
+          const now = new Date();
+          const endRecentDate = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+          const startRecentDate = new Date(endRecentDate.getTime() - 29 * 24 * 60 * 60 * 1000);
+          if (!start) start = formatDate(startRecentDate);
+          if (!end) end = formatDate(endRecentDate);
+        }
+
+        const rows = await querySearchAnalytics(accessToken, site_url, {
+          startDate: start,
+          endDate: end,
+          dimensions: ['page'],
+          rowLimit: row_limit,
+        });
+
+        const pages = rows.map((row) => ({
+          page: row.keys[0],
+          clicks: row.clicks,
+          impressions: row.impressions,
+          ctr: row.ctr,
+          position: row.position,
+        }));
+
+        return {
+          content: [{ type: 'text', text: JSON.stringify(pages, null, 2) }],
+        };
+      },
+    );
+
+    this.server.registerTool(
+      'compare_performance',
+      {
+        title: 'Compare Performance Between Periods',
+        description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device).',
+        inputSchema: {
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          start_date_a: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Start date of Period A (recent, YYYY-MM-DD)'),
+          end_date_a: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('End date of Period A (recent, YYYY-MM-DD)'),
+          start_date_b: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Start date of Period B (previous, YYYY-MM-DD)'),
+          end_date_b: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('End date of Period B (previous, YYYY-MM-DD)'),
+          dimension: z.enum(['query', 'page', 'country', 'device']).default('query').describe('The dimension to compare performance for. Defaults to query.'),
+        },
+        annotations: READ_ONLY_ANNOTATIONS,
+      },
+      async ({ site_url, start_date_a, end_date_a, start_date_b, end_date_b, dimension }) => {
+        const googleId = this.requireGoogleId();
+        const accessToken = await this.getAccessToken(googleId);
+
+        const rowsA = await querySearchAnalytics(accessToken, site_url, {
+          startDate: start_date_a,
+          endDate: end_date_a,
+          dimensions: [dimension],
+          rowLimit: 25000,
+        });
+
+        const rowsB = await querySearchAnalytics(accessToken, site_url, {
+          startDate: start_date_b,
+          endDate: end_date_b,
+          dimensions: [dimension],
+          rowLimit: 25000,
+        });
+
+        const comparison = processPerformanceComparison(rowsA, rowsB);
+        return {
+          content: [{ type: 'text', text: JSON.stringify(comparison, null, 2) }],
+        };
+      },
+    );
   }
 }
 
@@ -582,7 +987,7 @@ const defaultHandler = {
 
 export default new OAuthProvider({
   apiHandlers: {
-    '/mcp': GscMcpAgent.serve('/mcp'),
+    '/mcp': GscMcpAgent.serve('/mcp', { transport: 'auto' }),
   },
   defaultHandler: defaultHandler as any,
   authorizeEndpoint: '/authorize',
