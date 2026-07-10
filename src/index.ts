@@ -32,6 +32,7 @@ import {
   saveUser,
   stashPendingAuth,
 } from './storage';
+import { generateWeeklyDigest } from './digest';
 
 export interface Env {
   OAUTH_KV: KVNamespace;
@@ -144,6 +145,11 @@ const TOOL_CATALOG = [
     name: 'compare_performance',
     description:
       'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension.',
+  },
+  {
+    name: 'weekly_digest',
+    description:
+      'Generate a plain-language weekly SEO report for one Google Search Console property.',
   },
   {
     name: 'get_capabilities',
@@ -839,6 +845,48 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         return {
           content: [{ type: 'text', text: JSON.stringify(comparison, null, 2) }],
         };
+      },
+    );
+
+    this.server.registerTool(
+      'weekly_digest',
+      {
+        title: 'Weekly GSC Performance Digest',
+        description:
+          'Generate a plain-language weekly SEO report for one Google Search Console property. Returns a markdown digest covering the 7 days ending on end_date, with week-over-week comparison, top pages, queries gaining or losing traction, and one specific action item. Defaults end_date to today if omitted.',
+        inputSchema: {
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          end_date: z
+            .string()
+            .optional()
+            .describe('End date (inclusive) in YYYY-MM-DD format. Defaults to today.'),
+        },
+        annotations: READ_ONLY_ANNOTATIONS,
+      },
+      async ({ site_url, end_date }) => {
+        const googleId = this.requireGoogleId();
+        const today = new Date().toISOString().slice(0, 10);
+        const resolvedEndDate = end_date ?? today;
+        if (resolvedEndDate > today) {
+          throw new Error(
+            'End date must be today or earlier. Google Search Console has no data for dates that have not happened yet.',
+          );
+        }
+
+        try {
+          const markdown = await generateWeeklyDigest(
+            this.env,
+            googleId,
+            site_url,
+            resolvedEndDate,
+          );
+          return { content: [{ type: 'text', text: markdown }] };
+        } catch (err) {
+          if (err instanceof GoogleRefreshTokenRevokedError) {
+            throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
+          }
+          throw err;
+        }
       },
     );
   }

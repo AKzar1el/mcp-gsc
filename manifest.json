@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "mcp-gsc",
   "display_name": "Google Search Console MCP",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Self-hostable MCP server for Google Search Console, with bring-your-own Google OAuth. Runs on Cloudflare Workers.",
   "author": {
     "name": "AKzar1el",
@@ -42,6 +42,54 @@
     {
       "name": "list_sitemaps",
       "description": "All sitemaps submitted for a property, with submission/processing status and warning and error counts."
+    },
+    {
+      "name": "add_site",
+      "description": "Add a Google Search Console property."
+    },
+    {
+      "name": "delete_site",
+      "description": "Remove a Google Search Console property."
+    },
+    {
+      "name": "submit_sitemap",
+      "description": "Submit a sitemap for a Search Console property."
+    },
+    {
+      "name": "delete_sitemap",
+      "description": "Remove a submitted sitemap."
+    },
+    {
+      "name": "get_sitemap",
+      "description": "Retrieve the status and details of a submitted sitemap."
+    },
+    {
+      "name": "identify_quick_wins",
+      "description": "Find high-impression queries ranking in positions 8 through 20."
+    },
+    {
+      "name": "detect_cannibalization",
+      "description": "Find queries for which multiple pages compete in search results."
+    },
+    {
+      "name": "detect_content_decay",
+      "description": "Identify pages with the largest recent organic traffic declines."
+    },
+    {
+      "name": "request_indexing",
+      "description": "Request indexing for an eligible URL through the Google Indexing API."
+    },
+    {
+      "name": "list_indexed_pages",
+      "description": "List pages with Search Console impressions as a proxy for indexed pages."
+    },
+    {
+      "name": "compare_performance",
+      "description": "Compare search performance across two date ranges."
+    },
+    {
+      "name": "weekly_digest",
+      "description": "Generate a plain-language weekly search performance digest with one recommended action."
     }
   ]
 }

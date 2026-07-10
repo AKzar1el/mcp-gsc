@@ -1,6 +1,6 @@
 {
   "name": "mcp-gsc",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": false,
   "license": "MIT",
   "description": "Self-hostable MCP server for Google Search Console, with bring-your-own Google OAuth. Runs on Cloudflare Workers.",
