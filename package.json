@@ -1,6 +1,6 @@
 {
   "name": "mcp-gsc",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": false,
   "license": "MIT",
   "description": "Self-hostable MCP server for Google Search Console, with bring-your-own Google OAuth. Runs on Cloudflare Workers.",
@@ -31,7 +31,7 @@
     "test:smoke": "node --test tests/smoke.test.mjs"
   },
   "devDependencies": {
-    "@cloudflare/workers-oauth-provider": "^0.6.0",
+    "@cloudflare/workers-oauth-provider": "^0.8.1",
     "@cloudflare/workers-types": "^4.20260520.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "agents": "^0.13.1",

@@ -33,23 +33,29 @@ claude mcp add --transport http gsc https://<your-worker>.workers.dev/mcp
 
 A self-hostable [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for **Google Search Console**. Connect it to Claude.ai, Cursor, ChatGPT, or any MCP-compatible client and ask your AI assistant about your site's organic search performance — impressions, clicks, top queries, index status, and sitemap health — straight from your own Google account.
 
-It runs on [Cloudflare Workers](https://workers.cloudflare.com/) and ships with one-click Google OAuth onboarding: connect the server in your client, sign in with Google once, grant read-only access to your Search Console properties, and you're done. No API keys to copy around, no service-account JSON to manage.
+It runs on [Cloudflare Workers](https://workers.cloudflare.com/) and ships with one-click Google OAuth onboarding: connect the server in your client, sign in with Google once, grant the requested Google Search Console permissions, and you're done. No API keys to copy around and no service-account JSON to manage.
 
 > **Prefer zero setup?** The hosted version — with automatic weekly email digests delivered to your inbox — is at **[digestseo.com](https://digestseo.com)**. This repository is the open-source core you can run yourself.
 
 ## Tools
 
-This server exposes five **read-only** tools:
+This server exposes 17 tools. Read-only analytics and reporting tools are marked with MCP's `readOnlyHint`; the write tools below can change Search Console properties, sitemaps, or indexing state.
 
-| Tool | What it does |
-|---|---|
-| **`get_capabilities`** | List every tool this server exposes and report whether your Google connection is currently authenticated (`connected` / `not_connected`). Takes no arguments — a good first call for discovery. |
-| **`list_sites`** | List the Search Console properties the connected Google account can access (`siteUrl`, `permissionLevel`). |
-| **`query_search_analytics`** | Impressions, clicks, CTR, and average position over a date range — broken down by query, page, country, device, date, or search appearance, with dimension filters, pagination (`start_row`), and a selectable search type (web, image, video, news, discover). |
-| **`inspect_url`** | Google's URL Inspection report for a single page: index status, last crawl, mobile usability, rich-results eligibility, AMP. |
-| **`list_sitemaps`** | All sitemaps submitted for a property, with submission/processing status and warning and error counts. |
+| Tool | Access | What it does |
+|---|---|---|
+| **`get_capabilities`** | Read | List every tool this server exposes and report whether your Google connection is currently authenticated (`connected` / `not_connected`). Takes no arguments — a good first call for discovery. |
+| **`list_sites`** | Read | List the Search Console properties the connected Google account can access (`siteUrl`, `permissionLevel`). |
+| **`query_search_analytics`** | Read | Impressions, clicks, CTR, and average position over a date range, with dimensions, filters, pagination, and selectable search type. |
+| **`inspect_url`** | Read | Google's URL Inspection report for a single page. |
+| **`list_sitemaps`** / **`get_sitemap`** | Read | List submitted sitemaps or retrieve one sitemap's details. |
+| **`identify_quick_wins`** / **`detect_cannibalization`** / **`detect_content_decay`** | Read | Surface optimization opportunities, competing pages, and declining content. |
+| **`list_indexed_pages`** / **`compare_performance`** | Read | Analyze pages receiving impressions and compare two periods. |
+| **`weekly_digest`** | Read | Generate a plain-language seven-day performance report with movers, top pages, and one recommended action. |
+| **`add_site`** / **`delete_site`** | Write | Add or remove a Search Console property. |
+| **`submit_sitemap`** / **`delete_sitemap`** | Write | Submit or remove a sitemap. |
+| **`request_indexing`** | Write | Request indexing for an eligible URL through the Google Indexing API. |
 
-Every tool uses only the `https://www.googleapis.com/auth/webmasters.readonly` scope — the server never modifies your Search Console data. All tools carry the MCP `readOnlyHint` annotation, so clients can show them as safe.
+The server requests Google Search Console and Indexing API scopes. Use a Google account with only the property access you intend to delegate, and review write-tool calls before approving them.
 
 ## What you can ask
 
@@ -59,6 +65,7 @@ Once connected, ask your assistant things like:
 - *"Compare impressions for example.com this month vs last month — which pages dropped?"*
 - *"Is `https://example.com/pricing` indexed? When was it last crawled?"*
 - *"Which queries does my blog rank position 5–15 for? Those are my quick wins."*
+- *"Give me a weekly digest for `sc-domain:example.com` ending today."*
 - *"Do any of my sitemaps have errors or warnings?"*
 - *"Split my clicks into brand vs non-brand using a regex on the query."*
 - *"How is my site doing in Google Discover vs regular web search?"*
