@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.AKzar1el/mcp-gsc",
   "title": "Google Search Console",
-  "description": "Read-only MCP server for Google Search Console: search analytics, URL inspection, sites, sitemaps.",
+  "description": "Google Search Console MCP for analytics, indexing, sitemaps, and SEO diagnostics.",
   "tools": [
     {
       "name": "get_capabilities",
@@ -23,9 +23,57 @@
     {
       "name": "list_sitemaps",
       "description": "All sitemaps submitted for a property, with status and warning/error counts."
+    },
+    {
+      "name": "add_site",
+      "description": "Add a new website property to your Google Search Console account."
+    },
+    {
+      "name": "delete_site",
+      "description": "Remove an existing website property from your Google Search Console account."
+    },
+    {
+      "name": "submit_sitemap",
+      "description": "Submit a new sitemap to your Google Search Console account."
+    },
+    {
+      "name": "delete_sitemap",
+      "description": "Remove a submitted sitemap from your Google Search Console account."
+    },
+    {
+      "name": "get_sitemap",
+      "description": "Get status and details of a single sitemap submitted to Google Search Console."
+    },
+    {
+      "name": "identify_quick_wins",
+      "description": "Find search queries ranking in positions 8-20 with high impressions and low click-through rate."
+    },
+    {
+      "name": "detect_cannibalization",
+      "description": "Analyze search analytics to find queries for which multiple pages compete for visibility."
+    },
+    {
+      "name": "detect_content_decay",
+      "description": "Compare two contiguous periods to find pages with the largest search-click declines."
+    },
+    {
+      "name": "request_indexing",
+      "description": "Request Google to index or update an eligible URL using the Google Indexing API."
+    },
+    {
+      "name": "list_indexed_pages",
+      "description": "List site pages that have received search impressions as a practical proxy for indexed pages."
+    },
+    {
+      "name": "compare_performance",
+      "description": "Compare clicks, impressions, CTR, and average position between two date ranges by query, page, country, or device."
+    },
+    {
+      "name": "weekly_digest",
+      "description": "Generate a plain-language weekly SEO report with movers, top pages, and a recommended action."
     }
   ],
-  "version": "0.2.0",
+  "version": "0.3.0",
   "repository": {
     "url": "https://github.com/AKzar1el/mcp-gsc",
     "source": "github"

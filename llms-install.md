@@ -2,7 +2,7 @@
 
 This file is for AI agents (Cline, Claude Code, Cursor, etc.) installing `mcp-gsc` on behalf of a user. It takes the user from zero to a personal, self-hosted instance on Cloudflare Workers. The human-oriented walkthrough with full explanations is [SETUP.md](SETUP.md) — this file mirrors it in deterministic, copy-pasteable steps.
 
-**What you are deploying:** a remote MCP server for Google Search Console (five read-only tools) that runs on the user's own Cloudflare account with the user's own Google OAuth credentials. The connect URL at the end is `https://<worker-host>/mcp`.
+**What you are deploying:** a remote MCP server for Google Search Console with 17 tools: read-only analytics/reporting plus explicit property, sitemap, and indexing operations. It runs on the user's own Cloudflare account with the user's own Google OAuth credentials. The connect URL at the end is `https://<worker-host>/mcp`.
 
 **Security rule for agents:** the three secrets in Step 6 are entered by the **user directly into the terminal prompt** opened by `wrangler secret put`. Never ask the user to paste a secret into the chat, and never echo a secret back.
 
