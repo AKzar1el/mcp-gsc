@@ -34,9 +34,9 @@
   "remotes": [
     {
       "type": "streamable-http",
-      "url": "https://{worker_domain}/mcp",
+      "url": "https://{mcp_gsc_worker_domain}/mcp",
       "variables": {
-        "worker_domain": {
+        "mcp_gsc_worker_domain": {
           "description": "Hostname of your self-deployed Cloudflare Worker, as printed by `wrangler deploy` (see SETUP.md)",
           "isRequired": true,
           "placeholder": "mcp-gsc.your-subdomain.workers.dev"
