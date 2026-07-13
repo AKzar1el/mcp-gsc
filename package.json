@@ -1,6 +1,6 @@
 {
   "name": "mcp-gsc",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": false,
   "license": "MIT",
   "description": "Self-hostable MCP server for Google Search Console, with bring-your-own Google OAuth. Runs on Cloudflare Workers.",
@@ -9,7 +9,7 @@
     "type": "git",
     "url": "git+https://github.com/AKzar1el/mcp-gsc.git"
   },
-  "homepage": "https://github.com/AKzar1el/mcp-gsc#readme",
+  "homepage": "https://digestseo.com/gsc-mcp/",
   "bugs": {
     "url": "https://github.com/AKzar1el/mcp-gsc/issues"
   },

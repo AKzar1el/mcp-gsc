@@ -2,7 +2,7 @@
   "manifest_version": "0.2",
   "name": "mcp-gsc",
   "display_name": "Google Search Console MCP",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Self-hostable MCP server for Google Search Console, with bring-your-own Google OAuth. Runs on Cloudflare Workers.",
   "author": {
     "name": "AKzar1el",
@@ -12,7 +12,7 @@
     "type": "git",
     "url": "https://github.com/AKzar1el/mcp-gsc"
   },
-  "homepage": "https://github.com/AKzar1el/mcp-gsc",
+  "homepage": "https://digestseo.com/gsc-mcp/",
   "license": "MIT",
   "server": {
     "type": "node",
