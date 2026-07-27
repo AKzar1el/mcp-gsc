@@ -68,6 +68,171 @@ const WRITE_ANNOTATIONS = {
 const SITE_URL_DESCRIPTION =
   "The Search Console property identifier, exactly as returned by list_sites. Two formats exist: domain properties use 'sc-domain:example.com'; URL-prefix properties use the full URL including protocol and trailing slash, e.g. 'https://www.example.com/'. Passing the wrong format returns a permission error even when the user owns the site — call list_sites first if unsure.";
 
+const METRIC_OUTPUT_SCHEMA = {
+  clicks: z.number(),
+  impressions: z.number(),
+  ctr: z.number(),
+  position: z.number(),
+};
+
+const SEARCH_ROW_OUTPUT_SCHEMA = {
+  keys: z.array(z.string()),
+  ...METRIC_OUTPUT_SCHEMA,
+};
+
+const SITE_OUTPUT_SCHEMA = {
+  siteUrl: z.string(),
+  permissionLevel: z.string(),
+};
+
+const SITEMAP_OUTPUT_SCHEMA = z
+  .object({
+    path: z.string(),
+    lastSubmitted: z.string().nullable().optional(),
+    isPending: z.boolean().nullable().optional(),
+    isSitemapsIndex: z.boolean().nullable().optional(),
+    type: z.string().nullable().optional(),
+    lastDownloaded: z.string().nullable().optional(),
+    warnings: z.string().nullable().optional(),
+    errors: z.string().nullable().optional(),
+    contents: z
+      .array(
+        z.object({
+          type: z.string(),
+          submitted: z.string(),
+          indexed: z.string(),
+        }),
+      )
+      .nullable()
+      .optional(),
+  })
+  .passthrough();
+
+const CAPABILITIES_OUTPUT_SCHEMA = {
+  server: z.string(),
+  version: z.string(),
+  auth_status: z.enum(['connected', 'not_connected', 'unknown']),
+  tools: z.array(
+    z.object({
+      name: z.string(),
+      description: z.string(),
+    }),
+  ),
+  hint: z.string(),
+};
+
+const SITES_OUTPUT_SCHEMA = {
+  sites: z.array(z.object(SITE_OUTPUT_SCHEMA)),
+};
+
+const INSPECTION_OUTPUT_SCHEMA = {
+  inspection_result: z.unknown(),
+};
+
+const SITEMAPS_OUTPUT_SCHEMA = {
+  sitemaps: z.array(SITEMAP_OUTPUT_SCHEMA),
+};
+
+const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
+  row_count: z.number().int().nonnegative(),
+  start_row: z.number().int().nonnegative(),
+  rows: z.array(z.object(SEARCH_ROW_OUTPUT_SCHEMA)),
+  next_start_row: z.number().int().nonnegative().optional(),
+};
+
+const MESSAGE_OUTPUT_SCHEMA = {
+  message: z.string(),
+};
+
+const QUICK_WIN_OUTPUT_SCHEMA = {
+  quick_wins: z.array(
+    z.object({
+      query: z.string(),
+      page: z.string(),
+      ...METRIC_OUTPUT_SCHEMA,
+    }),
+  ),
+};
+
+const CANNIBALIZATION_OUTPUT_SCHEMA = {
+  candidates: z.array(
+    z.object({
+      query: z.string(),
+      total_clicks: z.number(),
+      total_impressions: z.number(),
+      pages: z.array(
+        z.object({
+          page: z.string(),
+          ...METRIC_OUTPUT_SCHEMA,
+          impression_share: z.number(),
+        }),
+      ),
+    }),
+  ),
+};
+
+const CONTENT_DECAY_OUTPUT_SCHEMA = {
+  comparison_periods: z.object({
+    recent: z.object({ start: z.string(), end: z.string() }),
+    previous: z.object({ start: z.string(), end: z.string() }),
+  }),
+  decay_count: z.number().int().nonnegative(),
+  decay_results: z.array(
+    z.object({
+      page: z.string(),
+      previous_clicks: z.number(),
+      recent_clicks: z.number(),
+      click_difference: z.number(),
+      click_decay_percentage: z.number(),
+      previous_impressions: z.number(),
+      recent_impressions: z.number(),
+      impression_difference: z.number(),
+      previous_position: z.number(),
+      recent_position: z.number(),
+    }),
+  ),
+};
+
+const INDEXING_OUTPUT_SCHEMA = {
+  result: z.unknown(),
+};
+
+const INDEXED_PAGES_OUTPUT_SCHEMA = {
+  pages: z.array(z.object({ page: z.string(), ...METRIC_OUTPUT_SCHEMA })),
+};
+
+const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
+  comparisons: z.array(
+    z.object({
+      key: z.string(),
+      period_a: z.object(METRIC_OUTPUT_SCHEMA),
+      period_b: z.object(METRIC_OUTPUT_SCHEMA),
+      diff: z.object({
+        clicks: z.number(),
+        clicks_percentage: z.number(),
+        impressions: z.number(),
+        impressions_percentage: z.number(),
+        ctr: z.number(),
+        position: z.number(),
+      }),
+    }),
+  ),
+};
+
+const WEEKLY_DIGEST_OUTPUT_SCHEMA = {
+  markdown: z.string(),
+};
+
+function toolResponse<T extends Record<string, unknown>>(
+  text: string,
+  structuredContent: T,
+) {
+  return {
+    content: [{ type: 'text' as const, text }],
+    structuredContent,
+  };
+}
+
 // One-line summaries surfaced by get_capabilities. Keep in sync with the
 // registerTool calls below (names are asserted by the smoke tests).
 const TOOL_CATALOG = [
@@ -220,6 +385,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         description:
           "List every tool this server exposes and report whether the user's Google Search Console connection is currently authenticated. Call this first if you're unsure what tools are available or whether the user is connected. Returns the tool catalog plus an auth status of `connected` or `not_connected`. Takes no arguments.",
         inputSchema: {},
+        outputSchema: CAPABILITIES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async () => {
@@ -245,11 +411,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           tools: TOOL_CATALOG,
           hint: "If auth_status is not 'connected', the user should reconnect this server in their MCP client to sign in with Google.",
         };
-        return {
-          content: [
-            { type: 'text', text: JSON.stringify(capabilities, null, 2) },
-          ],
-        };
+        return toolResponse(JSON.stringify(capabilities, null, 2), capabilities);
       },
     );
 
@@ -260,17 +422,14 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         description:
           "List the Google Search Console properties (sites) the connected Google account has access to. Returns an array of { siteUrl, permissionLevel }. Call this when the user asks 'what sites do I have?' or 'what properties are connected?', or when the user asks about SEO for a site and hasn't specified which property. Also useful as a discovery step before calling other tools that require a site_url argument.",
         inputSchema: {},
+        outputSchema: SITES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async () => {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         const sites = await listSites(accessToken);
-        return {
-          content: [
-            { type: 'text', text: JSON.stringify(sites, null, 2) },
-          ],
-        };
+        return toolResponse(JSON.stringify(sites, null, 2), { sites });
       },
     );
 
@@ -293,6 +452,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
               "BCP-47 language code for translatable strings in the result, e.g. 'en-US' or 'de-DE'.",
             ),
         },
+        outputSchema: INSPECTION_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url, inspection_url, language_code }) => {
@@ -304,11 +464,9 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           inspection_url,
           language_code,
         );
-        return {
-          content: [
-            { type: 'text', text: JSON.stringify(result, null, 2) },
-          ],
-        };
+        return toolResponse(JSON.stringify(result, null, 2), {
+          inspection_result: result,
+        });
       },
     );
 
@@ -321,17 +479,14 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
         },
+        outputSchema: SITEMAPS_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url }) => {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         const sitemaps = await listSitemaps(accessToken, site_url);
-        return {
-          content: [
-            { type: 'text', text: JSON.stringify(sitemaps, null, 2) },
-          ],
-        };
+        return toolResponse(JSON.stringify(sitemaps, null, 2), { sitemaps });
       },
     );
 
@@ -467,6 +622,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
               "Optional filters ANDed together, e.g. [{ groupType: 'and', filters: [{ dimension: 'country', operator: 'equals', expression: 'usa' }] }]. Countries use ISO 3166-1 alpha-3 codes.",
             ),
         },
+        outputSchema: SEARCH_ANALYTICS_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({
@@ -506,9 +662,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         }
         // Compact JSON on purpose: analytics responses are the largest this
         // server produces, and pretty-printing them costs ~3x the tokens.
-        return {
-          content: [{ type: 'text', text: JSON.stringify(payload) }],
-        };
+        return toolResponse(JSON.stringify(payload), payload);
       },
     );
 
@@ -520,15 +674,15 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
         },
+        outputSchema: MESSAGE_OUTPUT_SCHEMA,
         annotations: WRITE_ANNOTATIONS,
       },
       async ({ site_url }) => {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         await addSite(accessToken, site_url);
-        return {
-          content: [{ type: 'text', text: `Successfully added site property: ${site_url}` }],
-        };
+        const message = `Successfully added site property: ${site_url}`;
+        return toolResponse(message, { message });
       },
     );
 
@@ -540,15 +694,15 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
         },
+        outputSchema: MESSAGE_OUTPUT_SCHEMA,
         annotations: WRITE_ANNOTATIONS,
       },
       async ({ site_url }) => {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         await deleteSite(accessToken, site_url);
-        return {
-          content: [{ type: 'text', text: `Successfully deleted site property: ${site_url}` }],
-        };
+        const message = `Successfully deleted site property: ${site_url}`;
+        return toolResponse(message, { message });
       },
     );
 
@@ -561,15 +715,15 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           feedpath: z.string().describe('The full URL of the sitemap file to submit, e.g. https://example.com/sitemap.xml'),
         },
+        outputSchema: MESSAGE_OUTPUT_SCHEMA,
         annotations: WRITE_ANNOTATIONS,
       },
       async ({ site_url, feedpath }) => {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         await submitSitemap(accessToken, site_url, feedpath);
-        return {
-          content: [{ type: 'text', text: `Successfully submitted sitemap: ${feedpath} for site: ${site_url}` }],
-        };
+        const message = `Successfully submitted sitemap: ${feedpath} for site: ${site_url}`;
+        return toolResponse(message, { message });
       },
     );
 
@@ -582,15 +736,15 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           feedpath: z.string().describe('The full URL of the sitemap file to delete, e.g. https://example.com/sitemap.xml'),
         },
+        outputSchema: MESSAGE_OUTPUT_SCHEMA,
         annotations: WRITE_ANNOTATIONS,
       },
       async ({ site_url, feedpath }) => {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         await deleteSitemap(accessToken, site_url, feedpath);
-        return {
-          content: [{ type: 'text', text: `Successfully deleted sitemap: ${feedpath} for site: ${site_url}` }],
-        };
+        const message = `Successfully deleted sitemap: ${feedpath} for site: ${site_url}`;
+        return toolResponse(message, { message });
       },
     );
 
@@ -603,15 +757,14 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           feedpath: z.string().describe('The full URL of the sitemap file, e.g. https://example.com/sitemap.xml'),
         },
+        outputSchema: { sitemap: SITEMAP_OUTPUT_SCHEMA },
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url, feedpath }) => {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         const details = await getSitemap(accessToken, site_url, feedpath);
-        return {
-          content: [{ type: 'text', text: JSON.stringify(details, null, 2) }],
-        };
+        return toolResponse(JSON.stringify(details, null, 2), { sitemap: details });
       },
     );
 
@@ -628,6 +781,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           min_position: z.number().default(8).describe('Minimum average position to target (inclusive). Default is 8.'),
           max_position: z.number().default(20).describe('Maximum average position to target (inclusive). Default is 20.'),
         },
+        outputSchema: QUICK_WIN_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url, start_date, end_date, min_impressions, min_position, max_position }) => {
@@ -641,9 +795,9 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         });
 
         const quickWins = processQuickWins(rows, min_impressions, min_position, max_position);
-        return {
-          content: [{ type: 'text', text: JSON.stringify(quickWins, null, 2) }],
-        };
+        return toolResponse(JSON.stringify(quickWins, null, 2), {
+          quick_wins: quickWins,
+        });
       },
     );
 
@@ -659,6 +813,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           min_impressions: z.number().int().default(50).describe('Minimum impressions for a page-query pair to be considered. Default is 50.'),
           min_page_percentage: z.number().default(10).describe('Minimum percentage of total query impressions a page must have to count as a cannibalizing page. Default is 10%.'),
         },
+        outputSchema: CANNIBALIZATION_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url, start_date, end_date, min_impressions, min_page_percentage }) => {
@@ -672,9 +827,9 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         });
 
         const cannibalizationCandidates = processCannibalization(rows, min_impressions, min_page_percentage);
-        return {
-          content: [{ type: 'text', text: JSON.stringify(cannibalizationCandidates, null, 2) }],
-        };
+        return toolResponse(JSON.stringify(cannibalizationCandidates, null, 2), {
+          candidates: cannibalizationCandidates,
+        });
       },
     );
 
@@ -687,6 +842,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           compare_days: z.number().int().default(30).describe('Number of days to compare (recent period vs previous period). Default is 30.'),
         },
+        outputSchema: CONTENT_DECAY_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url, compare_days }) => {
@@ -723,19 +879,15 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
 
         const decayResults = processContentDecay(recentRows, previousRows);
 
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              comparison_periods: {
-                recent: { start: recentStart, end: recentEnd },
-                previous: { start: previousStart, end: previousEnd },
-              },
-              decay_count: decayResults.length,
-              decay_results: decayResults,
-            }, null, 2),
-          }],
+        const payload = {
+          comparison_periods: {
+            recent: { start: recentStart, end: recentEnd },
+            previous: { start: previousStart, end: previousEnd },
+          },
+          decay_count: decayResults.length,
+          decay_results: decayResults,
         };
+        return toolResponse(JSON.stringify(payload, null, 2), payload);
       },
     );
 
@@ -747,15 +899,14 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         inputSchema: {
           url: z.string().describe('The URL to submit for indexing/reindexing. Must belong to your property.'),
         },
+        outputSchema: INDEXING_OUTPUT_SCHEMA,
         annotations: WRITE_ANNOTATIONS,
       },
       async ({ url }) => {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         const result = await requestIndexing(accessToken, url);
-        return {
-          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-        };
+        return toolResponse(JSON.stringify(result, null, 2), { result });
       },
     );
 
@@ -770,6 +921,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('End date (inclusive) in YYYY-MM-DD format. Defaults to 3 days ago. Note the 2-3 day data lag.'),
           row_limit: z.number().int().min(1).max(25000).default(1000).describe('Maximum pages to retrieve (1-25000). Default is 1000.'),
         },
+        outputSchema: INDEXED_PAGES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url, start_date, end_date, row_limit }) => {
@@ -802,9 +954,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           position: row.position,
         }));
 
-        return {
-          content: [{ type: 'text', text: JSON.stringify(pages, null, 2) }],
-        };
+        return toolResponse(JSON.stringify(pages, null, 2), { pages });
       },
     );
 
@@ -821,6 +971,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           end_date_b: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('End date of Period B (previous, YYYY-MM-DD)'),
           dimension: z.enum(['query', 'page', 'country', 'device']).default('query').describe('The dimension to compare performance for. Defaults to query.'),
         },
+        outputSchema: PERFORMANCE_COMPARISON_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url, start_date_a, end_date_a, start_date_b, end_date_b, dimension }) => {
@@ -842,9 +993,9 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         });
 
         const comparison = processPerformanceComparison(rowsA, rowsB);
-        return {
-          content: [{ type: 'text', text: JSON.stringify(comparison, null, 2) }],
-        };
+        return toolResponse(JSON.stringify(comparison, null, 2), {
+          comparisons: comparison,
+        });
       },
     );
 
@@ -861,6 +1012,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
             .optional()
             .describe('End date (inclusive) in YYYY-MM-DD format. Defaults to today.'),
         },
+        outputSchema: WEEKLY_DIGEST_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url, end_date }) => {
@@ -880,7 +1032,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
             site_url,
             resolvedEndDate,
           );
-          return { content: [{ type: 'text', text: markdown }] };
+          return toolResponse(markdown, { markdown });
         } catch (err) {
           if (err instanceof GoogleRefreshTokenRevokedError) {
             throw new Error(GSC_ACCESS_REVOKED_MESSAGE);

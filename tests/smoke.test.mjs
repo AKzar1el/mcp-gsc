@@ -178,6 +178,9 @@ test(
         `tools/list missing tool '${name}' (got: ${[...names].sort().join(', ')})`,
       );
     }
+    for (const tool of tools) {
+      assert.ok(tool.outputSchema, `tool '${tool.name}' is missing outputSchema`);
+    }
   },
 );
 
@@ -200,6 +203,10 @@ test(
     assert.ok(
       Array.isArray(parsed),
       `list_sites payload is not a JSON array: ${text.slice(0, 200)}`,
+    );
+    assert.ok(
+      Array.isArray(env?.result?.structuredContent?.sites),
+      'list_sites structuredContent.sites is not an array',
     );
   },
 );
