@@ -1,24 +1,45 @@
 {
-  "name": "mcp-gsc",
+  "name": "@digestseo/mcp-gsc",
   "version": "0.3.1",
   "private": false,
   "main": "scripts/glama-start.mjs",
+  "bin": {
+    "mcp-gsc": "scripts/glama-start.mjs"
+  },
   "license": "MIT",
-  "description": "Self-hostable MCP server for Google Search Console, with bring-your-own Google OAuth. Runs on Cloudflare Workers.",
+  "description": "Self-hostable Google Search Console MCP server for analytics, URL inspection, sitemaps, indexing, and SEO reporting on Cloudflare Workers.",
   "type": "module",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/AKzar1el/mcp-gsc.git"
   },
   "homepage": "https://digestseo.com/gsc-mcp/",
+  "author": {
+    "name": "DigestSEO",
+    "url": "https://digestseo.com/"
+  },
   "bugs": {
     "url": "https://github.com/AKzar1el/mcp-gsc/issues"
   },
+  "files": [
+    "src",
+    "scripts/glama-start.mjs",
+    "wrangler.example.jsonc",
+    ".dev.vars.example",
+    "README.md",
+    "SETUP.md",
+    "SECURITY.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
   "keywords": [
     "mcp",
     "model-context-protocol",
     "google-search-console",
+    "google-search-console-mcp",
     "search-console",
+    "search-analytics",
+    "indexing-api",
     "seo",
     "cloudflare-workers",
     "claude"
@@ -31,16 +52,27 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run typecheck && npm run test:unit",
     "test:unit": "tsx --test tests/unit.test.ts",
-    "test:smoke": "node --test tests/smoke.test.mjs"
+    "test:smoke": "node --test tests/smoke.test.mjs",
+    "prepublishOnly": "npm test"
   },
-  "devDependencies": {
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "mcpName": "io.github.AKzar1el/mcp-gsc",
+  "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.8.1",
-    "@cloudflare/workers-types": "^4.20260520.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "agents": "^0.13.1",
-    "tsx": "^4.20.0",
-    "typescript": "^6.0.3",
     "wrangler": "^4.93.0",
     "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260520.1",
+    "tsx": "^4.20.0",
+    "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   }
 }

@@ -6,7 +6,22 @@
 [![MCP](https://img.shields.io/badge/MCP-remote%20server-8A2BE2)](https://modelcontextprotocol.io)
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.AKzar1el%2Fmcp--gsc-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.AKzar1el/mcp-gsc)
 [![CI](https://github.com/AKzar1el/mcp-gsc/actions/workflows/ci.yml/badge.svg)](https://github.com/AKzar1el/mcp-gsc/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/%40digestseo%2Fmcp-gsc.svg)](https://www.npmjs.com/package/@digestseo/mcp-gsc)
 [![smithery badge](https://smithery.ai/badge/digestseo/mcp-gsc)](https://smithery.ai/servers/digestseo/mcp-gsc)
+
+Part of the **[DigestSEO](https://digestseo.com/)** suite of open-source SEO tools.
+
+- Product: [digestseo.com/gsc-mcp](https://digestseo.com/gsc-mcp/)
+- Support: [digestseo.com/support](https://digestseo.com/support/)
+- Privacy: [digestseo.com/privacy](https://digestseo.com/privacy/)
+
+The self-hosting launcher is available as [`@digestseo/mcp-gsc`](https://www.npmjs.com/package/@digestseo/mcp-gsc):
+
+```bash
+npx -y @digestseo/mcp-gsc
+```
+
+For Google OAuth and Cloudflare deployment configuration, follow [SETUP.md](SETUP.md).
 
 ### Connect in 30 seconds
 
