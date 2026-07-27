@@ -1,7 +1,6 @@
 # mcp-gsc
 
-<!-- Logo (referenced by the Cline/Glama submissions): add assets/logo.png (400x400),
-     then uncomment: <img src="assets/logo.png" alt="mcp-gsc logo" width="120" align="right"> -->
+<!-- Logo asset for marketplace submissions: assets/logo-400.png (400x400). -->
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![MCP](https://img.shields.io/badge/MCP-remote%20server-8A2BE2)](https://modelcontextprotocol.io)
