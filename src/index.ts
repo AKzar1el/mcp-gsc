@@ -66,7 +66,7 @@ const WRITE_ANNOTATIONS = {
 } as const;
 
 const SITE_URL_DESCRIPTION =
-  "The Search Console property identifier, exactly as returned by list_sites. Two formats exist: domain properties use 'sc-domain:example.com'; URL-prefix properties use the full URL including protocol and trailing slash, e.g. 'https://www.example.com/'. Passing the wrong format returns a permission error even when the user owns the site — call list_sites first if unsure.";
+  "The Search Console property identifier, exactly as returned by sites.list. Two formats exist: domain properties use 'sc-domain:example.com'; URL-prefix properties use the full URL including protocol and trailing slash, e.g. 'https://www.example.com/'. Passing the wrong format returns a permission error even when the user owns the site — call sites.list first if unsure.";
 
 const METRIC_OUTPUT_SCHEMA = {
   clicks: z.number(),
@@ -237,87 +237,87 @@ function toolResponse<T extends Record<string, unknown>>(
 // registerTool calls below (names are asserted by the smoke tests).
 const TOOL_CATALOG = [
   {
-    name: 'list_sites',
+    name: 'sites.list',
     description:
       'List the Google Search Console properties (sites) the connected Google account can access.',
   },
   {
-    name: 'add_site',
+    name: 'sites.add',
     description:
       'Add a new website property to your Google Search Console account.',
   },
   {
-    name: 'delete_site',
+    name: 'sites.delete',
     description:
       'Remove an existing website property from your Google Search Console account.',
   },
   {
-    name: 'query_search_analytics',
+    name: 'analytics.query',
     description:
       'Query Search Console search analytics (impressions, clicks, CTR, average position) over a date range, broken down by query, page, country, device, date, or search appearance. Supports filters and pagination.',
   },
   {
-    name: 'inspect_url',
+    name: 'urls.inspect',
     description:
       "Inspect a single URL's index status in Google: indexed state, last crawl, mobile usability, and rich-results eligibility.",
   },
   {
-    name: 'list_sitemaps',
+    name: 'sitemaps.list',
     description:
       'List all sitemaps submitted for a property, with submission/processing status and warning and error counts.',
   },
   {
-    name: 'submit_sitemap',
+    name: 'sitemaps.submit',
     description:
       'Submit a new sitemap to your Google Search Console account.',
   },
   {
-    name: 'delete_sitemap',
+    name: 'sitemaps.delete',
     description:
       'Remove/delete a submitted sitemap from your Google Search Console account.',
   },
   {
-    name: 'get_sitemap',
+    name: 'sitemaps.get',
     description:
       'Get status and details of a single sitemap submitted to Google Search Console.',
   },
   {
-    name: 'identify_quick_wins',
+    name: 'insights.quick_wins',
     description:
       'Find search queries that rank in positions 8-20 (page 2 / lower page 1) with high impressions but low CTR. These are ideal SEO optimization targets.',
   },
   {
-    name: 'detect_cannibalization',
+    name: 'insights.cannibalization',
     description:
       'Analyze search analytics to detect instances of keyword cannibalization, where multiple pages on your site compete for the same query.',
   },
   {
-    name: 'detect_content_decay',
+    name: 'insights.content_decay',
     description:
       'Identify content decay by comparing search clicks for your site pages between two contiguous periods and finding the pages with the largest traffic drops.',
   },
   {
-    name: 'request_indexing',
+    name: 'indexing.request',
     description:
       'Request Google to index or update a URL using the Google Indexing API.',
   },
   {
-    name: 'list_indexed_pages',
+    name: 'indexing.list_pages',
     description:
       'Retrieve a list of site pages that have received search impressions, serving as a proxy list of indexed pages on the site.',
   },
   {
-    name: 'compare_performance',
+    name: 'analytics.compare',
     description:
       'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension.',
   },
   {
-    name: 'weekly_digest',
+    name: 'reports.weekly_digest',
     description:
       'Generate a plain-language weekly SEO report for one Google Search Console property.',
   },
   {
-    name: 'get_capabilities',
+    name: 'server.capabilities',
     description:
       "List every tool this server exposes and report whether the user's Google Search Console connection is currently authenticated.",
   },
@@ -379,7 +379,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
 
   async init() {
     this.server.registerTool(
-      'get_capabilities',
+      'server.capabilities',
       {
         title: 'Get server capabilities and auth status',
         description:
@@ -416,7 +416,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     );
 
     this.server.registerTool(
-      'list_sites',
+      'sites.list',
       {
         title: 'List Search Console properties',
         description:
@@ -434,7 +434,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     );
 
     this.server.registerTool(
-      'inspect_url',
+      'urls.inspect',
       {
         title: 'Inspect URL index status',
         description: `Inspect a single URL's index status in Google. Returns: whether the URL is indexed, last crawl date, indexing state, mobile usability, rich-results eligibility, and any AMP results. Use this when the user asks 'is X indexed?', 'why isn't X showing in Google?', or wants a deep look at one specific page. For bulk checks across many URLs, call this tool repeatedly — there is no batch endpoint — but note Google caps URL inspection at roughly 2,000 calls per property per day.`,
@@ -471,7 +471,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     );
 
     this.server.registerTool(
-      'list_sitemaps',
+      'sitemaps.list',
       {
         title: 'List submitted sitemaps',
         description:
@@ -491,7 +491,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     );
 
     this.server.registerTool(
-      'query_search_analytics',
+      'analytics.query',
       {
         title: 'Query search analytics',
         description: [
@@ -667,7 +667,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     );
 
     this.server.registerTool(
-      'add_site',
+      'sites.add',
       {
         title: 'Add Search Console property',
         description: 'Add a new website property to your Google Search Console account. Note: Domain properties require sc-domain prefix (e.g., sc-domain:example.com), URL-prefix properties require full URL (e.g., https://example.com/).',
@@ -687,7 +687,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     );
 
     this.server.registerTool(
-      'delete_site',
+      'sites.delete',
       {
         title: 'Delete Search Console property',
         description: 'Remove an existing website property from your Google Search Console account.',
@@ -707,7 +707,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     );
 
     this.server.registerTool(
-      'submit_sitemap',
+      'sitemaps.submit',
       {
         title: 'Submit sitemap',
         description: 'Submit a new sitemap to your Google Search Console account.',
@@ -728,7 +728,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     );
 
     this.server.registerTool(
-      'delete_sitemap',
+      'sitemaps.delete',
       {
         title: 'Delete sitemap',
         description: 'Remove/delete a submitted sitemap from your Google Search Console account.',
@@ -749,7 +749,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     );
 
     this.server.registerTool(
-      'get_sitemap',
+      'sitemaps.get',
       {
         title: 'Get sitemap details',
         description: 'Get status and details of a single sitemap submitted to Google Search Console.',
@@ -769,7 +769,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     );
 
     this.server.registerTool(
-      'identify_quick_wins',
+      'insights.quick_wins',
       {
         title: 'Identify SEO Quick Wins',
         description: 'Find search queries that rank in positions 8-20 (page 2 / lower page 1) with high impressions but low CTR. These are ideal SEO optimization targets.',
@@ -802,7 +802,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     );
 
     this.server.registerTool(
-      'detect_cannibalization',
+      'insights.cannibalization',
       {
         title: 'Detect Keyword Cannibalization',
         description: 'Analyze search analytics to detect instances of keyword cannibalization, where multiple pages on your site compete for the same query.',
@@ -834,7 +834,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     );
 
     this.server.registerTool(
-      'detect_content_decay',
+      'insights.content_decay',
       {
         title: 'Detect Content Decay',
         description: 'Identify content decay by comparing search clicks for your site pages between two contiguous periods and finding the pages with the largest traffic drops.',
@@ -892,7 +892,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     );
 
     this.server.registerTool(
-      'request_indexing',
+      'indexing.request',
       {
         title: 'Request Indexing',
         description: 'Request Google to index or update a URL using the Google Indexing API. Note: The Indexing API must be enabled in your Google Cloud Project, and typically is officially supported for pages containing JobPosting or BroadcastEvent markup.',
@@ -911,7 +911,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     );
 
     this.server.registerTool(
-      'list_indexed_pages',
+      'indexing.list_pages',
       {
         title: 'List Indexed Pages',
         description: 'Retrieve a list of site pages that have received search impressions, serving as a proxy list of indexed pages on the site.',
@@ -959,7 +959,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     );
 
     this.server.registerTool(
-      'compare_performance',
+      'analytics.compare',
       {
         title: 'Compare Performance Between Periods',
         description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device).',
@@ -1000,7 +1000,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     );
 
     this.server.registerTool(
-      'weekly_digest',
+      'reports.weekly_digest',
       {
         title: 'Weekly GSC Performance Digest',
         description:

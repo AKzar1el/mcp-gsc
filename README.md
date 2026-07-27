@@ -50,17 +50,17 @@ This server exposes 17 tools. Read-only analytics and reporting tools are marked
 
 | Tool | Access | What it does |
 |---|---|---|
-| **`get_capabilities`** | Read | List every tool this server exposes and report whether your Google connection is currently authenticated (`connected` / `not_connected`). Takes no arguments — a good first call for discovery. |
-| **`list_sites`** | Read | List the Search Console properties the connected Google account can access (`siteUrl`, `permissionLevel`). |
-| **`query_search_analytics`** | Read | Impressions, clicks, CTR, and average position over a date range, with dimensions, filters, pagination, and selectable search type. |
-| **`inspect_url`** | Read | Google's URL Inspection report for a single page. |
-| **`list_sitemaps`** / **`get_sitemap`** | Read | List submitted sitemaps or retrieve one sitemap's details. |
-| **`identify_quick_wins`** / **`detect_cannibalization`** / **`detect_content_decay`** | Read | Surface optimization opportunities, competing pages, and declining content. |
-| **`list_indexed_pages`** / **`compare_performance`** | Read | Analyze pages receiving impressions and compare two periods. |
-| **`weekly_digest`** | Read | Generate a plain-language seven-day performance report with movers, top pages, and one recommended action. |
-| **`add_site`** / **`delete_site`** | Write | Add or remove a Search Console property. |
-| **`submit_sitemap`** / **`delete_sitemap`** | Write | Submit or remove a sitemap. |
-| **`request_indexing`** | Write | Request indexing for an eligible URL through the Google Indexing API. |
+| **`server.capabilities`** | Read | List every tool this server exposes and report whether your Google connection is currently authenticated (`connected` / `not_connected`). Takes no arguments — a good first call for discovery. |
+| **`sites.list`** | Read | List the Search Console properties the connected Google account can access (`siteUrl`, `permissionLevel`). |
+| **`analytics.query`** | Read | Impressions, clicks, CTR, and average position over a date range, with dimensions, filters, pagination, and selectable search type. |
+| **`urls.inspect`** | Read | Google's URL Inspection report for a single page. |
+| **`sitemaps.list`** / **`sitemaps.get`** | Read | List submitted sitemaps or retrieve one sitemap's details. |
+| **`insights.quick_wins`** / **`insights.cannibalization`** / **`insights.content_decay`** | Read | Surface optimization opportunities, competing pages, and declining content. |
+| **`indexing.list_pages`** / **`analytics.compare`** | Read | Analyze pages receiving impressions and compare two periods. |
+| **`reports.weekly_digest`** | Read | Generate a plain-language seven-day performance report with movers, top pages, and one recommended action. |
+| **`sites.add`** / **`sites.delete`** | Write | Add or remove a Search Console property. |
+| **`sitemaps.submit`** / **`sitemaps.delete`** | Write | Submit or remove a sitemap. |
+| **`indexing.request`** | Write | Request indexing for an eligible URL through the Google Indexing API. |
 
 The server requests Google Search Console and Indexing API scopes. Use a Google account with only the property access you intend to delegate, and review write-tool calls before approving them.
 

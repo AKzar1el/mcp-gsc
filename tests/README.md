@@ -15,8 +15,8 @@ These are **structural** smoke tests, not data tests. They assert things that sh
 
 - The Worker is reachable.
 - The unauthenticated endpoints (`/`, `/healthz`, malformed `/authorize`, unauthenticated `/mcp`) return the expected status codes.
-- With a real token, the MCP advertises the expected tool names, including `weekly_digest` alongside the core Search Console tools.
-- The `list_sites` tool returns a valid JSON array.
+- With a real token, the MCP advertises the expected namespaced tool names, including `reports.weekly_digest` alongside the core Search Console tools.
+- The `sites.list` tool returns a valid JSON array.
 
 They explicitly do **not** assert any specific GSC numbers — impressions, clicks, positions, query strings — because that data is live and changes daily. Any test that asserts a specific number will be flaky within a week and must be rejected at review.
 

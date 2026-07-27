@@ -24,71 +24,71 @@
   },
   "tools": [
     {
-      "name": "get_capabilities",
+      "name": "server.capabilities",
       "description": "List every tool this server exposes and report whether your Google connection is currently authenticated."
     },
     {
-      "name": "list_sites",
+      "name": "sites.list",
       "description": "List the Search Console properties the connected Google account can access."
     },
     {
-      "name": "query_search_analytics",
+      "name": "analytics.query",
       "description": "Impressions, clicks, CTR, and average position over a date range — broken down by query, page, country, device, date, or search appearance."
     },
     {
-      "name": "inspect_url",
+      "name": "urls.inspect",
       "description": "Google's URL Inspection report for a single page: index status, last crawl, mobile usability, rich-results eligibility, AMP."
     },
     {
-      "name": "list_sitemaps",
+      "name": "sitemaps.list",
       "description": "All sitemaps submitted for a property, with submission/processing status and warning and error counts."
     },
     {
-      "name": "add_site",
+      "name": "sites.add",
       "description": "Add a Google Search Console property."
     },
     {
-      "name": "delete_site",
+      "name": "sites.delete",
       "description": "Remove a Google Search Console property."
     },
     {
-      "name": "submit_sitemap",
+      "name": "sitemaps.submit",
       "description": "Submit a sitemap for a Search Console property."
     },
     {
-      "name": "delete_sitemap",
+      "name": "sitemaps.delete",
       "description": "Remove a submitted sitemap."
     },
     {
-      "name": "get_sitemap",
+      "name": "sitemaps.get",
       "description": "Retrieve the status and details of a submitted sitemap."
     },
     {
-      "name": "identify_quick_wins",
+      "name": "insights.quick_wins",
       "description": "Find high-impression queries ranking in positions 8 through 20."
     },
     {
-      "name": "detect_cannibalization",
+      "name": "insights.cannibalization",
       "description": "Find queries for which multiple pages compete in search results."
     },
     {
-      "name": "detect_content_decay",
+      "name": "insights.content_decay",
       "description": "Identify pages with the largest recent organic traffic declines."
     },
     {
-      "name": "request_indexing",
+      "name": "indexing.request",
       "description": "Request indexing for an eligible URL through the Google Indexing API."
     },
     {
-      "name": "list_indexed_pages",
+      "name": "indexing.list_pages",
       "description": "List pages with Search Console impressions as a proxy for indexed pages."
     },
     {
-      "name": "compare_performance",
+      "name": "analytics.compare",
       "description": "Compare search performance across two date ranges."
     },
     {
-      "name": "weekly_digest",
+      "name": "reports.weekly_digest",
       "description": "Generate a plain-language weekly search performance digest with one recommended action."
     }
   ]

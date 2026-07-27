@@ -165,12 +165,12 @@ test(
     const tools = env?.result?.tools ?? [];
     const names = new Set(tools.map((t) => t.name));
     const expected = [
-      'list_sites',
-      'query_search_analytics',
-      'inspect_url',
-      'list_sitemaps',
-      'weekly_digest',
-      'get_capabilities',
+      'sites.list',
+      'analytics.query',
+      'urls.inspect',
+      'sitemaps.list',
+      'reports.weekly_digest',
+      'server.capabilities',
     ];
     for (const name of expected) {
       assert.ok(
@@ -185,7 +185,7 @@ test(
 );
 
 test(
-  'CHECK 6: list_sites returns a JSON array',
+  'CHECK 6: sites.list returns a JSON array',
   { skip: skipReason },
   async () => {
     const session = await mcpInitSession();
@@ -194,19 +194,19 @@ test(
       jsonrpc: '2.0',
       id: 3,
       method: 'tools/call',
-      params: { name: 'list_sites', arguments: {} },
+      params: { name: 'sites.list', arguments: {} },
     });
-    assert.ok(!env.error, `list_sites returned error: ${JSON.stringify(env.error)}`);
+    assert.ok(!env.error, `sites.list returned error: ${JSON.stringify(env.error)}`);
     const text = env?.result?.content?.[0]?.text ?? '';
-    assert.ok(text, 'list_sites returned no content');
+    assert.ok(text, 'sites.list returned no content');
     const parsed = JSON.parse(text);
     assert.ok(
       Array.isArray(parsed),
-      `list_sites payload is not a JSON array: ${text.slice(0, 200)}`,
+      `sites.list payload is not a JSON array: ${text.slice(0, 200)}`,
     );
     assert.ok(
       Array.isArray(env?.result?.structuredContent?.sites),
-      'list_sites structuredContent.sites is not an array',
+      'sites.list structuredContent.sites is not an array',
     );
   },
 );
