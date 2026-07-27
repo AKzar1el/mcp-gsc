@@ -17,6 +17,12 @@ Every deployed instance exposes the same endpoint shape:
 https://<your-worker>.workers.dev/mcp
 ```
 
+The DigestSEO-hosted instance is available at:
+
+```
+https://mcp-gsc.digestseo.com/mcp
+```
+
 **Claude Code**
 
 ```bash
