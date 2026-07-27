@@ -1,0 +1,9 @@
+.git
+.github
+node_modules
+.wrangler
+.dev.vars
+.env*
+wrangler.jsonc
+tests
+*.log

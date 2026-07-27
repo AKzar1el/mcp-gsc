@@ -2,6 +2,7 @@
   "name": "mcp-gsc",
   "version": "0.3.1",
   "private": false,
+  "main": "scripts/glama-start.mjs",
   "license": "MIT",
   "description": "Self-hostable MCP server for Google Search Console, with bring-your-own Google OAuth. Runs on Cloudflare Workers.",
   "type": "module",
@@ -25,6 +26,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "build": "npm run typecheck",
+    "start": "node scripts/glama-start.mjs",
     "typecheck": "tsc --noEmit",
     "test": "npm run typecheck && npm run test:unit",
     "test:unit": "tsx --test tests/unit.test.ts",

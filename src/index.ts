@@ -900,6 +900,12 @@ const defaultHandler = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
+    if (url.pathname === '/ping' && request.method === 'GET') {
+      return new Response('pong', {
+        headers: { 'content-type': 'text/plain; charset=utf-8' },
+      });
+    }
+
     if (url.pathname === '/') {
       if (request.method !== 'GET') {
         return new Response('Method Not Allowed', {
