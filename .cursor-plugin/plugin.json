@@ -1,0 +1,30 @@
+{
+  "name": "mcp-gsc",
+  "displayName": "Google Search Console MCP",
+  "version": "0.3.1",
+  "description": "Connect Cursor to Google Search Console for organic-search analytics, URL inspection, sitemap management, indexing, and SEO insights.",
+  "author": {
+    "name": "DigestSEO"
+  },
+  "publisher": "DigestSEO",
+  "homepage": "https://digestseo.com/gsc-mcp/",
+  "repository": "https://github.com/AKzar1el/mcp-gsc",
+  "license": "MIT",
+  "logo": "assets/logo-400.png",
+  "keywords": [
+    "mcp",
+    "google-search-console",
+    "search-console",
+    "seo",
+    "analytics",
+    "cloudflare-workers"
+  ],
+  "category": "developer-tools",
+  "tags": [
+    "seo",
+    "analytics",
+    "google",
+    "search-console"
+  ],
+  "mcpServers": "./mcp.json"
+}

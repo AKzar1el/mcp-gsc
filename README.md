@@ -30,10 +30,7 @@ claude mcp add --transport http gsc https://<your-worker>.workers.dev/mcp
 
 **Cursor**
 
-<!-- The config param is base64 of {"url":"https://REPLACE-ME.workers.dev/mcp"}.
-     When the canonical hosted URL replaces the placeholder, regenerate it with:
-     node -e "console.log(Buffer.from(JSON.stringify({url:'https://<real-host>/mcp'})).toString('base64'))" -->
-[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=gsc&config=eyJ1cmwiOiJodHRwczovL1JFUExBQ0UtTUUud29ya2Vycy5kZXYvbWNwIn0%3D)
+[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=gsc&config=eyJ1cmwiOiJodHRwczovL21jcC1nc2MuZGlnZXN0c2VvLmNvbS9tY3AifQ%3D%3D)
 
 **ChatGPT** — add it as a custom connector; see [Connect in your AI client](#connect-in-your-ai-client) below.
 
