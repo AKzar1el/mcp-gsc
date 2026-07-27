@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { resolve } from 'node:path';
+import { createRequire } from 'node:module';
 
 const port = process.env.PORT || '8080';
 const forwardedVariables = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'TOKEN_ENCRYPTION_KEY'];
@@ -20,7 +20,7 @@ for (const name of forwardedVariables) {
   }
 }
 
-const wranglerCli = resolve('node_modules', 'wrangler', 'bin', 'wrangler.js');
+const wranglerCli = createRequire(import.meta.url).resolve('wrangler/bin/wrangler.js');
 const child = spawn(process.execPath, [wranglerCli, ...args], { stdio: 'inherit' });
 
 const forwardSignal = (signal) => child.kill(signal);
