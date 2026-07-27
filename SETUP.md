@@ -74,6 +74,7 @@ npx wrangler login
    - Replace `<your-worker>` with your Worker's name + subdomain. If you don't know it yet, deploy once (Step 6) to see the assigned `*.workers.dev` URL, then come back and add it here. The default Worker name is `mcp-gsc` (set in `wrangler.jsonc`).
    - The `http://localhost:8787/google/callback` entry is for local development with `npm run dev`.
    - The path must be exactly `/google/callback` — that's the route this server handles.
+   - The DigestSEO-hosted instance also requires this exact callback URI in the OAuth client configured on its Worker: `https://mcp-gsc.digestseo.com/google/callback`.
 4. Click **Create**. Copy the **Client ID** and **Client secret** — you'll set them as secrets in the next step.
 
 ---
