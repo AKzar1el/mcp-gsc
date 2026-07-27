@@ -7,6 +7,7 @@
 [![MCP](https://img.shields.io/badge/MCP-remote%20server-8A2BE2)](https://modelcontextprotocol.io)
 [![MCP Registry](https://img.shields.io/badge/MCP%20Registry-io.github.AKzar1el%2Fmcp--gsc-blue)](https://registry.modelcontextprotocol.io/v0/servers?search=io.github.AKzar1el/mcp-gsc)
 [![CI](https://github.com/AKzar1el/mcp-gsc/actions/workflows/ci.yml/badge.svg)](https://github.com/AKzar1el/mcp-gsc/actions/workflows/ci.yml)
+[![smithery badge](https://smithery.ai/badge/digestseo/mcp-gsc)](https://smithery.ai/servers/digestseo/mcp-gsc)
 
 ### Connect in 30 seconds
 
