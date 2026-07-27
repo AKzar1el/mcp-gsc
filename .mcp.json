@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "gsc": {
+      "type": "http",
+      "url": "https://mcp-gsc.digestseo.com/mcp"
+    }
+  }
+}

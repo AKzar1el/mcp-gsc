@@ -1,0 +1,18 @@
+{
+  "name": "mcp-gsc",
+  "version": "0.3.1",
+  "description": "Connect Claude Code to Google Search Console for organic-search analytics, URL inspection, sitemap management, indexing requests, and SEO insights.",
+  "author": {
+    "name": "DigestSEO"
+  },
+  "homepage": "https://digestseo.com/gsc-mcp/",
+  "repository": "https://github.com/AKzar1el/mcp-gsc",
+  "license": "MIT",
+  "keywords": [
+    "mcp",
+    "google-search-console",
+    "seo",
+    "analytics",
+    "cloudflare-workers"
+  ]
+}
