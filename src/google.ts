@@ -250,18 +250,28 @@ export async function inspectUrl(
 
 export interface SitemapEntry {
   path: string;
-  lastSubmitted?: string;
-  isPending?: boolean;
-  isSitemapsIndex?: boolean;
-  type?: string;
-  lastDownloaded?: string;
-  warnings?: string;
-  errors?: string;
+  lastSubmitted?: string | null;
+  isPending?: boolean | null;
+  isSitemapsIndex?: boolean | null;
+  type?: string | null;
+  lastDownloaded?: string | null;
+  warnings?: string | null;
+  errors?: string | null;
   contents?: Array<{
     type: string;
     submitted: string;
-    indexed: string;
-  }>;
+  }> | null;
+}
+
+function normalizeSitemap(entry: SitemapEntry): SitemapEntry {
+  if (!entry.contents) return entry;
+
+  // Google marks contents[].indexed as deprecated. Do not expose that stale
+  // field to MCP clients as an indexed-page count.
+  return {
+    ...entry,
+    contents: entry.contents.map(({ type, submitted }) => ({ type, submitted })),
+  };
 }
 
 export async function listSitemaps(
@@ -283,7 +293,7 @@ export async function listSitemaps(
     throw new Error(`List sitemaps failed: ${resp.status} ${text}`);
   }
   const data = (await resp.json()) as { sitemap?: SitemapEntry[] };
-  return data.sitemap ?? [];
+  return (data.sitemap ?? []).map(normalizeSitemap);
 }
 
 export async function querySearchAnalytics(
@@ -422,7 +432,7 @@ export async function getSitemap(
     const text = await resp.text();
     throw new Error(`Get sitemap failed: ${resp.status} ${text}`);
   }
-  return (await resp.json()) as SitemapEntry;
+  return normalizeSitemap((await resp.json()) as SitemapEntry);
 }
 
 export interface QuickWinResult {

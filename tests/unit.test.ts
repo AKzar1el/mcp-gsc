@@ -219,6 +219,27 @@ test('listSitemaps: percent-encodes the property URL in the path', async () => {
   );
 });
 
+test('listSitemaps: omits Google\'s deprecated indexed count', async () => {
+  const { result } = await withMockFetch(
+    () =>
+      json(200, {
+        sitemap: [
+          {
+            path: 'https://example.com/sitemap.xml',
+            contents: [{ type: 'web', submitted: '121', indexed: '0' }],
+          },
+        ],
+      }),
+    () => listSitemaps('at', 'https://example.com/'),
+  );
+  assert.deepEqual(result, [
+    {
+      path: 'https://example.com/sitemap.xml',
+      contents: [{ type: 'web', submitted: '121' }],
+    },
+  ]);
+});
+
 test('querySearchAnalytics: sends the query body including startRow and returns rows', async () => {
   const rows = [
     { keys: ['cheap flights'], clicks: 10, impressions: 200, ctr: 0.05, position: 4.2 },
@@ -328,6 +349,21 @@ test('getSitemap: sends GET request and returns sitemap details', async () => {
     calls[0].url.includes('/sites/https%3A%2F%2Fexample.com%2F/sitemaps/https%3A%2F%2Fexample.com%2Fsitemap.xml')
   );
   assert.deepEqual(result, mockSitemap);
+});
+
+test('getSitemap: omits Google\'s deprecated indexed count', async () => {
+  const { result } = await withMockFetch(
+    () =>
+      json(200, {
+        path: 'https://example.com/sitemap.xml',
+        contents: [{ type: 'web', submitted: '121', indexed: '0' }],
+      }),
+    () => getSitemap('at', 'https://example.com/', 'https://example.com/sitemap.xml'),
+  );
+  assert.deepEqual(result, {
+    path: 'https://example.com/sitemap.xml',
+    contents: [{ type: 'web', submitted: '121' }],
+  });
 });
 
 // ---------------------------------------------------------------------------

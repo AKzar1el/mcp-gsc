@@ -100,13 +100,11 @@ const SITEMAP_OUTPUT_SCHEMA = z
         z.object({
           type: z.string(),
           submitted: z.string(),
-          indexed: z.string(),
         }),
       )
       .nullable()
       .optional(),
-  })
-  .passthrough();
+  });
 
 const CAPABILITIES_OUTPUT_SCHEMA = {
   server: z.string(),
@@ -264,7 +262,7 @@ const TOOL_CATALOG = [
   {
     name: 'sitemaps.list',
     description:
-      'List all sitemaps submitted for a property, with submission/processing status and warning and error counts.',
+      'List all sitemaps submitted for a property, with submission/processing status, submitted URL counts, and warning/error counts. Google\'s deprecated sitemap indexed count is intentionally omitted.',
   },
   {
     name: 'sitemaps.submit',
@@ -475,7 +473,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       {
         title: 'List submitted sitemaps',
         description:
-          'List all sitemaps submitted for a Search Console property. Returns sitemap URLs, last submitted/downloaded dates, indexed URL counts, warning and error counts, and sitemap status. Use this when the user asks about sitemap health, submission status, or wants to audit which sitemaps are working.',
+          'List all sitemaps submitted for a Search Console property. Returns sitemap URLs, last submitted/downloaded dates, submitted URL counts, warning and error counts, and sitemap status. Google\'s deprecated sitemap indexed count is intentionally omitted. Use this when the user asks about sitemap health, submission status, or wants to audit which sitemaps are working.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
         },
