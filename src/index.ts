@@ -193,6 +193,7 @@ const CONTENT_DECAY_OUTPUT_SCHEMA = {
 
 const INDEXING_OUTPUT_SCHEMA = {
   result: z.unknown(),
+  note: z.string(),
 };
 
 const INDEXED_PAGES_OUTPUT_SCHEMA = {
@@ -893,9 +894,9 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       'indexing.request',
       {
         title: 'Request Indexing',
-        description: 'Request Google to index or update a URL using the Google Indexing API. Note: The Indexing API must be enabled in your Google Cloud Project, and typically is officially supported for pages containing JobPosting or BroadcastEvent markup.',
+        description: "Requests indexing through Google's Indexing API. Google currently restricts this API to pages containing JobPosting structured data or livestream pages containing BroadcastEvent inside VideoObject. It is not available for general webpage submission.",
         inputSchema: {
-          url: z.string().describe('The URL to submit for indexing/reindexing. Must belong to your property.'),
+          url: z.string().describe('The URL to submit for indexing/reindexing. Must belong to your property and contain JobPosting structured data, or be a livestream page with BroadcastEvent inside VideoObject.'),
         },
         outputSchema: INDEXING_OUTPUT_SCHEMA,
         annotations: WRITE_ANNOTATIONS,
@@ -904,7 +905,11 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         const result = await requestIndexing(accessToken, url);
-        return toolResponse(JSON.stringify(result, null, 2), { result });
+        const payload = {
+          result,
+          note: "Google accepting this notification does not guarantee the URL will be indexed. Indexing remains at Google's discretion.",
+        };
+        return toolResponse(JSON.stringify(payload, null, 2), payload);
       },
     );
 

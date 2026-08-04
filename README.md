@@ -71,9 +71,11 @@ This server exposes 17 tools. Read-only analytics and reporting tools are marked
 | **`reports.weekly_digest`** | Read | Generate a plain-language seven-day performance report with movers, top pages, and one recommended action. |
 | **`sites.add`** / **`sites.delete`** | Write | Add or remove a Search Console property. |
 | **`sitemaps.submit`** / **`sitemaps.delete`** | Write | Submit or remove a sitemap. |
-| **`indexing.request`** | Write | Request indexing for an eligible URL through the Google Indexing API. |
+| **`indexing.request`** | Write | Requests indexing through Google's Indexing API. Google currently restricts this API to pages containing `JobPosting` structured data or livestream pages containing `BroadcastEvent` inside `VideoObject`. It is not available for general webpage submission. |
 
 The server requests Google Search Console and Indexing API scopes. Use a Google account with only the property access you intend to delegate, and review write-tool calls before approving them.
+
+> **`indexing.request` eligibility.** Google's Indexing API is not a general-purpose page submission tool — as of this writing, Google's own documentation limits it to two content types: pages with `JobPosting` structured data, and livestream pages with `BroadcastEvent` structured data nested inside `VideoObject`. Before submitting, the server fetches the target URL and checks its JSON-LD for one of those two types; if neither is present (or the page can't be fetched), it returns an error explaining why the URL is ineligible instead of calling the Indexing API. A successful submission is only an acknowledgment that Google received the notification — it does not guarantee the URL will be indexed.
 
 ## What you can ask
 
