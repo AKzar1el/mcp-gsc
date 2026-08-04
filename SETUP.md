@@ -55,6 +55,8 @@ npx wrangler login
    ```
 
    These are **sensitive** scopes. They grant read-write access to Search Console data and the Google Indexing API (required to manage sites, sitemaps, and request URL crawling).
+
+   Note that the Indexing API itself is narrow: Google currently restricts it to pages containing `JobPosting` structured data or livestream pages containing `BroadcastEvent` inside `VideoObject`. It is not available for general webpage submission — the `indexing.request` tool checks a page's structured data before submitting and returns an error for ineligible URLs.
 5. On the **Test users** step, click **Add users** and add your own Google email address (and any teammates who need access while the app is in Testing).
 6. Save. Leave the **Publishing status** as **Testing** for now — see [Step 7](#step-7--important-google-verification).
 

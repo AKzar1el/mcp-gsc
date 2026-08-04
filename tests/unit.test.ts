@@ -29,6 +29,7 @@ import {
   processCannibalization,
   processContentDecay,
   requestIndexing,
+  checkIndexingEligibility,
   processPerformanceComparison,
 } from '../src/google';
 
@@ -74,6 +75,41 @@ function json(status: number, body: unknown): Response {
     status,
     headers: { 'content-type': 'application/json' },
   });
+}
+
+function html(status: number, body: string): Response {
+  return new Response(body, {
+    status,
+    headers: { 'content-type': 'text/html' },
+  });
+}
+
+function jobPostingPageHtml(): string {
+  return `<html><head><script type="application/ld+json">${JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'JobPosting',
+    title: 'Senior Engineer',
+  })}</script></head><body></body></html>`;
+}
+
+function broadcastVideoPageHtml(): string {
+  return `<html><head><script type="application/ld+json">${JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'VideoObject',
+    name: 'Live event',
+    publication: {
+      '@type': 'BroadcastEvent',
+      isLiveBroadcast: true,
+    },
+  })}</script></head><body></body></html>`;
+}
+
+function ordinaryPageHtml(): string {
+  return `<html><head><script type="application/ld+json">${JSON.stringify({
+    '@context': 'https://schema.org',
+    '@type': 'Article',
+    headline: 'Just a blog post',
+  })}</script></head><body></body></html>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -425,28 +461,81 @@ test('processContentDecay: identifies page traffic drop and calculates click dro
   assert.equal(decay[1].click_decay_percentage, 11.1); // (10 drop / 90 prev) * 100
 });
 
-test('requestIndexing: sends POST request to the correct indexing endpoint', async () => {
+test('requestIndexing: sends POST request to the correct indexing endpoint for an eligible JobPosting URL', async () => {
   const mockResult = {
     urlNotificationMetadata: {
       latestNotification: {
-        url: 'https://example.com/page',
+        url: 'https://example.com/careers/senior-engineer',
         type: 'URL_UPDATED',
         notifyTime: '2026-07-01T12:00:00Z',
       },
     },
   };
   const { result, calls } = await withMockFetch(
-    () => json(200, mockResult),
-    () => requestIndexing('at', 'https://example.com/page'),
+    (url) =>
+      url === 'https://indexing.googleapis.com/v3/urlNotifications:publish'
+        ? json(200, mockResult)
+        : html(200, jobPostingPageHtml()),
+    () => requestIndexing('at', 'https://example.com/careers/senior-engineer'),
   );
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].init?.method, 'POST');
-  assert.equal(calls[0].url, 'https://indexing.googleapis.com/v3/urlNotifications:publish');
-  assert.deepEqual(JSON.parse(calls[0].init?.body as string), {
-    url: 'https://example.com/page',
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].init?.method, 'POST');
+  assert.equal(calls[1].url, 'https://indexing.googleapis.com/v3/urlNotifications:publish');
+  assert.deepEqual(JSON.parse(calls[1].init?.body as string), {
+    url: 'https://example.com/careers/senior-engineer',
     type: 'URL_UPDATED',
   });
   assert.deepEqual(result, mockResult);
+});
+
+test('requestIndexing: rejects an ineligible URL without calling the Indexing API', async () => {
+  const { calls } = await withMockFetch(
+    () => html(200, ordinaryPageHtml()),
+    async () => {
+      await assert.rejects(
+        requestIndexing('at', 'https://example.com/blog/post'),
+        /JobPosting|BroadcastEvent/,
+      );
+    },
+  );
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://example.com/blog/post');
+});
+
+test('checkIndexingEligibility: JobPosting structured data is eligible', async () => {
+  const { result } = await withMockFetch(
+    () => html(200, jobPostingPageHtml()),
+    () => checkIndexingEligibility('https://example.com/careers/senior-engineer'),
+  );
+  assert.deepEqual(result, { eligible: true });
+});
+
+test('checkIndexingEligibility: BroadcastEvent nested in VideoObject is eligible', async () => {
+  const { result } = await withMockFetch(
+    () => html(200, broadcastVideoPageHtml()),
+    () => checkIndexingEligibility('https://example.com/live/event'),
+  );
+  assert.deepEqual(result, { eligible: true });
+});
+
+test('checkIndexingEligibility: an ordinary Article page is ineligible with an explanatory reason', async () => {
+  const { result } = await withMockFetch(
+    () => html(200, ordinaryPageHtml()),
+    () => checkIndexingEligibility('https://example.com/blog/post'),
+  );
+  assert.equal(result.eligible, false);
+  assert.match(result.reason ?? '', /JobPosting/);
+  assert.match(result.reason ?? '', /BroadcastEvent/);
+  assert.match(result.reason ?? '', /not available for general webpage submission/);
+});
+
+test('checkIndexingEligibility: an unreachable URL is ineligible rather than assumed eligible', async () => {
+  const { result } = await withMockFetch(
+    () => new Response('not found', { status: 404 }),
+    () => checkIndexingEligibility('https://example.com/missing'),
+  );
+  assert.equal(result.eligible, false);
+  assert.match(result.reason ?? '', /404/);
 });
 
 test('processPerformanceComparison: correctly aligns period A and period B metrics and computes differences', () => {

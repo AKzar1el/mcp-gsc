@@ -602,10 +602,132 @@ export function processContentDecay(
     .slice(0, 100);
 }
 
+// Google's Indexing API is not a general-purpose submission API. It is
+// currently documented as supporting only job posting pages and livestream
+// pages: https://developers.google.com/search/apis/indexing-api/v3/quickstart
+const INDEXING_SCOPE_MESSAGE =
+  "Google's Indexing API only accepts job posting pages (JobPosting structured data) " +
+  'and livestream pages (BroadcastEvent structured data inside VideoObject). ' +
+  'It is not available for general webpage submission.';
+
+function collectSchemaTypes(node: unknown, types: Set<string>): void {
+  if (Array.isArray(node)) {
+    for (const item of node) collectSchemaTypes(item, types);
+    return;
+  }
+  if (!node || typeof node !== 'object') return;
+  const obj = node as Record<string, unknown>;
+  const type = obj['@type'];
+  if (typeof type === 'string') types.add(type);
+  else if (Array.isArray(type)) {
+    for (const t of type) if (typeof t === 'string') types.add(t);
+  }
+  for (const [key, value] of Object.entries(obj)) {
+    if (key === '@type') continue;
+    collectSchemaTypes(value, types);
+  }
+}
+
+/** True if `node` is (or contains, anywhere below it) a node typed BroadcastEvent. */
+function containsBroadcastEvent(node: unknown): boolean {
+  if (Array.isArray(node)) return node.some(containsBroadcastEvent);
+  if (!node || typeof node !== 'object') return false;
+  const obj = node as Record<string, unknown>;
+  const types = new Set<string>();
+  const type = obj['@type'];
+  if (typeof type === 'string') types.add(type);
+  else if (Array.isArray(type)) {
+    for (const t of type) if (typeof t === 'string') types.add(t);
+  }
+  if (types.has('BroadcastEvent')) return true;
+  return Object.values(obj).some(containsBroadcastEvent);
+}
+
+/** True if `node` is (or contains, anywhere below it) a VideoObject with a nested BroadcastEvent. */
+function hasEligibleVideoBroadcast(node: unknown): boolean {
+  if (Array.isArray(node)) return node.some(hasEligibleVideoBroadcast);
+  if (!node || typeof node !== 'object') return false;
+  const obj = node as Record<string, unknown>;
+  const types = new Set<string>();
+  const type = obj['@type'];
+  if (typeof type === 'string') types.add(type);
+  else if (Array.isArray(type)) {
+    for (const t of type) if (typeof t === 'string') types.add(t);
+  }
+  if (types.has('VideoObject') && containsBroadcastEvent(obj)) return true;
+  return Object.values(obj).some(hasEligibleVideoBroadcast);
+}
+
+export interface IndexingEligibility {
+  eligible: boolean;
+  reason?: string;
+}
+
+/**
+ * Checks whether `url` carries the structured data Google's Indexing API
+ * currently supports (JobPosting, or BroadcastEvent nested in VideoObject),
+ * by inspecting its JSON-LD. Best-effort: if the page can't be fetched or
+ * parsed, eligibility can't be confirmed and the URL is treated as
+ * ineligible rather than silently submitted.
+ */
+export async function checkIndexingEligibility(
+  url: string,
+): Promise<IndexingEligibility> {
+  let html: string;
+  try {
+    const resp = await fetch(url, {
+      headers: {
+        'user-agent':
+          'Mozilla/5.0 (compatible; DigestSEO-GSC-MCP/1.0; +https://github.com/AKzar1el/mcp-gsc)',
+      },
+    });
+    if (!resp.ok) {
+      return {
+        eligible: false,
+        reason: `Could not fetch ${url} to check indexing eligibility (HTTP ${resp.status}). ${INDEXING_SCOPE_MESSAGE}`,
+      };
+    }
+    html = await resp.text();
+  } catch (err) {
+    return {
+      eligible: false,
+      reason: `Could not fetch ${url} to check indexing eligibility (${(err as Error).message}). ${INDEXING_SCOPE_MESSAGE}`,
+    };
+  }
+
+  const types = new Set<string>();
+  let hasVideoBroadcast = false;
+  const scriptPattern = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = scriptPattern.exec(html)) !== null) {
+    try {
+      const parsed = JSON.parse(match[1]);
+      collectSchemaTypes(parsed, types);
+      if (hasEligibleVideoBroadcast(parsed)) hasVideoBroadcast = true;
+    } catch {
+      // Ignore malformed JSON-LD blocks and keep scanning the rest of the page.
+    }
+  }
+
+  if (types.has('JobPosting') || hasVideoBroadcast) {
+    return { eligible: true };
+  }
+
+  return {
+    eligible: false,
+    reason: `${url} does not appear to contain JobPosting structured data or a BroadcastEvent inside VideoObject. ${INDEXING_SCOPE_MESSAGE}`,
+  };
+}
+
 export async function requestIndexing(
   accessToken: string,
   url: string,
 ): Promise<unknown> {
+  const eligibility = await checkIndexingEligibility(url);
+  if (!eligibility.eligible) {
+    throw new Error(eligibility.reason);
+  }
+
   const resp = await fetch(
     'https://indexing.googleapis.com/v3/urlNotifications:publish',
     {
