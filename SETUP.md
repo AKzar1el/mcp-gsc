@@ -47,14 +47,14 @@ npx wrangler login
 1. Go to **APIs & Services → OAuth consent screen**.
 2. Choose **User type: External**, then **Create**.
 3. Fill in the required app info (app name, user support email, developer contact email). The app name is what users see on the Google sign-in screen.
-4. On the **Scopes** step, click **Add or remove scopes** and add these scopes:
+4. Choose the access mode for this deployment, then on the **Scopes** step click **Add or remove scopes** and add the matching scope set:
 
-   ```
-   https://www.googleapis.com/auth/webmasters
-   https://www.googleapis.com/auth/indexing
-   ```
+   | `GSC_ACCESS_MODE` | Scopes to add |
+   |---|---|
+   | `readwrite` (default) | `https://www.googleapis.com/auth/webmasters` and `https://www.googleapis.com/auth/indexing` |
+   | `readonly` | `https://www.googleapis.com/auth/webmasters.readonly` |
 
-   These are **sensitive** scopes. They grant read-write access to Search Console data and the Google Indexing API (required to manage sites, sitemaps, and request URL crawling).
+   `readwrite` preserves the full tool surface: it grants Search Console read-write access and the Indexing API scope required to manage sites, sitemaps, and request URL crawling. `readonly` requests only the Search Console read-only scope and omits the mutation tools.
 
    Note that the Indexing API itself is narrow: Google currently restricts it to pages containing `JobPosting` structured data or livestream pages containing `BroadcastEvent` inside `VideoObject`. It is not available for general webpage submission — the `indexing.request` tool checks a page's structured data before submitting and returns an error for ineligible URLs.
 5. On the **Test users** step, click **Add users** and add your own Google email address (and any teammates who need access while the app is in Testing).
@@ -110,6 +110,7 @@ For **local development**, put the same three values in `.dev.vars` instead — 
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 TOKEN_ENCRYPTION_KEY=...
+GSC_ACCESS_MODE=readwrite
 ```
 
 ---
@@ -137,6 +138,16 @@ Then edit `wrangler.jsonc` and replace the placeholders:
   { "binding": "USER_KV",  "id": "YOUR_USER_KV_ID" }      // ← paste USER_KV id
 ]
 ```
+
+The template also sets `GSC_ACCESS_MODE` to `readwrite`, preserving the historical behavior. To deploy least-privilege read-only access, set it to `readonly` before deploying:
+
+```jsonc
+"vars": {
+  "GSC_ACCESS_MODE": "readonly"
+}
+```
+
+Read-only deployments request `webmasters.readonly`, omit the Indexing API scope, and do not register `sites.add`, `sites.delete`, `sitemaps.submit`, `sitemaps.delete`, or `indexing.request`. Changing modes affects OAuth grants for future connections; reconnect users after changing the mode so Google grants the matching scope set.
 
 `wrangler.jsonc` is gitignored because it contains your account's namespace ids. The `wrangler.example.jsonc` template stays in git.
 
@@ -166,7 +177,7 @@ Now connect it in **Claude.ai**:
 1. Settings → **Connectors** → **Add custom connector**.
 2. Paste `https://<your-worker>.workers.dev/mcp`.
 3. Leave **Client ID** and **Client Secret** blank.
-4. Click through; Claude opens a Google sign-in flow. Sign in with a Google account you added as a **test user** in Step 2, and grant read access to your Search Console properties.
+4. Click through; Claude opens a Google sign-in flow. Sign in with a Google account you added as a **test user** in Step 2, and grant the access requested by your selected deployment mode.
 5. The connector turns green. Ask: *"What sites do I have in Search Console?"*
 
 The same `/mcp` URL works in Cursor and ChatGPT.
@@ -186,7 +197,7 @@ While your OAuth app's **Publishing status** is **Testing** (where it starts, an
 To remove all three limits you must move the app to **Publishing status: In production**:
 
 - In **APIs & Services → OAuth consent screen**, click **Publish app**.
-- Because `webmasters` and `indexing` are **sensitive scopes**, Google requires **OAuth verification**: you submit the app for review, justify the scopes, and (for sensitive/restricted scopes) may need to verify domain ownership and complete a security assessment. **This review can take days to several weeks.**
+- Because the requested Search Console scope (and, in read-write mode, `indexing`) is **sensitive**, Google requires **OAuth verification**: you submit the app for review, justify the scopes, and (for sensitive/restricted scopes) may need to verify domain ownership and complete a security assessment. **This review can take days to several weeks.**
 - Once the app is **In production and verified**, the unverified-app screen goes away, the 100-user cap is lifted, and refresh tokens stop expiring on the 7-day clock.
 
 **Bottom line:** for personal use with one or two Google accounts, Testing mode is fine as long as you don't mind reconnecting roughly every 7 days. For anything shared or automated, you'll want to complete Google's verification — and that, not the code, is the heaviest part of self-hosting a Google Search Console MCP.

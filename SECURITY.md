@@ -21,9 +21,22 @@ its users. The full data inventory:
 
 Notes:
 
-- The server requests only the **read-only** scope
-  `https://www.googleapis.com/auth/webmasters.readonly` (plus `openid email`
-  for identifying the account). It cannot modify Search Console data.
+- Access is configured by `GSC_ACCESS_MODE`; the default is `readwrite` to
+  preserve existing deployments' behavior. In that mode the server requests
+  `openid`, `email`, `https://www.googleapis.com/auth/webmasters` (the
+  read-write Search Console scope), and
+  `https://www.googleapis.com/auth/indexing`. It registers write-capable
+  tools to add/delete properties, submit/delete sitemaps, and send eligible
+  Indexing API notifications.
+- With `GSC_ACCESS_MODE=readonly`, the server requests only `openid`, `email`,
+  and `https://www.googleapis.com/auth/webmasters.readonly`. It does not
+  register `sites.add`, `sites.delete`, `sitemaps.submit`, `sitemaps.delete`,
+  or `indexing.request`; the remaining tool suite uses APIs that accept the
+  read-only Search Console scope.
+- The Indexing API is requested only in read-write mode for `indexing.request`.
+  Google restricts that API to `JobPosting` pages or livestream pages with a
+  `BroadcastEvent` inside a `VideoObject`; it is not a general page-submission
+  API.
 - Secrets (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `TOKEN_ENCRYPTION_KEY`)
   are read from Worker secrets / `.dev.vars`, never from the repository.
 - When Google reports a refresh token as revoked (`invalid_grant`), the stored

@@ -8,6 +8,9 @@
   "compatibility_date": "2026-05-19",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "observability": { "enabled": true },
+  "vars": {
+    "GSC_ACCESS_MODE": "readwrite"
+  },
   "kv_namespaces": [
     {
       "binding": "OAUTH_KV",

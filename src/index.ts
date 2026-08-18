@@ -46,6 +46,11 @@ import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from './content-decay-schema';
 import { resolveIndexedPagesDateRange } from './indexed-pages-range';
 import { createQuickWinsInputSchema } from './quick-wins-schema';
 import { WRITE_TOOL_ANNOTATIONS } from './write-tool-annotations';
+import {
+  getToolCatalogForAccessMode,
+  resolveGscAccessMode,
+  type GscAccessMode,
+} from './access-mode';
 
 export interface Env {
   OAUTH_KV: KVNamespace;
@@ -56,6 +61,7 @@ export interface Env {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   TOKEN_ENCRYPTION_KEY: string;
+  GSC_ACCESS_MODE?: string;
 }
 
 interface AgentProps extends Record<string, unknown> {
@@ -119,6 +125,7 @@ const SITEMAP_OUTPUT_SCHEMA = z
 const CAPABILITIES_OUTPUT_SCHEMA = {
   server: z.string(),
   version: z.string(),
+  access_mode: z.enum(['readonly', 'readwrite']),
   auth_status: z.enum(['connected', 'not_connected', 'unknown']),
   tools: z.array(
     z.object({
@@ -393,12 +400,14 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
   }
 
   async init() {
+    const accessMode = resolveGscAccessMode(this.env.GSC_ACCESS_MODE);
+
     this.server.registerTool(
       'server.capabilities',
       {
         title: 'Get server capabilities and auth status',
         description:
-          "List every tool this server exposes and report whether the user's Google Search Console connection is currently authenticated. Call this first if you're unsure what tools are available or whether the user is connected. Returns the tool catalog plus an auth status of `connected` or `not_connected`. Takes no arguments.",
+          "List every tool this server exposes, its configured access mode, and whether the user's Google Search Console connection is currently authenticated. Call this first if you're unsure what tools are available, whether the deployment is read-only, or whether the user is connected. Returns the tool catalog plus an access mode and auth status. Takes no arguments.",
         inputSchema: {},
         outputSchema: CAPABILITIES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
@@ -422,8 +431,9 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         const capabilities = {
           server: SERVER_NAME,
           version: SERVER_VERSION,
+          access_mode: accessMode,
           auth_status: authStatus,
-          tools: TOOL_CATALOG,
+          tools: getToolCatalogForAccessMode(TOOL_CATALOG, accessMode),
           hint: "If auth_status is not 'connected', the user should reconnect this server in their MCP client to sign in with Google.",
         };
         return toolResponse(JSON.stringify(capabilities, null, 2), capabilities);
@@ -676,7 +686,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       },
     );
 
-    this.server.registerTool(
+    if (accessMode === 'readwrite') {
+      this.server.registerTool(
       'sites.add',
       {
         title: 'Add Search Console property',
@@ -696,7 +707,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       },
     );
 
-    this.server.registerTool(
+      this.server.registerTool(
       'sites.delete',
       {
         title: 'Delete Search Console property',
@@ -716,7 +727,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       },
     );
 
-    this.server.registerTool(
+      this.server.registerTool(
       'sitemaps.submit',
       {
         title: 'Submit sitemap',
@@ -737,7 +748,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       },
     );
 
-    this.server.registerTool(
+      this.server.registerTool(
       'sitemaps.delete',
       {
         title: 'Delete sitemap',
@@ -756,7 +767,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         const message = `Successfully deleted sitemap: ${feedpath} for site: ${site_url}`;
         return toolResponse(message, { message });
       },
-    );
+      );
+    }
 
     this.server.registerTool(
       'sitemaps.get',
@@ -896,7 +908,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       },
     );
 
-    this.server.registerTool(
+    if (accessMode === 'readwrite') {
+      this.server.registerTool(
       'indexing.request',
       {
         title: 'Request Indexing',
@@ -917,7 +930,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         };
         return toolResponse(JSON.stringify(payload, null, 2), payload);
       },
-    );
+      );
+    }
 
     this.server.registerTool(
       'indexing.list_pages',
@@ -1095,10 +1109,24 @@ export const defaultHandler = {
           },
         );
       }
+      let accessMode: GscAccessMode;
+      try {
+        accessMode = resolveGscAccessMode(env.GSC_ACCESS_MODE);
+      } catch {
+        return new Response(
+          'Server configuration error: GSC_ACCESS_MODE must be "readonly" or "readwrite".',
+          { status: 500 },
+        );
+      }
       const nonce = crypto.randomUUID();
       await stashPendingAuth(env, nonce, claudeAuthRequest);
       const redirectUri = googleRedirectUri(request);
-      const googleUrl = buildAuthUrl(env.GOOGLE_CLIENT_ID, redirectUri, nonce);
+      const googleUrl = buildAuthUrl(
+        env.GOOGLE_CLIENT_ID,
+        redirectUri,
+        nonce,
+        accessMode,
+      );
       return Response.redirect(googleUrl, 302);
     }
 

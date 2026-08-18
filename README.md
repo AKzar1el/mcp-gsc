@@ -57,7 +57,7 @@ It runs on [Cloudflare Workers](https://workers.cloudflare.com/) and ships with 
 
 ## Tools
 
-This server exposes 17 tools. Read-only analytics and reporting tools are marked with MCP's `readOnlyHint`; the write tools below can change Search Console properties, sitemaps, or indexing state.
+By default (`GSC_ACCESS_MODE=readwrite`), this server exposes 17 tools. Read-only analytics and reporting tools are marked with MCP's `readOnlyHint`; the write tools below can change Search Console properties, sitemaps, or indexing state. Set `GSC_ACCESS_MODE=readonly` to request only the Search Console read-only scope and expose the 12 read-only tools.
 
 | Tool | Access | What it does |
 |---|---|---|
@@ -73,7 +73,7 @@ This server exposes 17 tools. Read-only analytics and reporting tools are marked
 | **`sitemaps.submit`** / **`sitemaps.delete`** | Write | Submit or remove a sitemap. |
 | **`indexing.request`** | Write | Requests indexing through Google's Indexing API. Google currently restricts this API to pages containing `JobPosting` structured data or livestream pages containing `BroadcastEvent` inside `VideoObject`. It is not available for general webpage submission. |
 
-The server requests Google Search Console and Indexing API scopes. Use a Google account with only the property access you intend to delegate, and review write-tool calls before approving them.
+Read-write mode requests the Google Search Console read-write and Indexing API scopes. Read-only mode requests only `https://www.googleapis.com/auth/webmasters.readonly` (plus `openid` and `email`) and does not register the five write tools. Read-write remains the default so existing deployments retain their current behavior; see [SETUP.md](SETUP.md) to select a mode before connecting users.
 
 > **`indexing.request` eligibility.** Google's Indexing API is not a general-purpose page submission tool — as of this writing, Google's own documentation limits it to two content types: pages with `JobPosting` structured data, and livestream pages with `BroadcastEvent` structured data nested inside `VideoObject`. Before submitting, the server fetches the target URL and checks its JSON-LD for one of those two types; if neither is present (or the page can't be fetched), it returns an error explaining why the URL is ineligible instead of calling the Indexing API. A successful submission is only an acknowledgment that Google received the notification — it does not guarantee the URL will be indexed.
 
@@ -98,7 +98,7 @@ Once you've deployed the server (see **[SETUP.md](SETUP.md)**), connect it by pa
 https://<your-worker>.workers.dev/mcp
 ```
 
-- **Claude.ai** — Settings → Connectors → **Add custom connector** → paste the `/mcp` URL. Leave Client ID and Client Secret blank. On first use, Claude opens a Google sign-in flow; grant read access and the connector turns green.
+- **Claude.ai** — Settings → Connectors → **Add custom connector** → paste the `/mcp` URL. Leave Client ID and Client Secret blank. On first use, Claude opens a Google sign-in flow; grant the access requested by the deployment and the connector turns green.
 - **Cursor** — add it as a custom MCP server pointing at the same `/mcp` URL.
 - **ChatGPT** (with connector/MCP support) — add a custom connector with the `/mcp` URL.
 
@@ -116,6 +116,7 @@ cd mcp-gsc
 npm install
 cp wrangler.example.jsonc wrangler.jsonc       # then paste in your KV ids
 # set GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / TOKEN_ENCRYPTION_KEY as secrets
+# choose GSC_ACCESS_MODE=readonly in wrangler.jsonc for a read-only deployment
 npm run deploy
 ```
 
