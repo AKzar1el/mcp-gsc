@@ -20,6 +20,10 @@ import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from '../src/content-decay-schema';
 import { resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
 import { createQuickWinsInputSchema } from '../src/quick-wins-schema';
 import {
+  CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
+  CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
+} from '../src/cannibalization-schema';
+import {
   buildAuthUrl,
   exchangeCodeForTokens,
   refreshAccessToken,
@@ -83,6 +87,8 @@ test('content decay comparison days must be positive and default to 30', () => {
     success: true,
     data: 30,
   });
+});
+
 test('indexed page ranges default to the existing 30-day window ending three days ago', () => {
   assert.deepEqual(
     resolveIndexedPagesDateRange(undefined, undefined, '2026-01-15'),
@@ -119,6 +125,25 @@ test('indexed page ranges preserve both supplied boundaries', () => {
   );
 });
 
+test('cannibalization percentage is constrained to 0 through 100', () => {
+  for (const percentage of [0, 10, 100]) {
+    assert.equal(CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA.safeParse(percentage).success, true);
+  }
+  assert.equal(CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA.safeParse(-0.1).success, false);
+  assert.equal(CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA.safeParse(100.1).success, false);
+  assert.deepEqual(CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA.safeParse(undefined), {
+    success: true,
+    data: 10,
+  });
+});
+
+test('cannibalization minimum impressions cannot be negative', () => {
+  assert.equal(CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA.safeParse(0).success, true);
+  assert.equal(CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA.safeParse(-1).success, false);
+  assert.deepEqual(CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA.safeParse(undefined), {
+    success: true,
+    data: 50,
+  });
 test('quick win thresholds require valid impressions and position ranges', () => {
   const schema = createQuickWinsInputSchema('Search Console property identifier.');
   const baseInput = {

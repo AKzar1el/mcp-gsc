@@ -34,6 +34,10 @@ import {
 } from './storage';
 import { generateWeeklyDigest } from './digest';
 import {
+  CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
+  CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
+} from './cannibalization-schema';
+import {
   assertDateNotInFuture,
   assertDateRange,
   SEARCH_CONSOLE_DATE_SCHEMA,
@@ -806,8 +810,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
-          min_impressions: z.number().int().default(50).describe('Minimum impressions for a page-query pair to be considered. Default is 50.'),
-          min_page_percentage: z.number().default(10).describe('Minimum percentage of total query impressions a page must have to count as a cannibalizing page. Default is 10%.'),
+          min_impressions: CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
+          min_page_percentage: CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
         },
         outputSchema: CANNIBALIZATION_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
