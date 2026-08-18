@@ -17,8 +17,9 @@ A clear description of the bug.
 
 **Environment**
 - MCP client (Claude.ai / Cursor / ChatGPT / other):
-- Tool involved (`list_sites` / `query_search_analytics` / `inspect_url` / `list_sitemaps`):
+- Exact MCP tool name involved, if applicable (for example, `analytics.query`, `sites.list`, `sitemaps.submit`, or `reports.weekly_digest`):
 - Self-hosted or hosted (digestseo.com):
+- Runtime, if self-hosted (Node.js and Wrangler versions):
 
 **Logs / error message**
 Paste any error text. Redact tokens, secrets, and any site data you don't want public.
