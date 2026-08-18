@@ -18,6 +18,7 @@ import {
 } from '../src/date-validation';
 import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from '../src/content-decay-schema';
 import { resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
+import { createQuickWinsInputSchema } from '../src/quick-wins-schema';
 import {
   CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
   CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
@@ -143,6 +144,35 @@ test('cannibalization minimum impressions cannot be negative', () => {
     success: true,
     data: 50,
   });
+test('quick win thresholds require valid impressions and position ranges', () => {
+  const schema = createQuickWinsInputSchema('Search Console property identifier.');
+  const baseInput = {
+    site_url: 'sc-domain:example.com',
+    start_date: '2026-01-01',
+    end_date: '2026-01-31',
+  };
+
+  assert.equal(
+    schema.safeParse({
+      ...baseInput,
+      min_impressions: 0,
+      min_position: 0.5,
+      max_position: 0.5,
+    }).success,
+    true,
+  );
+  assert.equal(schema.safeParse({ ...baseInput, min_impressions: -1 }).success, false);
+  assert.equal(schema.safeParse({ ...baseInput, min_position: 0 }).success, false);
+  assert.equal(schema.safeParse({ ...baseInput, max_position: -0.1 }).success, false);
+  assert.equal(
+    schema.safeParse({ ...baseInput, min_position: 20, max_position: 8 }).success,
+    false,
+  );
+
+  const defaulted = schema.parse(baseInput);
+  assert.equal(defaulted.min_impressions, 100);
+  assert.equal(defaulted.min_position, 8);
+  assert.equal(defaulted.max_position, 20);
 });
 
 function makeKey(): string {

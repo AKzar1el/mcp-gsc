@@ -44,6 +44,7 @@ import {
 } from './date-validation';
 import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from './content-decay-schema';
 import { resolveIndexedPagesDateRange } from './indexed-pages-range';
+import { createQuickWinsInputSchema } from './quick-wins-schema';
 
 export interface Env {
   OAUTH_KV: KVNamespace;
@@ -778,14 +779,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       {
         title: 'Identify SEO Quick Wins',
         description: 'Find search queries with at least the requested impressions that rank in a configurable striking-distance position range (8-20 by default). Returns clicks, impressions, CTR, and average position; CTR is context, not an eligibility filter.',
-        inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
-          start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
-          end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
-          min_impressions: z.number().int().default(100).describe('Minimum impressions required to consider a query. Default is 100.'),
-          min_position: z.number().default(8).describe('Minimum average position to target (inclusive). Default is 8.'),
-          max_position: z.number().default(20).describe('Maximum average position to target (inclusive). Default is 20.'),
-        },
+        inputSchema: createQuickWinsInputSchema(SITE_URL_DESCRIPTION),
         outputSchema: QUICK_WIN_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
