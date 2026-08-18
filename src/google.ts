@@ -207,12 +207,38 @@ export interface SearchAnalyticsQuery {
   dimensionFilterGroups?: DimensionFilterGroup[];
 }
 
+export type PaginatedSearchAnalyticsQuery = Omit<
+  SearchAnalyticsQuery,
+  'rowLimit'
+>;
+
 export interface SearchAnalyticsRow {
   keys: string[];
   clicks: number;
   impressions: number;
   ctr: number;
   position: number;
+}
+
+/** The maximum page size accepted by the Search Analytics API. */
+export const SEARCH_ANALYTICS_PAGE_SIZE = 25_000;
+
+/**
+ * Limits each higher-level analysis source query to four API pages. This
+ * bounds Worker runtime, memory, and Search Analytics quota use; it does not
+ * make Search Console's internally limited results exhaustive.
+ */
+export const MAX_PAGINATED_SEARCH_ANALYTICS_ROWS = 100_000;
+
+export interface PaginatedSearchAnalyticsResult {
+  rows: SearchAnalyticsRow[];
+  pagesFetched: number;
+  localLimitReached: boolean;
+}
+
+interface SearchAnalyticsPaginationOptions {
+  /** May lower the hard ceiling for a caller, but never raise it. */
+  maxRows?: number;
 }
 
 export async function inspectUrl(
@@ -322,6 +348,54 @@ export async function querySearchAnalytics(
   }
   const data = (await resp.json()) as { rows?: SearchAnalyticsRow[] };
   return data.rows ?? [];
+}
+
+/**
+ * Fetches Search Analytics rows in 25,000-row pages for higher-level tools.
+ * A full final page conservatively reports localLimitReached because the API
+ * can have more rows even when Search Console's own internal limits apply.
+ */
+export async function querySearchAnalyticsPaginated(
+  accessToken: string,
+  siteUrl: string,
+  body: PaginatedSearchAnalyticsQuery,
+  options: SearchAnalyticsPaginationOptions = {},
+): Promise<PaginatedSearchAnalyticsResult> {
+  const requestedMaximum = options.maxRows ?? MAX_PAGINATED_SEARCH_ANALYTICS_ROWS;
+  const maximumRows = Math.min(requestedMaximum, MAX_PAGINATED_SEARCH_ANALYTICS_ROWS);
+  if (!Number.isInteger(maximumRows) || maximumRows < 1) {
+    throw new Error('maxRows must be a positive integer.');
+  }
+
+  const rows: SearchAnalyticsRow[] = [];
+  let startRow = body.startRow ?? 0;
+  let pagesFetched = 0;
+
+  while (rows.length < maximumRows) {
+    const requestedRows = Math.min(
+      SEARCH_ANALYTICS_PAGE_SIZE,
+      maximumRows - rows.length,
+    );
+    const page = await querySearchAnalytics(accessToken, siteUrl, {
+      ...body,
+      rowLimit: requestedRows,
+      startRow,
+    });
+    pagesFetched += 1;
+
+    const acceptedRows = page.slice(0, requestedRows);
+    rows.push(...acceptedRows);
+    if (page.length < requestedRows) {
+      return { rows, pagesFetched, localLimitReached: false };
+    }
+    if (rows.length >= maximumRows || page.length > requestedRows) {
+      return { rows, pagesFetched, localLimitReached: true };
+    }
+
+    startRow += page.length;
+  }
+
+  return { rows, pagesFetched, localLimitReached: true };
 }
 
 export async function addSite(

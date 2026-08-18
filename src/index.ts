@@ -13,6 +13,7 @@ import {
   listSitemaps,
   listSites,
   querySearchAnalytics,
+  querySearchAnalyticsPaginated,
   refreshAccessToken,
   addSite,
   deleteSite,
@@ -24,6 +25,7 @@ import {
   processContentDecay,
   requestIndexing,
   processPerformanceComparison,
+  type PaginatedSearchAnalyticsResult,
 } from './google';
 import {
   deleteUser,
@@ -152,6 +154,12 @@ const MESSAGE_OUTPUT_SCHEMA = {
   message: z.string(),
 };
 
+const SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA = z.object({
+  rows_fetched: z.number().int().nonnegative(),
+  pages_fetched: z.number().int().positive(),
+  local_limit_reached: z.boolean(),
+});
+
 const QUICK_WIN_OUTPUT_SCHEMA = {
   quick_wins: z.array(
     z.object({
@@ -160,6 +168,7 @@ const QUICK_WIN_OUTPUT_SCHEMA = {
       ...METRIC_OUTPUT_SCHEMA,
     }),
   ),
+  pagination: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
 };
 
 const CANNIBALIZATION_OUTPUT_SCHEMA = {
@@ -177,6 +186,7 @@ const CANNIBALIZATION_OUTPUT_SCHEMA = {
       ),
     }),
   ),
+  pagination: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
 };
 
 const CONTENT_DECAY_OUTPUT_SCHEMA = {
@@ -199,6 +209,10 @@ const CONTENT_DECAY_OUTPUT_SCHEMA = {
       recent_position: z.number(),
     }),
   ),
+  pagination: z.object({
+    recent: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
+    previous: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
+  }),
 };
 
 const INDEXING_OUTPUT_SCHEMA = {
@@ -232,6 +246,10 @@ const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
       }),
     }),
   ),
+  pagination: z.object({
+    period_a: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
+    period_b: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
+  }),
 };
 
 const WEEKLY_DIGEST_OUTPUT_SCHEMA = {
@@ -245,6 +263,14 @@ function toolResponse<T extends Record<string, unknown>>(
   return {
     content: [{ type: 'text' as const, text }],
     structuredContent,
+  };
+}
+
+function paginationMetadata(result: PaginatedSearchAnalyticsResult) {
+  return {
+    rows_fetched: result.rows.length,
+    pages_fetched: result.pagesFetched,
+    local_limit_reached: result.localLimitReached,
   };
 }
 
@@ -782,7 +808,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       'insights.quick_wins',
       {
         title: 'Identify SEO Quick Wins',
-        description: 'Find search queries with at least the requested impressions that rank in a configurable striking-distance position range (8-20 by default). Returns clicks, impressions, CTR, and average position; CTR is context, not an eligibility filter.',
+        description: 'Find search queries with at least the requested impressions that rank in a configurable striking-distance position range (8-20 by default). Returns clicks, impressions, CTR, and average position; CTR is context, not an eligibility filter. Pagination metadata flags when the local 100,000-row safety ceiling stopped fetching; a false flag does not guarantee Search Console returned every underlying row.',
         inputSchema: createQuickWinsInputSchema(SITE_URL_DESCRIPTION),
         outputSchema: QUICK_WIN_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
@@ -791,17 +817,18 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         assertDateRange(start_date, end_date);
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
-        const rows = await querySearchAnalytics(accessToken, site_url, {
+        const source = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: start_date,
           endDate: end_date,
           dimensions: ['query', 'page'],
-          rowLimit: 25000,
         });
 
-        const quickWins = processQuickWins(rows, min_impressions, min_position, max_position);
-        return toolResponse(JSON.stringify(quickWins, null, 2), {
+        const quickWins = processQuickWins(source.rows, min_impressions, min_position, max_position);
+        const payload = {
           quick_wins: quickWins,
-        });
+          pagination: paginationMetadata(source),
+        };
+        return toolResponse(JSON.stringify(payload, null, 2), payload);
       },
     );
 
@@ -809,7 +836,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       'insights.cannibalization',
       {
         title: 'Detect Keyword Cannibalization',
-        description: 'Analyze search analytics to detect instances of keyword cannibalization, where multiple pages on your site compete for the same query.',
+        description: 'Analyze search analytics to detect instances of keyword cannibalization, where multiple pages on your site compete for the same query. Pagination metadata flags when the local 100,000-row safety ceiling stopped fetching; a false flag does not guarantee Search Console returned every underlying row.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
@@ -824,17 +851,18 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         assertDateRange(start_date, end_date);
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
-        const rows = await querySearchAnalytics(accessToken, site_url, {
+        const source = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: start_date,
           endDate: end_date,
           dimensions: ['query', 'page'],
-          rowLimit: 25000,
         });
 
-        const cannibalizationCandidates = processCannibalization(rows, min_impressions, min_page_percentage);
-        return toolResponse(JSON.stringify(cannibalizationCandidates, null, 2), {
+        const cannibalizationCandidates = processCannibalization(source.rows, min_impressions, min_page_percentage);
+        const payload = {
           candidates: cannibalizationCandidates,
-        });
+          pagination: paginationMetadata(source),
+        };
+        return toolResponse(JSON.stringify(payload, null, 2), payload);
       },
     );
 
@@ -842,7 +870,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       'insights.content_decay',
       {
         title: 'Detect Content Decay',
-        description: 'Identify content decay by comparing search clicks for your site pages between two contiguous periods and finding the pages with the largest traffic drops.',
+        description: 'Identify content decay by comparing search clicks for your site pages between two contiguous periods and finding the pages with the largest traffic drops. Pagination metadata flags when either source period reached the local 100,000-row safety ceiling; Search Console itself may still return only top data.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           compare_days: CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
@@ -868,21 +896,19 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         const previousStart = formatDate(startPreviousDate);
         const previousEnd = formatDate(endPreviousDate);
 
-        const recentRows = await querySearchAnalytics(accessToken, site_url, {
+        const recentSource = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: recentStart,
           endDate: recentEnd,
           dimensions: ['page'],
-          rowLimit: 25000,
         });
 
-        const previousRows = await querySearchAnalytics(accessToken, site_url, {
+        const previousSource = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: previousStart,
           endDate: previousEnd,
           dimensions: ['page'],
-          rowLimit: 25000,
         });
 
-        const decayResults = processContentDecay(recentRows, previousRows);
+        const decayResults = processContentDecay(recentSource.rows, previousSource.rows);
 
         const payload = {
           comparison_periods: {
@@ -891,6 +917,10 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           },
           decay_count: decayResults.length,
           decay_results: decayResults,
+          pagination: {
+            recent: paginationMetadata(recentSource),
+            previous: paginationMetadata(previousSource),
+          },
         };
         return toolResponse(JSON.stringify(payload, null, 2), payload);
       },
@@ -965,7 +995,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       'analytics.compare',
       {
         title: 'Compare Performance Between Periods',
-        description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device).',
+        description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device). Pagination metadata flags when either period reached the local 100,000-row safety ceiling; Search Console itself may still return only top data.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           start_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date of Period A (recent, YYYY-MM-DD)'),
@@ -983,24 +1013,27 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
 
-        const rowsA = await querySearchAnalytics(accessToken, site_url, {
+        const sourceA = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: start_date_a,
           endDate: end_date_a,
           dimensions: [dimension],
-          rowLimit: 25000,
         });
 
-        const rowsB = await querySearchAnalytics(accessToken, site_url, {
+        const sourceB = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: start_date_b,
           endDate: end_date_b,
           dimensions: [dimension],
-          rowLimit: 25000,
         });
 
-        const comparison = processPerformanceComparison(rowsA, rowsB);
-        return toolResponse(JSON.stringify(comparison, null, 2), {
+        const comparison = processPerformanceComparison(sourceA.rows, sourceB.rows);
+        const payload = {
           comparisons: comparison,
-        });
+          pagination: {
+            period_a: paginationMetadata(sourceA),
+            period_b: paginationMetadata(sourceB),
+          },
+        };
+        return toolResponse(JSON.stringify(payload, null, 2), payload);
       },
     );
 
