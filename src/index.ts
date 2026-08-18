@@ -38,6 +38,7 @@ import {
   assertDateRange,
   SEARCH_CONSOLE_DATE_SCHEMA,
 } from './date-validation';
+import { resolveIndexedPagesDateRange } from './indexed-pages-range';
 
 export interface Env {
   OAUTH_KV: KVNamespace;
@@ -308,7 +309,7 @@ const TOOL_CATALOG = [
   {
     name: 'indexing.list_pages',
     description:
-      'Retrieve a list of site pages that have received search impressions, serving as a proxy list of indexed pages on the site.',
+      'Retrieve a list of site pages that have received search impressions, serving as a proxy list of indexed pages on the site. When one date boundary is omitted, the server derives the other to target an inclusive 30-day range; generated end dates are capped at the latest complete date.',
   },
   {
     name: 'analytics.compare',
@@ -919,35 +920,28 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       'indexing.list_pages',
       {
         title: 'List Indexed Pages',
-        description: 'Retrieve a list of site pages that have received search impressions, serving as a proxy list of indexed pages on the site.',
+        description: 'Retrieve a list of site pages that have received search impressions, serving as a proxy list of indexed pages on the site. When one date boundary is omitted, the server derives the other to target an inclusive 30-day range; generated end dates are capped at the latest complete date.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
-          start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('Start date (inclusive) in YYYY-MM-DD format. Defaults to 30 days ago.'),
-          end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('End date (inclusive) in YYYY-MM-DD format. Defaults to 3 days ago. Note the 2-3 day data lag.'),
+          start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('Start date (inclusive) in YYYY-MM-DD format. If end_date is omitted, the generated end date is 29 days later, capped at the latest complete date.'),
+          end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('End date (inclusive) in YYYY-MM-DD format. If start_date is omitted, the generated start date is 29 days earlier. Defaults to 3 days ago. Note the 2-3 day data lag.'),
           row_limit: z.number().int().min(1).max(25000).default(1000).describe('Maximum pages to retrieve (1-25000). Default is 1000.'),
         },
         outputSchema: INDEXED_PAGES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url, start_date, end_date, row_limit }) => {
+        const { startDate, endDate } = resolveIndexedPagesDateRange(
+          start_date,
+          end_date,
+          new Date().toISOString().slice(0, 10),
+        );
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
 
-        let start = start_date;
-        let end = end_date;
-        if (!start || !end) {
-          const formatDate = (d: Date) => d.toISOString().split('T')[0];
-          const now = new Date();
-          const endRecentDate = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
-          const startRecentDate = new Date(endRecentDate.getTime() - 29 * 24 * 60 * 60 * 1000);
-          if (!start) start = formatDate(startRecentDate);
-          if (!end) end = formatDate(endRecentDate);
-        }
-        assertDateRange(start, end);
-
         const rows = await querySearchAnalytics(accessToken, site_url, {
-          startDate: start,
-          endDate: end,
+          startDate,
+          endDate,
           dimensions: ['page'],
           rowLimit: row_limit,
         });

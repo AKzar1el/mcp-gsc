@@ -16,6 +16,7 @@ import {
   assertDateRange,
   SEARCH_CONSOLE_DATE_SCHEMA,
 } from '../src/date-validation';
+import { resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
 import {
   buildAuthUrl,
   exchangeCodeForTokens,
@@ -66,6 +67,42 @@ test('weekly digest end dates reject invalid dates and future dates', () => {
   assert.throws(
     () => assertDateNotInFuture('2026-08-19', '2026-08-18'),
     /End date must be today or earlier/,
+  );
+});
+
+test('indexed page ranges default to the existing 30-day window ending three days ago', () => {
+  assert.deepEqual(
+    resolveIndexedPagesDateRange(undefined, undefined, '2026-01-15'),
+    { startDate: '2025-12-14', endDate: '2026-01-12' },
+  );
+});
+
+test('indexed page ranges anchor a missing start date to the supplied end date', () => {
+  assert.deepEqual(
+    resolveIndexedPagesDateRange(undefined, '2026-01-05', '2026-01-15'),
+    { startDate: '2025-12-07', endDate: '2026-01-05' },
+  );
+});
+
+test('indexed page ranges anchor a missing end date to the supplied start date and cap it', () => {
+  assert.deepEqual(
+    resolveIndexedPagesDateRange('2025-12-20', undefined, '2026-01-31'),
+    { startDate: '2025-12-20', endDate: '2026-01-18' },
+  );
+  assert.deepEqual(
+    resolveIndexedPagesDateRange('2026-01-10', undefined, '2026-01-20'),
+    { startDate: '2026-01-10', endDate: '2026-01-17' },
+  );
+  assert.throws(
+    () => resolveIndexedPagesDateRange('2026-01-18', undefined, '2026-01-20'),
+    /generated end_date cannot be later than the latest complete date/,
+  );
+});
+
+test('indexed page ranges preserve both supplied boundaries', () => {
+  assert.deepEqual(
+    resolveIndexedPagesDateRange('2025-12-31', '2026-01-02', '2026-01-15'),
+    { startDate: '2025-12-31', endDate: '2026-01-02' },
   );
 });
 
