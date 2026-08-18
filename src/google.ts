@@ -700,6 +700,7 @@ export async function checkIndexingEligibility(
   let html: string;
   try {
     const resp = await fetch(url, {
+      redirect: 'manual',
       headers: {
         'user-agent':
           'Mozilla/5.0 (compatible; DigestSEO-GSC-MCP/1.0; +https://github.com/AKzar1el/mcp-gsc)',
