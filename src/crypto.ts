@@ -12,8 +12,30 @@ function base64Encode(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
+const TOKEN_ENCRYPTION_KEY_ERROR =
+  'Invalid TOKEN_ENCRYPTION_KEY configuration: expected a valid base64-encoded 32-byte (256-bit) AES key.';
+
+function decodeTokenEncryptionKey(base64Key: string): Uint8Array<ArrayBuffer> {
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(base64Key)) {
+    throw new Error(TOKEN_ENCRYPTION_KEY_ERROR);
+  }
+
+  let keyBytes: Uint8Array<ArrayBuffer>;
+  try {
+    keyBytes = base64Decode(base64Key);
+  } catch {
+    throw new Error(TOKEN_ENCRYPTION_KEY_ERROR);
+  }
+
+  if (keyBytes.byteLength !== 32) {
+    throw new Error(TOKEN_ENCRYPTION_KEY_ERROR);
+  }
+
+  return keyBytes;
+}
+
 async function importKey(base64Key: string): Promise<CryptoKey> {
-  const keyBytes = base64Decode(base64Key);
+  const keyBytes = decodeTokenEncryptionKey(base64Key);
   return crypto.subtle.importKey(
     'raw',
     keyBytes,
