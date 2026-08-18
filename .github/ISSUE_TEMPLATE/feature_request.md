@@ -13,4 +13,4 @@ assignees: ''
 **Alternatives you've considered**
 
 **Scope check**
-This repo is the self-hostable core: four read-only Google Search Console tools plus Google OAuth. Email, scheduling, and report-delivery features are part of the hosted product at digestseo.com — see CONTRIBUTING.md before proposing them here.
+This repository is the self-hostable core: Google OAuth, encrypted refresh-token storage, and an MCP tool suite with read and write Google Search Console operations, plus an on-demand weekly digest. Hosted-service concerns such as email delivery, external scheduling, unrelated databases, or unrelated integrations are out of scope. See [CONTRIBUTING.md](../../CONTRIBUTING.md) before proposing broader changes.
