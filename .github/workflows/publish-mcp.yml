@@ -32,10 +32,19 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: Fail if the placeholder URL is still present
+      - name: Validate the configured remote
         run: |
-          if grep -q "REPLACE-ME" server.json; then
-            echo "::error file=server.json::server.json still points at the placeholder URL (REPLACE-ME.workers.dev). Replace it with the real deployed Worker URL before publishing to the MCP registry."
+          if ! jq -e '
+            ([.. | strings | select(contains("REPLACE-ME"))] | length == 0) and
+            any(
+              .remotes[]?;
+              .type == "streamable-http" and
+              .url == "https://{mcp_gsc_worker_domain}/mcp" and
+              (.variables.mcp_gsc_worker_domain | type == "object") and
+              .variables.mcp_gsc_worker_domain.isRequired == true
+            )
+          ' server.json > /dev/null; then
+            echo "::error file=server.json::server.json must define the required mcp_gsc_worker_domain variable for its streamable-http remote and must not contain obsolete REPLACE-ME values."
             exit 1
           fi
       - name: Install mcp-publisher
