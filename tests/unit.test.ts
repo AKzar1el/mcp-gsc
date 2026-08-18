@@ -12,6 +12,11 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { encryptToken, decryptToken } from '../src/crypto';
 import {
+  assertDateNotInFuture,
+  assertDateRange,
+  SEARCH_CONSOLE_DATE_SCHEMA,
+} from '../src/date-validation';
+import {
   buildAuthUrl,
   exchangeCodeForTokens,
   refreshAccessToken,
@@ -35,6 +40,34 @@ import {
 
 // ---------------------------------------------------------------------------
 // Helpers
+
+test('Search Console date schema accepts valid calendar dates including leap day', () => {
+  assert.equal(SEARCH_CONSOLE_DATE_SCHEMA.safeParse('2026-08-18').success, true);
+  assert.equal(SEARCH_CONSOLE_DATE_SCHEMA.safeParse('2024-02-29').success, true);
+});
+
+test('Search Console date schema rejects malformed and impossible dates', () => {
+  const invalidDates = ['2026-02-30', '2026-13-01', '2026-00-10', '2025-02-29', '2026-2-3'];
+  for (const date of invalidDates) {
+    assert.equal(SEARCH_CONSOLE_DATE_SCHEMA.safeParse(date).success, false, date);
+  }
+});
+
+test('Search Console date ranges allow same-day queries and reject reversed ranges', () => {
+  assert.doesNotThrow(() => assertDateRange('2026-08-18', '2026-08-18'));
+  assert.throws(
+    () => assertDateRange('2026-08-19', '2026-08-18'),
+    /start_date must be on or before end_date/,
+  );
+});
+
+test('weekly digest end dates reject invalid dates and future dates', () => {
+  assert.equal(SEARCH_CONSOLE_DATE_SCHEMA.safeParse('2026-02-30').success, false);
+  assert.throws(
+    () => assertDateNotInFuture('2026-08-19', '2026-08-18'),
+    /End date must be today or earlier/,
+  );
+});
 
 function makeKey(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(32));

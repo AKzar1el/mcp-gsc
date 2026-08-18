@@ -33,6 +33,11 @@ import {
   stashPendingAuth,
 } from './storage';
 import { generateWeeklyDigest } from './digest';
+import {
+  assertDateNotInFuture,
+  assertDateRange,
+  SEARCH_CONSOLE_DATE_SCHEMA,
+} from './date-validation';
 
 export interface Env {
   OAUTH_KV: KVNamespace;
@@ -532,16 +537,10 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         ].join('\n'),
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
-          start_date: z
-            .string()
-            .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format')
-            .describe('Start date (inclusive) in YYYY-MM-DD format.'),
-          end_date: z
-            .string()
-            .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format')
-            .describe(
-              'End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day data lag: the most recent complete date is usually 3 days ago.',
-            ),
+          start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
+          end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
+            'End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day data lag: the most recent complete date is usually 3 days ago.',
+          ),
           dimensions: z
             .array(
               z.enum([
@@ -636,6 +635,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         aggregation_type,
         dimension_filter_groups,
       }) => {
+        assertDateRange(start_date, end_date);
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         const rows = await querySearchAnalytics(accessToken, site_url, {
@@ -774,8 +774,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         description: 'Find search queries with at least the requested impressions that rank in a configurable striking-distance position range (8-20 by default). Returns clicks, impressions, CTR, and average position; CTR is context, not an eligibility filter.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
-          start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Start date (inclusive) in YYYY-MM-DD format.'),
-          end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
+          start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
+          end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
           min_impressions: z.number().int().default(100).describe('Minimum impressions required to consider a query. Default is 100.'),
           min_position: z.number().default(8).describe('Minimum average position to target (inclusive). Default is 8.'),
           max_position: z.number().default(20).describe('Maximum average position to target (inclusive). Default is 20.'),
@@ -784,6 +784,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url, start_date, end_date, min_impressions, min_position, max_position }) => {
+        assertDateRange(start_date, end_date);
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         const rows = await querySearchAnalytics(accessToken, site_url, {
@@ -807,8 +808,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         description: 'Analyze search analytics to detect instances of keyword cannibalization, where multiple pages on your site compete for the same query.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
-          start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Start date (inclusive) in YYYY-MM-DD format.'),
-          end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
+          start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
+          end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
           min_impressions: z.number().int().default(50).describe('Minimum impressions for a page-query pair to be considered. Default is 50.'),
           min_page_percentage: z.number().default(10).describe('Minimum percentage of total query impressions a page must have to count as a cannibalizing page. Default is 10%.'),
         },
@@ -816,6 +817,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url, start_date, end_date, min_impressions, min_page_percentage }) => {
+        assertDateRange(start_date, end_date);
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         const rows = await querySearchAnalytics(accessToken, site_url, {
@@ -920,8 +922,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         description: 'Retrieve a list of site pages that have received search impressions, serving as a proxy list of indexed pages on the site.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
-          start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('Start date (inclusive) in YYYY-MM-DD format. Defaults to 30 days ago.'),
-          end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().describe('End date (inclusive) in YYYY-MM-DD format. Defaults to 3 days ago. Note the 2-3 day data lag.'),
+          start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('Start date (inclusive) in YYYY-MM-DD format. Defaults to 30 days ago.'),
+          end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('End date (inclusive) in YYYY-MM-DD format. Defaults to 3 days ago. Note the 2-3 day data lag.'),
           row_limit: z.number().int().min(1).max(25000).default(1000).describe('Maximum pages to retrieve (1-25000). Default is 1000.'),
         },
         outputSchema: INDEXED_PAGES_OUTPUT_SCHEMA,
@@ -941,6 +943,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           if (!start) start = formatDate(startRecentDate);
           if (!end) end = formatDate(endRecentDate);
         }
+        assertDateRange(start, end);
 
         const rows = await querySearchAnalytics(accessToken, site_url, {
           startDate: start,
@@ -968,16 +971,18 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device).',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
-          start_date_a: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Start date of Period A (recent, YYYY-MM-DD)'),
-          end_date_a: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('End date of Period A (recent, YYYY-MM-DD)'),
-          start_date_b: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Start date of Period B (previous, YYYY-MM-DD)'),
-          end_date_b: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('End date of Period B (previous, YYYY-MM-DD)'),
+          start_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date of Period A (recent, YYYY-MM-DD)'),
+          end_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date of Period A (recent, YYYY-MM-DD)'),
+          start_date_b: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date of Period B (previous, YYYY-MM-DD)'),
+          end_date_b: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date of Period B (previous, YYYY-MM-DD)'),
           dimension: z.enum(['query', 'page', 'country', 'device']).default('query').describe('The dimension to compare performance for. Defaults to query.'),
         },
         outputSchema: PERFORMANCE_COMPARISON_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url, start_date_a, end_date_a, start_date_b, end_date_b, dimension }) => {
+        assertDateRange(start_date_a, end_date_a, 'start_date_a', 'end_date_a');
+        assertDateRange(start_date_b, end_date_b, 'start_date_b', 'end_date_b');
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
 
@@ -1010,8 +1015,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           'Generate a plain-language weekly SEO report for one Google Search Console property. Returns a markdown digest covering the 7 days ending on end_date, with week-over-week comparison, top pages, queries gaining or losing traction, and one specific action item. Defaults end_date to today if omitted.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
-          end_date: z
-            .string()
+          end_date: SEARCH_CONSOLE_DATE_SCHEMA
             .optional()
             .describe('End date (inclusive) in YYYY-MM-DD format. Defaults to today.'),
         },
@@ -1022,11 +1026,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         const googleId = this.requireGoogleId();
         const today = new Date().toISOString().slice(0, 10);
         const resolvedEndDate = end_date ?? today;
-        if (resolvedEndDate > today) {
-          throw new Error(
-            'End date must be today or earlier. Google Search Console has no data for dates that have not happened yet.',
-          );
-        }
+        assertDateNotInFuture(resolvedEndDate, today);
 
         try {
           const markdown = await generateWeeklyDigest(
