@@ -283,7 +283,7 @@ const TOOL_CATALOG = [
   {
     name: 'insights.quick_wins',
     description:
-      'Find search queries that rank in positions 8-20 (page 2 / lower page 1) with high impressions but low CTR. These are ideal SEO optimization targets.',
+      'Find search queries with at least the requested impressions that rank in a configurable striking-distance position range (8-20 by default). Returns clicks, impressions, CTR, and average position; CTR is context, not an eligibility filter.',
   },
   {
     name: 'insights.cannibalization',
@@ -771,7 +771,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       'insights.quick_wins',
       {
         title: 'Identify SEO Quick Wins',
-        description: 'Find search queries that rank in positions 8-20 (page 2 / lower page 1) with high impressions but low CTR. These are ideal SEO optimization targets.',
+        description: 'Find search queries with at least the requested impressions that rank in a configurable striking-distance position range (8-20 by default). Returns clicks, impressions, CTR, and average position; CTR is context, not an eligibility filter.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Start date (inclusive) in YYYY-MM-DD format.'),
