@@ -218,6 +218,17 @@ export interface SearchAnalyticsRow {
   position: number;
 }
 
+export interface SearchAnalyticsResponseMetadata {
+  first_incomplete_date?: string;
+  first_incomplete_hour?: string;
+}
+
+export interface SearchAnalyticsResponse {
+  rows: SearchAnalyticsRow[];
+  responseAggregationType?: string;
+  metadata?: SearchAnalyticsResponseMetadata;
+}
+
 export async function inspectUrl(
   accessToken: string,
   siteUrl: string,
@@ -303,7 +314,7 @@ export async function querySearchAnalytics(
   accessToken: string,
   siteUrl: string,
   body: SearchAnalyticsQuery,
-): Promise<SearchAnalyticsRow[]> {
+): Promise<SearchAnalyticsResponse> {
   const encoded = encodeURIComponent(siteUrl);
   const resp = await fetch(
     `https://www.googleapis.com/webmasters/v3/sites/${encoded}/searchAnalytics/query`,
@@ -323,8 +334,18 @@ export async function querySearchAnalytics(
     const text = await resp.text();
     throw new Error(`Search analytics query failed: ${resp.status} ${text}`);
   }
-  const data = (await resp.json()) as { rows?: SearchAnalyticsRow[] };
-  return data.rows ?? [];
+  const data = (await resp.json()) as {
+    rows?: SearchAnalyticsRow[];
+    responseAggregationType?: string;
+    metadata?: SearchAnalyticsResponseMetadata;
+  };
+  return {
+    rows: data.rows ?? [],
+    ...(data.responseAggregationType !== undefined
+      ? { responseAggregationType: data.responseAggregationType }
+      : {}),
+    ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
+  };
 }
 
 export async function addSite(

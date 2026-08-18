@@ -152,6 +152,22 @@ const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
   start_row: z.number().int().nonnegative(),
   rows: z.array(z.object(SEARCH_ROW_OUTPUT_SCHEMA)),
   next_start_row: z.number().int().nonnegative().optional(),
+  response_aggregation_type: z
+    .string()
+    .optional()
+    .describe('Google response aggregation type, included only when returned by Google.'),
+  metadata: z.object({
+    first_incomplete_date: z
+      .string()
+      .optional()
+      .describe('First incomplete date, included only when returned by Google.'),
+    first_incomplete_hour: z
+      .string()
+      .optional()
+      .describe('First incomplete hour, included only when returned by Google.'),
+  })
+    .optional()
+    .describe('Google data-completeness metadata, included only when returned by Google.'),
 };
 
 const MESSAGE_OUTPUT_SCHEMA = {
@@ -494,7 +510,9 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           '{ row_count, start_row, rows } where each row has keys (dimension',
           'values), clicks, impressions, ctr, and position. When row_count',
           'equals row_limit, the response includes next_start_row — pass it',
-          'back as start_row to fetch the next page.',
+          'back as start_row to fetch the next page. When Google provides',
+          'them, response_aggregation_type and metadata are also included;',
+          'metadata may identify the first incomplete date or hour.',
           '',
           'IMPORTANT BEHAVIORS — read before calling:',
           '- For SITE TOTALS (total impressions, total clicks, overall CTR,',
@@ -629,7 +647,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         assertDateRange(start_date, end_date);
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
-        const rows = await querySearchAnalytics(accessToken, site_url, {
+        const response = await querySearchAnalytics(accessToken, site_url, {
           startDate: start_date,
           endDate: end_date,
           dimensions,
@@ -642,11 +660,18 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
             ? { dimensionFilterGroups: dimension_filter_groups }
             : {}),
         });
+        const { rows } = response;
         const payload: Record<string, unknown> = {
           row_count: rows.length,
           start_row,
           rows,
         };
+        if (response.responseAggregationType !== undefined) {
+          payload.response_aggregation_type = response.responseAggregationType;
+        }
+        if (response.metadata !== undefined) {
+          payload.metadata = response.metadata;
+        }
         if (rows.length === row_limit) {
           payload.next_start_row = start_row + row_limit;
         }
@@ -773,14 +798,14 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         assertDateRange(start_date, end_date);
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
-        const rows = await querySearchAnalytics(accessToken, site_url, {
+        const response = await querySearchAnalytics(accessToken, site_url, {
           startDate: start_date,
           endDate: end_date,
           dimensions: ['query', 'page'],
           rowLimit: 25000,
         });
 
-        const quickWins = processQuickWins(rows, min_impressions, min_position, max_position);
+        const quickWins = processQuickWins(response.rows, min_impressions, min_position, max_position);
         return toolResponse(JSON.stringify(quickWins, null, 2), {
           quick_wins: quickWins,
         });
@@ -806,14 +831,14 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         assertDateRange(start_date, end_date);
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
-        const rows = await querySearchAnalytics(accessToken, site_url, {
+        const response = await querySearchAnalytics(accessToken, site_url, {
           startDate: start_date,
           endDate: end_date,
           dimensions: ['query', 'page'],
           rowLimit: 25000,
         });
 
-        const cannibalizationCandidates = processCannibalization(rows, min_impressions, min_page_percentage);
+        const cannibalizationCandidates = processCannibalization(response.rows, min_impressions, min_page_percentage);
         return toolResponse(JSON.stringify(cannibalizationCandidates, null, 2), {
           candidates: cannibalizationCandidates,
         });
@@ -850,21 +875,21 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         const previousStart = formatDate(startPreviousDate);
         const previousEnd = formatDate(endPreviousDate);
 
-        const recentRows = await querySearchAnalytics(accessToken, site_url, {
+        const recentResponse = await querySearchAnalytics(accessToken, site_url, {
           startDate: recentStart,
           endDate: recentEnd,
           dimensions: ['page'],
           rowLimit: 25000,
         });
 
-        const previousRows = await querySearchAnalytics(accessToken, site_url, {
+        const previousResponse = await querySearchAnalytics(accessToken, site_url, {
           startDate: previousStart,
           endDate: previousEnd,
           dimensions: ['page'],
           rowLimit: 25000,
         });
 
-        const decayResults = processContentDecay(recentRows, previousRows);
+        const decayResults = processContentDecay(recentResponse.rows, previousResponse.rows);
 
         const payload = {
           comparison_periods: {
@@ -926,14 +951,14 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
 
-        const rows = await querySearchAnalytics(accessToken, site_url, {
+        const response = await querySearchAnalytics(accessToken, site_url, {
           startDate,
           endDate,
           dimensions: ['page'],
           rowLimit: row_limit,
         });
 
-        const pages = rows.map((row) => ({
+        const pages = response.rows.map((row) => ({
           page: row.keys[0],
           clicks: row.clicks,
           impressions: row.impressions,
@@ -967,21 +992,21 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
 
-        const rowsA = await querySearchAnalytics(accessToken, site_url, {
+        const responseA = await querySearchAnalytics(accessToken, site_url, {
           startDate: start_date_a,
           endDate: end_date_a,
           dimensions: [dimension],
           rowLimit: 25000,
         });
 
-        const rowsB = await querySearchAnalytics(accessToken, site_url, {
+        const responseB = await querySearchAnalytics(accessToken, site_url, {
           startDate: start_date_b,
           endDate: end_date_b,
           dimensions: [dimension],
           rowLimit: 25000,
         });
 
-        const comparison = processPerformanceComparison(rowsA, rowsB);
+        const comparison = processPerformanceComparison(responseA.rows, responseB.rows);
         return toolResponse(JSON.stringify(comparison, null, 2), {
           comparisons: comparison,
         });
