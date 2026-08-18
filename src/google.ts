@@ -1,24 +1,27 @@
+import {
+  DEFAULT_GSC_ACCESS_MODE,
+  getGoogleOAuthScopes,
+  type GscAccessMode,
+} from './access-mode';
+
 export const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 export const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
 export const GOOGLE_USERINFO_URL = 'https://www.googleapis.com/oauth2/v2/userinfo';
 
-export const SCOPES = [
-  'openid',
-  'email',
-  'https://www.googleapis.com/auth/webmasters',
-  'https://www.googleapis.com/auth/indexing',
-];
+// Kept as the default-mode export for compatibility with existing callers.
+export const SCOPES = getGoogleOAuthScopes(DEFAULT_GSC_ACCESS_MODE);
 
 export function buildAuthUrl(
   clientId: string,
   redirectUri: string,
   state: string,
+  accessMode: GscAccessMode = DEFAULT_GSC_ACCESS_MODE,
 ): string {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: SCOPES.join(' '),
+    scope: getGoogleOAuthScopes(accessMode).join(' '),
     access_type: 'offline',
     prompt: 'consent',
     state,

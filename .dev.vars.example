@@ -1,8 +1,12 @@
 # Local development secrets for `wrangler dev`.
 # Copy this file to `.dev.vars` (gitignored) and fill in your own values.
-# In production these are set with `wrangler secret put <NAME>` instead.
+# In production, set secrets with `wrangler secret put <NAME>` and configure
+# GSC_ACCESS_MODE in wrangler.jsonc.
 # See SETUP.md for how to obtain each value.
 
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 TOKEN_ENCRYPTION_KEY=
+# Optional: defaults to readwrite. Set readonly to omit mutation tools and
+# request only the Google Search Console read-only scope during OAuth.
+GSC_ACCESS_MODE=readwrite
