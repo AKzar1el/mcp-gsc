@@ -38,6 +38,7 @@ import {
   assertDateRange,
   SEARCH_CONSOLE_DATE_SCHEMA,
 } from './date-validation';
+import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from './content-decay-schema';
 import { resolveIndexedPagesDateRange } from './indexed-pages-range';
 
 export interface Env {
@@ -842,7 +843,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         description: 'Identify content decay by comparing search clicks for your site pages between two contiguous periods and finding the pages with the largest traffic drops.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
-          compare_days: z.number().int().default(30).describe('Number of days to compare (recent period vs previous period). Default is 30.'),
+          compare_days: CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
         },
         outputSchema: CONTENT_DECAY_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,

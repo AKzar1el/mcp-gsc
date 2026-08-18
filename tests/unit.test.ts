@@ -16,6 +16,7 @@ import {
   assertDateRange,
   SEARCH_CONSOLE_DATE_SCHEMA,
 } from '../src/date-validation';
+import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from '../src/content-decay-schema';
 import { resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
 import {
   buildAuthUrl,
@@ -70,6 +71,17 @@ test('weekly digest end dates reject invalid dates and future dates', () => {
   );
 });
 
+test('content decay comparison days must be positive and default to 30', () => {
+  assert.deepEqual(CONTENT_DECAY_COMPARE_DAYS_SCHEMA.safeParse(1), {
+    success: true,
+    data: 1,
+  });
+  assert.equal(CONTENT_DECAY_COMPARE_DAYS_SCHEMA.safeParse(0).success, false);
+  assert.equal(CONTENT_DECAY_COMPARE_DAYS_SCHEMA.safeParse(-1).success, false);
+  assert.deepEqual(CONTENT_DECAY_COMPARE_DAYS_SCHEMA.safeParse(undefined), {
+    success: true,
+    data: 30,
+  });
 test('indexed page ranges default to the existing 30-day window ending three days ago', () => {
   assert.deepEqual(
     resolveIndexedPagesDateRange(undefined, undefined, '2026-01-15'),
