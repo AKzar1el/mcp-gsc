@@ -1,0 +1,40 @@
+name: Install verified mcp-publisher
+description: Download, verify, and extract the pinned MCP Registry publisher.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        set -euo pipefail
+
+        os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+        case "$(uname -m)" in
+          x86_64) architecture=amd64 ;;
+          aarch64) architecture=arm64 ;;
+          *)
+            echo "::error::Unsupported mcp-publisher architecture: $(uname -m)"
+            exit 1
+            ;;
+        esac
+
+        case "${os}_${architecture}" in
+          linux_amd64) expected_sha256="$MCP_PUBLISHER_LINUX_AMD64_SHA256" ;;
+          linux_arm64) expected_sha256="$MCP_PUBLISHER_LINUX_ARM64_SHA256" ;;
+          *)
+            echo "::error::Unsupported mcp-publisher platform: ${os}_${architecture}"
+            exit 1
+            ;;
+        esac
+
+        archive="mcp-publisher_${os}_${architecture}.tar.gz"
+        url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/${archive}"
+
+        curl --fail --location --retry 3 --output "$archive" "$url"
+        if ! printf '%s  %s\n' "$expected_sha256" "$archive" | sha256sum --check --status; then
+          echo "::error::mcp-publisher archive checksum verification failed"
+          exit 1
+        fi
+
+        tar xzf "$archive" mcp-publisher
+        rm "$archive"

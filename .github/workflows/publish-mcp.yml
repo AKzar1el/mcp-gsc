@@ -8,6 +8,11 @@ on:
       - server.json
       - .github/workflows/publish-mcp.yml
 
+env:
+  MCP_PUBLISHER_VERSION: v1.8.1
+  MCP_PUBLISHER_LINUX_AMD64_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+  MCP_PUBLISHER_LINUX_ARM64_SHA256: 8dd75a6cf6845688b5d4e46df58d3ca26d5c8d233bb0626606e1db82c5e883e4
+
 jobs:
   validate:
     name: Validate server.json
@@ -16,9 +21,8 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: Install mcp-publisher
-        run: |
-          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+      - name: Install verified mcp-publisher
+        uses: ./.github/actions/install-mcp-publisher
       - name: Validate server.json against the registry schema
         run: ./mcp-publisher validate server.json
 
@@ -38,9 +42,8 @@ jobs:
             echo "::error file=server.json::server.json still points at the placeholder URL (REPLACE-ME.workers.dev). Replace it with the real deployed Worker URL before publishing to the MCP registry."
             exit 1
           fi
-      - name: Install mcp-publisher
-        run: |
-          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_$(uname -s | tr '[:upper:]' '[:lower:]')_$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/').tar.gz" | tar xz mcp-publisher
+      - name: Install verified mcp-publisher
+        uses: ./.github/actions/install-mcp-publisher
       - name: Log in to the registry (GitHub OIDC)
         run: ./mcp-publisher login github-oidc
       - name: Publish
