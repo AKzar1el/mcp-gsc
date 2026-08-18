@@ -175,8 +175,8 @@ test('quick win thresholds require valid impressions and position ranges', () =>
   assert.equal(defaulted.max_position, 20);
 });
 
-function makeKey(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(32));
+function makeKey(byteLength = 32): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(byteLength));
   return Buffer.from(bytes).toString('base64');
 }
 
@@ -260,6 +260,30 @@ test('crypto: encrypt → decrypt roundtrips the plaintext', async () => {
   const { ciphertext, iv } = await encryptToken(plaintext, key);
   const decrypted = await decryptToken(ciphertext, iv, key);
   assert.equal(decrypted, plaintext);
+});
+
+test('crypto: rejects AES keys that are not exactly 256 bits', async () => {
+  for (const byteLength of [16, 24, 31, 33]) {
+    await assert.rejects(
+      () => encryptToken('secret', makeKey(byteLength)),
+      /Invalid TOKEN_ENCRYPTION_KEY configuration: expected a valid base64-encoded 32-byte \(256-bit\) AES key\./,
+    );
+  }
+});
+
+test('crypto: rejects malformed TOKEN_ENCRYPTION_KEY base64 without exposing it', async () => {
+  const malformedKey = 'not valid base64!';
+  await assert.rejects(
+    () => encryptToken('secret', malformedKey),
+    (error: Error) => {
+      assert.equal(
+        error.message,
+        'Invalid TOKEN_ENCRYPTION_KEY configuration: expected a valid base64-encoded 32-byte (256-bit) AES key.',
+      );
+      assert.equal(error.message.includes(malformedKey), false);
+      return true;
+    },
+  );
 });
 
 test('crypto: each encryption uses a fresh IV and ciphertext', async () => {
