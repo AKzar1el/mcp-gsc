@@ -22,12 +22,13 @@ See [SETUP.md](SETUP.md) for deploying your own instance (Google OAuth + Cloudfl
 
 | Path | Purpose |
 |---|---|
-| `src/index.ts` | Worker entry: OAuth flow (`/authorize`, `/google/callback`) and the MCP agent with the five tools. |
+| `src/index.ts` | Worker entry: OAuth flow (`/authorize`, `/google/callback`) and the MCP tool suite for Search Console analysis, reporting, site and sitemap management, and indexing requests. |
 | `src/google.ts` | Google OAuth and Search Console API calls. |
+| `src/digest.ts` | On-demand weekly Search Console performance digest generation. |
 | `src/storage.ts` | KV-backed storage of pending auth and per-user encrypted refresh tokens. |
 | `src/crypto.ts` | AES-GCM encryption of refresh tokens. |
-| `tests/unit.test.ts` | Offline unit tests (mocked fetch, no deployment needed) — run in CI. |
-| `tests/smoke.test.mjs` | Structural smoke tests against a live deployment. |
+| `tests/unit.test.ts` | Offline unit tests for crypto, validation, API request construction, and analytics helpers (mocked fetch, no deployment needed) — run in CI. |
+| `tests/smoke.test.mjs` | Structural smoke tests against a live deployment, including authenticated MCP tool discovery when configured. |
 
 ## Pull request guidelines
 
@@ -38,7 +39,7 @@ See [SETUP.md](SETUP.md) for deploying your own instance (Google OAuth + Cloudfl
 
 ## Scope
 
-This repository is the **self-hostable core**: four read-only Google Search Console tools plus one-click Google OAuth. Email delivery, scheduling, and the weekly-report product features live in the hosted offering at [digestseo.com](https://digestseo.com) and are out of scope here. PRs that add cron jobs, email, databases, or unrelated integrations will likely be declined — please open an issue to discuss first.
+This repository is the **self-hostable core**: Google OAuth, encrypted refresh-token storage, and an MCP tool suite with read and write Google Search Console operations, plus an on-demand weekly digest. Hosted-service concerns such as email delivery, external scheduling, unrelated databases, or unrelated integrations are out of scope. Keep PRs focused on the self-hostable server; please open an issue before proposing broader changes.
 
 ## Code of conduct
 
