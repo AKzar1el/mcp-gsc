@@ -33,6 +33,8 @@ import {
 import { GoogleAccessTokenLifecycle } from './access-token-lifecycle';
 import { consumePendingAuth, stashPendingAuth } from './pending-auth-state';
 export { PendingAuthState } from './pending-auth-state';
+import { enforceToolRateLimit, type RateLimitedToolName } from './tool-rate-limit';
+export { ToolRateLimiter } from './tool-rate-limit';
 import { generateWeeklyDigest } from './digest';
 import {
   CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
@@ -62,6 +64,7 @@ export interface Env {
   USER_KV: KVNamespace;
   MCP_OBJECT: DurableObjectNamespace;
   PENDING_AUTH_STATE: DurableObjectNamespace;
+  TOOL_RATE_LIMITER: DurableObjectNamespace;
   OAUTH_PROVIDER: any;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
@@ -300,6 +303,13 @@ function paginationMetadata(result: PaginatedSearchAnalyticsResult) {
   };
 }
 
+function toolError(message: string) {
+  return {
+    content: [{ type: 'text' as const, text: message }],
+    isError: true,
+  };
+}
+
 // One-line summaries surfaced by get_capabilities. Keep in sync with the
 // registerTool calls below (names are asserted by the smoke tests).
 const TOOL_CATALOG = [
@@ -406,6 +416,19 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     return googleId;
   }
 
+  private async rateLimitError(googleId: string, toolName: RateLimitedToolName) {
+    const result = await enforceToolRateLimit(this.env, googleId, toolName);
+    if (result.allowed) return null;
+
+    const retryAfterSeconds = Math.max(
+      1,
+      Math.ceil((result.retry_after_ms ?? 0) / 1000),
+    );
+    return toolError(
+      `Rate limit reached for ${toolName}. Retry after ${retryAfterSeconds} seconds.`,
+    );
+  }
+
   private async getAccessToken(googleId: string): Promise<string> {
     return this.getAccessTokenLifecycle().getAccessToken(googleId);
   }
@@ -498,6 +521,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       },
       async ({ site_url, inspection_url, language_code }) => {
         const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'urls.inspect');
+        if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
         const result = await inspectUrl(
           accessToken,
@@ -676,6 +701,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       }) => {
         assertDateRange(start_date, end_date);
         const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'analytics.query');
+        if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
         const response = await querySearchAnalytics(accessToken, site_url, {
           startDate: start_date,
@@ -725,6 +752,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       },
       async ({ site_url }) => {
         const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'sites.add');
+        if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
         await addSite(accessToken, site_url);
         const message = `Successfully added site property: ${site_url}`;
@@ -745,6 +774,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       },
       async ({ site_url }) => {
         const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'sites.delete');
+        if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
         await deleteSite(accessToken, site_url);
         const message = `Successfully deleted site property: ${site_url}`;
@@ -766,6 +797,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       },
       async ({ site_url, feedpath }) => {
         const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'sitemaps.submit');
+        if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
         await submitSitemap(accessToken, site_url, feedpath);
         const message = `Successfully submitted sitemap: ${feedpath} for site: ${site_url}`;
@@ -787,6 +820,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       },
       async ({ site_url, feedpath }) => {
         const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'sitemaps.delete');
+        if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
         await deleteSitemap(accessToken, site_url, feedpath);
         const message = `Successfully deleted sitemap: ${feedpath} for site: ${site_url}`;
@@ -827,6 +862,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       async ({ site_url, start_date, end_date, min_impressions, min_position, max_position }) => {
         assertDateRange(start_date, end_date);
         const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'insights.quick_wins');
+        if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
         const source = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: start_date,
@@ -861,6 +898,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       async ({ site_url, start_date, end_date, min_impressions, min_page_percentage }) => {
         assertDateRange(start_date, end_date);
         const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'insights.cannibalization');
+        if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
         const source = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: start_date,
@@ -891,6 +930,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       },
       async ({ site_url, compare_days }) => {
         const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'insights.content_decay');
+        if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
 
         const formatDate = (d: Date) => d.toISOString().split('T')[0];
@@ -961,6 +1002,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       },
       async ({ site_url, url }) => {
         const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'indexing.request');
+        if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
         const sites = await listSites(accessToken);
         assertIndexingUrlAuthorized(url, site_url, sites);
@@ -995,6 +1038,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           new Date().toISOString().slice(0, 10),
         );
         const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'indexing.list_pages');
+        if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
 
         const response = await querySearchAnalytics(accessToken, site_url, {
@@ -1036,6 +1081,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         assertDateRange(start_date_a, end_date_a, 'start_date_a', 'end_date_a');
         assertDateRange(start_date_b, end_date_b, 'start_date_b', 'end_date_b');
         const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'analytics.compare');
+        if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
 
         const sourceA = await querySearchAnalyticsPaginated(accessToken, site_url, {
@@ -1079,6 +1126,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       },
       async ({ site_url, end_date }) => {
         const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'reports.weekly_digest');
+        if (rateLimitError) return rateLimitError;
         const today = new Date().toISOString().slice(0, 10);
         const resolvedEndDate = end_date ?? today;
         assertDateNotInFuture(resolvedEndDate, today);

@@ -30,6 +30,10 @@
       {
         "name": "PENDING_AUTH_STATE",
         "class_name": "PendingAuthState"
+      },
+      {
+        "name": "TOOL_RATE_LIMITER",
+        "class_name": "ToolRateLimiter"
       }
     ]
   },
@@ -41,6 +45,10 @@
     {
       "tag": "v2",
       "new_sqlite_classes": ["PendingAuthState"]
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["ToolRateLimiter"]
     }
   ]
 }
