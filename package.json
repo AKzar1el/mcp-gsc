@@ -50,8 +50,9 @@
     "build": "npm run typecheck",
     "start": "node scripts/glama-start.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "npm run typecheck && npm run test:metadata && npm run test:unit",
+    "test": "npm run typecheck && npm run test:metadata && npm run test:oauth-state && npm run test:unit",
     "test:metadata": "tsx --test tests/metadata.test.ts",
+    "test:oauth-state": "tsx --test tests/pending-auth-state.test.ts",
     "test:unit": "tsx --test tests/unit.test.ts",
     "test:smoke": "node --test tests/smoke.test.mjs",
     "prepublishOnly": "npm test"

@@ -28,10 +28,10 @@ import {
 import {
   deleteUser,
   getDecryptedRefreshToken,
-  popPendingAuth,
   saveUser,
-  stashPendingAuth,
 } from './storage';
+import { consumePendingAuth, stashPendingAuth } from './pending-auth-state';
+export { PendingAuthState } from './pending-auth-state';
 import { generateWeeklyDigest } from './digest';
 import {
   CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
@@ -50,6 +50,7 @@ export interface Env {
   OAUTH_KV: KVNamespace;
   USER_KV: KVNamespace;
   MCP_OBJECT: DurableObjectNamespace;
+  PENDING_AUTH_STATE: DurableObjectNamespace;
   OAUTH_PROVIDER: any;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
@@ -1118,9 +1119,9 @@ const defaultHandler = {
         return new Response('Missing code or state', { status: 400 });
       }
 
-      const pending = await popPendingAuth(env, state);
+      const pending = await consumePendingAuth(env, state);
       if (!pending) {
-        console.error('Pending auth not found or expired', { state });
+        console.error('Pending auth not found or expired');
         return new Response('Auth request expired or invalid', { status: 400 });
       }
 

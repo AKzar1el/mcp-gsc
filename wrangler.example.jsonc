@@ -23,6 +23,10 @@
       {
         "name": "MCP_OBJECT",
         "class_name": "GscMcpAgent"
+      },
+      {
+        "name": "PENDING_AUTH_STATE",
+        "class_name": "PendingAuthState"
       }
     ]
   },
@@ -30,6 +34,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["GscMcpAgent"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["PendingAuthState"]
     }
   ]
 }

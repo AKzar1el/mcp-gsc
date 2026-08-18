@@ -29,7 +29,7 @@ npm ci
 
 ## Step 2 — Create the two KV namespaces
 
-The server needs two Workers KV namespaces: `OAUTH_KV` (pending OAuth state and issued tokens) and `USER_KV` (encrypted refresh tokens). Run exactly:
+The server needs two Workers KV namespaces: `OAUTH_KV` (data required by the OAuth provider) and `USER_KV` (encrypted refresh tokens). Pending OAuth state uses a Durable Object so it can be consumed exactly once. Run exactly:
 
 ```bash
 npx wrangler kv namespace create OAUTH_KV
@@ -55,7 +55,7 @@ Edit `wrangler.jsonc` and replace the two placeholder ids with the ids from Step
 ]
 ```
 
-Change **only** those two ids. Do not rename the `OAUTH_KV`/`USER_KV` bindings, the Durable Object binding `MCP_OBJECT` with class `GscMcpAgent`, or the `migrations` block (tag `v1`, `new_sqlite_classes: ["GscMcpAgent"]`) — the code depends on these exact names, and the migration is applied automatically on first deploy.
+Change **only** those two ids. Do not rename the `OAUTH_KV`/`USER_KV` bindings, the Durable Object bindings `MCP_OBJECT` with class `GscMcpAgent` or `PENDING_AUTH_STATE` with class `PendingAuthState`, or the migrations (`v1` for `GscMcpAgent` and `v2` for `PendingAuthState`) — the code depends on these exact names, and the migrations are applied automatically on first deploy.
 
 ## Step 4 — First deploy (to learn the Worker URL)
 

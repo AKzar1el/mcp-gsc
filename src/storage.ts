@@ -1,41 +1,8 @@
 import { encryptToken, decryptToken } from './crypto';
 
 interface StorageEnv {
-  OAUTH_KV: KVNamespace;
   USER_KV: KVNamespace;
   TOKEN_ENCRYPTION_KEY: string;
-}
-
-const PENDING_TTL_SECONDS = 600;
-
-export interface PendingAuthRequest {
-  claudeAuthRequest: unknown;
-  created_at: number;
-}
-
-export async function stashPendingAuth(
-  env: StorageEnv,
-  nonce: string,
-  claudeAuthRequest: unknown,
-): Promise<void> {
-  const record: PendingAuthRequest = {
-    claudeAuthRequest,
-    created_at: Date.now(),
-  };
-  await env.OAUTH_KV.put(`pending:${nonce}`, JSON.stringify(record), {
-    expirationTtl: PENDING_TTL_SECONDS,
-  });
-}
-
-export async function popPendingAuth(
-  env: StorageEnv,
-  nonce: string,
-): Promise<PendingAuthRequest | null> {
-  const key = `pending:${nonce}`;
-  const raw = await env.OAUTH_KV.get(key);
-  if (!raw) return null;
-  await env.OAUTH_KV.delete(key);
-  return JSON.parse(raw) as PendingAuthRequest;
 }
 
 export interface UserRecord {
