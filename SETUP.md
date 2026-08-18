@@ -116,7 +116,7 @@ TOKEN_ENCRYPTION_KEY=...
 
 ## Step 5 — Create the KV namespaces
 
-The server uses two Workers KV namespaces: `OAUTH_KV` (pending OAuth state and issued tokens) and `USER_KV` (encrypted refresh tokens, keyed per user).
+The server uses two Workers KV namespaces: `OAUTH_KV` (data required by the OAuth provider) and `USER_KV` (encrypted refresh tokens, keyed per user). Pending OAuth state is stored separately in a Durable Object so each nonce can be consumed exactly once.
 
 ```bash
 npx wrangler kv namespace create OAUTH_KV
@@ -144,7 +144,7 @@ Then edit `wrangler.jsonc` and replace the placeholders:
 
 ## Step 6 — Apply migrations, deploy, and verify
 
-The Durable Object migration declared in `wrangler.jsonc` (`migrations` → tag `v1`, `new_sqlite_classes: ["GscMcpAgent"]`) is applied automatically the first time you deploy. Deploy:
+The Durable Object migrations declared in `wrangler.jsonc` are applied automatically when you deploy: `v1` creates `GscMcpAgent`; `v2` adds `PendingAuthState` for atomic OAuth-state consumption. The v2 migration adds a new class and does not modify existing agent or KV data. Deploy:
 
 ```bash
 npm run deploy

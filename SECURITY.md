@@ -15,7 +15,7 @@ its users. The full data inventory:
 |---|---|---|
 | Google **refresh token** (per user) | Workers KV (`USER_KV`) | Encrypted at rest with **AES-256-GCM** (`src/crypto.ts`) using the `TOKEN_ENCRYPTION_KEY` secret; a fresh random IV per encryption. |
 | Google account **id and email** (per user) | Workers KV (`USER_KV`) | Stored in plaintext alongside the encrypted token, used only to key and label the record. |
-| Pending OAuth state | Workers KV (`OAUTH_KV`) | Single-use nonce, expires automatically after 10 minutes. |
+| Pending OAuth state | Durable Object storage (`PendingAuthState`) | Stored per nonce; consumed through a strongly consistent transaction so exactly one callback succeeds; expires after 10 minutes. |
 | MCP client tokens | Workers KV (`OAUTH_KV`) | Managed by [`@cloudflare/workers-oauth-provider`](https://github.com/cloudflare/workers-oauth-provider). |
 | Google **access tokens** | In-memory only (Durable Object) | Never written to storage; expire within an hour. |
 
