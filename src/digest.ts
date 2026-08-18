@@ -86,11 +86,11 @@ export async function generateWeeklyDigest(
   const accessToken = await getAccessTokenForDigest(env, googleId);
 
   const [
-    currentTotalsRaw,
-    prevTotalsRaw,
-    currentQueriesRaw,
-    prevQueriesRaw,
-    currentPagesRaw,
+    currentTotalsResponse,
+    prevTotalsResponse,
+    currentQueriesResponse,
+    prevQueriesResponse,
+    currentPagesResponse,
   ] = await Promise.all([
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.currentStart,
@@ -129,11 +129,11 @@ export async function generateWeeklyDigest(
     }),
   ]);
 
-  const currentTotals = totalsFromRow(currentTotalsRaw[0]);
-  const prevTotals = totalsFromRow(prevTotalsRaw[0]);
-  const currentQueries = rowsToQueries(currentQueriesRaw);
-  const prevQueries = rowsToQueries(prevQueriesRaw);
-  const currentPages = rowsToPages(currentPagesRaw);
+  const currentTotals = totalsFromRow(currentTotalsResponse.rows[0]);
+  const prevTotals = totalsFromRow(prevTotalsResponse.rows[0]);
+  const currentQueries = rowsToQueries(currentQueriesResponse.rows);
+  const prevQueries = rowsToQueries(prevQueriesResponse.rows);
+  const currentPages = rowsToPages(currentPagesResponse.rows);
 
   const movers = computeMovers(currentQueries, prevQueries);
   const action = pickActionAndBuild(

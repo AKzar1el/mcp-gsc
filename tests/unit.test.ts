@@ -457,7 +457,7 @@ test('querySearchAnalytics: sends the query body including startRow and returns 
         aggregationType: 'auto',
       }),
   );
-  assert.deepEqual(result, rows);
+  assert.deepEqual(result, { rows });
   assert.equal(calls.length, 1);
   assert.ok(
     calls[0].url.includes('/sites/https%3A%2F%2Fexample.com%2F/searchAnalytics/query'),
@@ -469,7 +469,7 @@ test('querySearchAnalytics: sends the query body including startRow and returns 
   assert.equal(body.startDate, '2026-05-01');
 });
 
-test('querySearchAnalytics: missing rows field returns [] (no data, not an error)', async () => {
+test('querySearchAnalytics: missing rows field returns an empty rows array (no data, not an error)', async () => {
   const { result } = await withMockFetch(
     () => json(200, {}),
     () =>
@@ -480,7 +480,7 @@ test('querySearchAnalytics: missing rows field returns [] (no data, not an error
         rowLimit: 100,
       }),
   );
-  assert.deepEqual(result, []);
+  assert.deepEqual(result, { rows: [] });
 });
 
 // ---------------------------------------------------------------------------

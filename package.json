@@ -56,9 +56,10 @@
     "test": "npm run typecheck && npm run test:metadata && npm run test:comparison && npm run test:unit",
     "test:metadata": "tsx --test tests/metadata.test.ts",
     "test:comparison": "tsx --test tests/performance-comparison.test.ts",
-    "test": "npm run typecheck && npm run test:metadata && npm run test:annotations && npm run test:unit",
+    "test": "npm run typecheck && npm run test:metadata && npm run test:annotations && npm run test:analytics-response-metadata && npm run test:unit",
     "test:metadata": "tsx --test tests/metadata.test.ts",
     "test:annotations": "tsx --test tests/write-tool-annotations.test.ts",
+    "test:analytics-response-metadata": "tsx --test tests/analytics-response-metadata.test.ts",
     "test:unit": "tsx --test tests/unit.test.ts",
     "test:smoke": "node --test tests/smoke.test.mjs",
     "prepublishOnly": "npm test"
