@@ -45,6 +45,7 @@ import {
 import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from './content-decay-schema';
 import { resolveIndexedPagesDateRange } from './indexed-pages-range';
 import { createQuickWinsInputSchema } from './quick-wins-schema';
+import { WRITE_TOOL_ANNOTATIONS } from './write-tool-annotations';
 
 export interface Env {
   OAUTH_KV: KVNamespace;
@@ -70,10 +71,6 @@ const NOT_AUTHENTICATED_MESSAGE =
 // Annotation utilities for read-only vs write actions.
 const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,
-  openWorldHint: true,
-} as const;
-
-const WRITE_ANNOTATIONS = {
   openWorldHint: true,
 } as const;
 
@@ -687,7 +684,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
         },
         outputSchema: MESSAGE_OUTPUT_SCHEMA,
-        annotations: WRITE_ANNOTATIONS,
+        annotations: WRITE_TOOL_ANNOTATIONS['sites.add'],
       },
       async ({ site_url }) => {
         const googleId = this.requireGoogleId();
@@ -707,7 +704,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
         },
         outputSchema: MESSAGE_OUTPUT_SCHEMA,
-        annotations: WRITE_ANNOTATIONS,
+        annotations: WRITE_TOOL_ANNOTATIONS['sites.delete'],
       },
       async ({ site_url }) => {
         const googleId = this.requireGoogleId();
@@ -728,7 +725,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           feedpath: z.string().describe('The full URL of the sitemap file to submit, e.g. https://example.com/sitemap.xml'),
         },
         outputSchema: MESSAGE_OUTPUT_SCHEMA,
-        annotations: WRITE_ANNOTATIONS,
+        annotations: WRITE_TOOL_ANNOTATIONS['sitemaps.submit'],
       },
       async ({ site_url, feedpath }) => {
         const googleId = this.requireGoogleId();
@@ -749,7 +746,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           feedpath: z.string().describe('The full URL of the sitemap file to delete, e.g. https://example.com/sitemap.xml'),
         },
         outputSchema: MESSAGE_OUTPUT_SCHEMA,
-        annotations: WRITE_ANNOTATIONS,
+        annotations: WRITE_TOOL_ANNOTATIONS['sitemaps.delete'],
       },
       async ({ site_url, feedpath }) => {
         const googleId = this.requireGoogleId();
@@ -907,7 +904,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           url: z.string().describe('The URL to submit for indexing/reindexing. Must belong to your property and contain JobPosting structured data, or be a livestream page with BroadcastEvent inside VideoObject.'),
         },
         outputSchema: INDEXING_OUTPUT_SCHEMA,
-        annotations: WRITE_ANNOTATIONS,
+        annotations: WRITE_TOOL_ANNOTATIONS['indexing.request'],
       },
       async ({ url }) => {
         const googleId = this.requireGoogleId();
