@@ -13,7 +13,6 @@ import {
   listSitemaps,
   listSites,
   querySearchAnalytics,
-  refreshAccessToken,
   addSite,
   deleteSite,
   submitSitemap,
@@ -26,10 +25,10 @@ import {
   processPerformanceComparison,
 } from './google';
 import {
-  deleteUser,
   getDecryptedRefreshToken,
   saveUser,
 } from './storage';
+import { GoogleAccessTokenLifecycle } from './access-token-lifecycle';
 import { consumePendingAuth, stashPendingAuth } from './pending-auth-state';
 export { PendingAuthState } from './pending-auth-state';
 import { generateWeeklyDigest } from './digest';
@@ -351,10 +350,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     version: SERVER_VERSION,
   });
 
-  private accessTokenCache = new Map<
-    string,
-    { token: string; expires_at: number }
-  >();
+  private accessTokens?: GoogleAccessTokenLifecycle;
 
   private requireGoogleId(): string {
     const googleId = this.props?.google_id;
@@ -365,38 +361,12 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
   }
 
   private async getAccessToken(googleId: string): Promise<string> {
-    const now = Date.now();
-    const cached = this.accessTokenCache.get(googleId);
-    if (cached && cached.expires_at > now + 60_000) {
-      return cached.token;
-    }
-    const refreshToken = await getDecryptedRefreshToken(this.env, googleId);
-    if (!refreshToken) {
-      console.warn('No refresh token record for user', { google_id: googleId });
-      throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
-    }
-    let tokens;
-    try {
-      tokens = await refreshAccessToken(
-        refreshToken,
-        this.env.GOOGLE_CLIENT_ID,
-        this.env.GOOGLE_CLIENT_SECRET,
-      );
-    } catch (err) {
-      if (err instanceof GoogleRefreshTokenRevokedError) {
-        this.accessTokenCache.delete(googleId);
-        await deleteUser(this.env, googleId);
-        console.warn('Refresh token revoked, deleted user record', {
-          google_id: googleId,
-        });
-      }
-      throw err;
-    }
-    this.accessTokenCache.set(googleId, {
-      token: tokens.access_token,
-      expires_at: now + tokens.expires_in * 1000,
-    });
-    return tokens.access_token;
+    return this.getAccessTokenLifecycle().getAccessToken(googleId);
+  }
+
+  private getAccessTokenLifecycle(): GoogleAccessTokenLifecycle {
+    this.accessTokens ??= new GoogleAccessTokenLifecycle(this.env);
+    return this.accessTokens;
   }
 
   async init() {
@@ -1041,7 +1011,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
 
         try {
           const markdown = await generateWeeklyDigest(
-            this.env,
+            this.getAccessTokenLifecycle(),
             googleId,
             site_url,
             resolvedEndDate,

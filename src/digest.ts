@@ -1,18 +1,5 @@
-import {
-  GoogleRefreshTokenRevokedError,
-  querySearchAnalytics,
-  refreshAccessToken,
-  type SearchAnalyticsRow,
-} from './google';
-import { getDecryptedRefreshToken } from './storage';
-
-interface DigestEnv {
-  OAUTH_KV: KVNamespace;
-  USER_KV: KVNamespace;
-  TOKEN_ENCRYPTION_KEY: string;
-  GOOGLE_CLIENT_ID: string;
-  GOOGLE_CLIENT_SECRET: string;
-}
+import { querySearchAnalytics, type SearchAnalyticsRow } from './google';
+import type { GoogleAccessTokenProvider } from './access-token-lifecycle';
 
 interface DateRanges {
   currentStart: string;
@@ -77,13 +64,13 @@ interface ActionItem {
 }
 
 export async function generateWeeklyDigest(
-  env: DigestEnv,
+  accessTokens: GoogleAccessTokenProvider,
   googleId: string,
   siteUrl: string,
   endDate: string,
 ): Promise<string> {
   const dates = computeDateRanges(endDate);
-  const accessToken = await getAccessTokenForDigest(env, googleId);
+  const accessToken = await accessTokens.getAccessToken(googleId);
 
   const [
     currentTotalsRaw,
@@ -152,22 +139,6 @@ export async function generateWeeklyDigest(
     currentPages,
     action,
   });
-}
-
-async function getAccessTokenForDigest(
-  env: DigestEnv,
-  googleId: string,
-): Promise<string> {
-  const refreshToken = await getDecryptedRefreshToken(env, googleId);
-  if (!refreshToken) {
-    throw new GoogleRefreshTokenRevokedError();
-  }
-  const { access_token } = await refreshAccessToken(
-    refreshToken,
-    env.GOOGLE_CLIENT_ID,
-    env.GOOGLE_CLIENT_SECRET,
-  );
-  return access_token;
 }
 
 function computeDateRanges(endDate: string): DateRanges {
