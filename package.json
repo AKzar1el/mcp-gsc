@@ -56,9 +56,10 @@
     "test": "npm run typecheck && npm run test:metadata && npm run test:comparison && npm run test:unit",
     "test:metadata": "tsx --test tests/metadata.test.ts",
     "test:comparison": "tsx --test tests/performance-comparison.test.ts",
-    "test": "npm run typecheck && npm run test:metadata && npm run test:annotations && npm run test:unit",
+    "test": "npm run typecheck && npm run test:metadata && npm run test:annotations && npm run test:worker && npm run test:unit",
     "test:metadata": "tsx --test tests/metadata.test.ts",
     "test:annotations": "tsx --test tests/write-tool-annotations.test.ts",
+    "test:worker": "vitest run --config vitest.worker.config.ts",
     "test:unit": "tsx --test tests/unit.test.ts",
     "test:smoke": "node --test tests/smoke.test.mjs",
     "prepublishOnly": "npm test"
@@ -76,9 +77,11 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.21.3",
     "@cloudflare/workers-types": "^4.20260520.1",
     "tsx": "^4.20.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
   },
   "engines": {
     "node": ">=20.0.0"

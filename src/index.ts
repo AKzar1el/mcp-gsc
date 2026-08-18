@@ -1048,7 +1048,7 @@ function googleRedirectUri(request: Request): string {
   return new URL('/google/callback', request.url).toString();
 }
 
-const defaultHandler = {
+export const defaultHandler = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
 
