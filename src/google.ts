@@ -688,6 +688,77 @@ export interface IndexingEligibility {
 }
 
 /**
+ * JSON-LD can appear well after the document head, so eligibility checks scan
+ * up to 1 MiB of HTML rather than assuming the first few kilobytes are enough.
+ */
+export const INDEXING_ELIGIBILITY_MAX_RESPONSE_BYTES = 1024 * 1024;
+export const INDEXING_ELIGIBILITY_TIMEOUT_MS = 10_000;
+
+interface IndexingEligibilityOptions {
+  timeoutMs?: number;
+}
+
+function isHttpUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+async function cancelResponseBody(response: Response): Promise<void> {
+  try {
+    await response.body?.cancel();
+  } catch {
+    // Cancellation is best-effort after a rejected response.
+  }
+}
+
+async function readBoundedResponseText(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return '';
+
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  let completed = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        completed = true;
+        break;
+      }
+
+      totalBytes += value.byteLength;
+      if (totalBytes > INDEXING_ELIGIBILITY_MAX_RESPONSE_BYTES) {
+        throw new Error(
+          `Response body exceeds the ${INDEXING_ELIGIBILITY_MAX_RESPONSE_BYTES}-byte eligibility limit.`,
+        );
+      }
+      chunks.push(value);
+    }
+  } finally {
+    if (!completed) {
+      try {
+        await reader.cancel();
+      } catch {
+        // The stream may already have been cancelled or aborted.
+      }
+    }
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return new TextDecoder().decode(bytes);
+}
+
+/**
  * Checks whether `url` carries the structured data Google's Indexing API
  * currently supports (JobPosting, or BroadcastEvent nested in VideoObject),
  * by inspecting its JSON-LD. Best-effort: if the page can't be fetched or
@@ -696,10 +767,27 @@ export interface IndexingEligibility {
  */
 export async function checkIndexingEligibility(
   url: string,
+  { timeoutMs = INDEXING_ELIGIBILITY_TIMEOUT_MS }: IndexingEligibilityOptions = {},
 ): Promise<IndexingEligibility> {
+  if (!isHttpUrl(url)) {
+    return {
+      eligible: false,
+      reason: `${url} must be a valid HTTP or HTTPS URL. ${INDEXING_SCOPE_MESSAGE}`,
+    };
+  }
+
   let html: string;
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
   try {
     const resp = await fetch(url, {
+      signal: controller.signal,
+      // Reject redirects rather than following a caller-controlled chain.
       redirect: 'manual',
       headers: {
         'user-agent':
@@ -707,17 +795,49 @@ export async function checkIndexingEligibility(
       },
     });
     if (!resp.ok) {
+      await cancelResponseBody(resp);
       return {
         eligible: false,
         reason: `Could not fetch ${url} to check indexing eligibility (HTTP ${resp.status}). ${INDEXING_SCOPE_MESSAGE}`,
       };
     }
-    html = await resp.text();
+
+    const contentType = resp.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
+    if (
+      contentType &&
+      contentType !== 'text/html' &&
+      contentType !== 'application/xhtml+xml'
+    ) {
+      await cancelResponseBody(resp);
+      return {
+        eligible: false,
+        reason: `Could not fetch ${url} to check indexing eligibility (expected HTML, received ${contentType}). ${INDEXING_SCOPE_MESSAGE}`,
+      };
+    }
+
+    const contentLength = Number(resp.headers.get('content-length'));
+    if (
+      Number.isFinite(contentLength) &&
+      contentLength > INDEXING_ELIGIBILITY_MAX_RESPONSE_BYTES
+    ) {
+      await cancelResponseBody(resp);
+      return {
+        eligible: false,
+        reason: `Could not fetch ${url} to check indexing eligibility (response exceeds the ${INDEXING_ELIGIBILITY_MAX_RESPONSE_BYTES}-byte limit). ${INDEXING_SCOPE_MESSAGE}`,
+      };
+    }
+
+    html = await readBoundedResponseText(resp);
   } catch (err) {
+    const detail = timedOut
+      ? `timed out after ${timeoutMs}ms`
+      : (err as Error).message;
     return {
       eligible: false,
-      reason: `Could not fetch ${url} to check indexing eligibility (${(err as Error).message}). ${INDEXING_SCOPE_MESSAGE}`,
+      reason: `Could not fetch ${url} to check indexing eligibility (${detail}). ${INDEXING_SCOPE_MESSAGE}`,
     };
+  } finally {
+    clearTimeout(timeout);
   }
 
   const types = new Set<string>();
