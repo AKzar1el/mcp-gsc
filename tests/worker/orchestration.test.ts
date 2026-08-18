@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { reset, runInDurableObject } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
 import { generateWeeklyDigest } from '../../src/digest';
+import { GoogleAccessTokenLifecycle } from '../../src/access-token-lifecycle';
 import {
   defaultHandler,
   GscMcpAgent,
@@ -318,7 +319,7 @@ describe('Worker orchestration', () => {
       };
 
       const markdown = await generateWeeklyDigest(
-        workerEnv,
+        new GoogleAccessTokenLifecycle(workerEnv),
         'digest-user',
         'https://example.com/',
         '2026-01-14',

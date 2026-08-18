@@ -144,6 +144,8 @@ test('cannibalization minimum impressions cannot be negative', () => {
     success: true,
     data: 50,
   });
+});
+
 test('quick win thresholds require valid impressions and position ranges', () => {
   const schema = createQuickWinsInputSchema('Search Console property identifier.');
   const baseInput = {
