@@ -724,12 +724,12 @@ test('processPerformanceComparison: correctly aligns period A and period B metri
   assert.equal(comparison[0].diff.clicks_percentage, 20);
   assert.equal(comparison[0].diff.position, -1); // (2 - 3)
 
-  // query2: clicks A=50, B=0 (not in B). diff = +50
+  // query2: clicks A=50, B=0 (not in B). Percentage change is undefined.
   assert.equal(comparison[1].key, 'query2');
   assert.equal(comparison[1].period_a.clicks, 50);
   assert.equal(comparison[1].period_b.clicks, 0);
   assert.equal(comparison[1].diff.clicks, 50);
-  assert.equal(comparison[1].diff.clicks_percentage, 0);
+  assert.equal(comparison[1].diff.clicks_percentage, null);
 
   // query3: clicks A=0, B=80 (only in B). diff = -80 (-100%)
   assert.equal(comparison[2].key, 'query3');

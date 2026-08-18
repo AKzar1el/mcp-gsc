@@ -758,12 +758,20 @@ export interface PerformanceComparisonRow {
   period_b: { clicks: number; impressions: number; ctr: number; position: number };
   diff: {
     clicks: number;
-    clicks_percentage: number;
+    clicks_percentage: number | null;
     impressions: number;
-    impressions_percentage: number;
+    impressions_percentage: number | null;
     ctr: number;
     position: number;
   };
+}
+
+function calculatePercentageChange(current: number, baseline: number): number | null {
+  if (baseline === 0) {
+    return current === 0 ? 0 : null;
+  }
+
+  return Math.round(((current - baseline) / baseline) * 1000) / 10;
 }
 
 export function processPerformanceComparison(
@@ -806,9 +814,9 @@ export function processPerformanceComparison(
       period_b: { clicks: clicksB, impressions: impsB, ctr: ctrB, position: posB },
       diff: {
         clicks: clicksDiff,
-        clicks_percentage: clicksB > 0 ? Math.round((clicksDiff / clicksB) * 1000) / 10 : 0,
+        clicks_percentage: calculatePercentageChange(clicksA, clicksB),
         impressions: impsDiff,
-        impressions_percentage: impsB > 0 ? Math.round((impsDiff / impsB) * 1000) / 10 : 0,
+        impressions_percentage: calculatePercentageChange(impsA, impsB),
         ctr: Math.round((ctrA - ctrB) * 1000) / 1000,
         position: Math.round((posA - posB) * 10) / 10,
       },
@@ -832,9 +840,9 @@ export function processPerformanceComparison(
       period_b: { clicks: clicksB, impressions: impsB, ctr: ctrB, position: posB },
       diff: {
         clicks: -clicksB,
-        clicks_percentage: -100,
+        clicks_percentage: calculatePercentageChange(0, clicksB),
         impressions: -impsB,
-        impressions_percentage: -100,
+        impressions_percentage: calculatePercentageChange(0, impsB),
         ctr: -ctrB,
         position: -posB,
       },

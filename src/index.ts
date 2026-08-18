@@ -220,9 +220,15 @@ const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
       period_b: z.object(METRIC_OUTPUT_SCHEMA),
       diff: z.object({
         clicks: z.number(),
-        clicks_percentage: z.number(),
+        clicks_percentage: z
+          .number()
+          .nullable()
+          .describe('Percentage change from period_b clicks. Null when period_b is zero and period_a differs; zero when both are zero.'),
         impressions: z.number(),
-        impressions_percentage: z.number(),
+        impressions_percentage: z
+          .number()
+          .nullable()
+          .describe('Percentage change from period_b impressions. Null when period_b is zero and period_a differs; zero when both are zero.'),
         ctr: z.number(),
         position: z.number(),
       }),
