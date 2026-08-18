@@ -16,6 +16,7 @@ import {
   assertDateRange,
   SEARCH_CONSOLE_DATE_SCHEMA,
 } from '../src/date-validation';
+import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from '../src/content-decay-schema';
 import {
   buildAuthUrl,
   exchangeCodeForTokens,
@@ -67,6 +68,19 @@ test('weekly digest end dates reject invalid dates and future dates', () => {
     () => assertDateNotInFuture('2026-08-19', '2026-08-18'),
     /End date must be today or earlier/,
   );
+});
+
+test('content decay comparison days must be positive and default to 30', () => {
+  assert.deepEqual(CONTENT_DECAY_COMPARE_DAYS_SCHEMA.safeParse(1), {
+    success: true,
+    data: 1,
+  });
+  assert.equal(CONTENT_DECAY_COMPARE_DAYS_SCHEMA.safeParse(0).success, false);
+  assert.equal(CONTENT_DECAY_COMPARE_DAYS_SCHEMA.safeParse(-1).success, false);
+  assert.deepEqual(CONTENT_DECAY_COMPARE_DAYS_SCHEMA.safeParse(undefined), {
+    success: true,
+    data: 30,
+  });
 });
 
 function makeKey(): string {
