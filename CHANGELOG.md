@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] - 2026-07-27
+
+### Added
+- Namespaced MCP tool names and typed output schemas for more consistent client integration.
+- Distribution surfaces for self-hosting: a portable launcher, Docker/Glama support, and Cursor and Claude Code plugin metadata.
+- The public npm package, `@digestseo/mcp-gsc`, with an `npx` launcher.
+
+### Changed
+- Registry, manifest, and package metadata now point to the official DigestSEO listing.
+
+## [0.3.0] - 2026-07-13
+
+### Added
+- Search Console write operations for properties and sitemaps, Indexing API requests, and analytics insight tools for quick wins, cannibalization, content decay, indexed pages, and period comparisons.
+- An on-demand weekly Search Console performance digest with top pages, movers, and recommended actions.
+- Static tool and connection metadata for registry discovery.
+
+### Changed
+- Google OAuth permissions and MCP annotations now distinguish read operations from the available write operations.
+
 ## [0.2.0] - 2026-06-10
 
 ### Added
