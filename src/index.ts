@@ -46,6 +46,10 @@ import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from './content-decay-schema';
 import { resolveIndexedPagesDateRange } from './indexed-pages-range';
 import { createQuickWinsInputSchema } from './quick-wins-schema';
 import { WRITE_TOOL_ANNOTATIONS } from './write-tool-annotations';
+import {
+  assertIndexingRequestUrl,
+  assertIndexingUrlAuthorized,
+} from './indexing-property-authorization';
 
 export interface Env {
   OAUTH_KV: KVNamespace;
@@ -893,16 +897,28 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       'indexing.request',
       {
         title: 'Request Indexing',
-        description: "Requests indexing through Google's Indexing API. Google currently restricts this API to pages containing JobPosting structured data or livestream pages containing BroadcastEvent inside VideoObject. It is not available for general webpage submission.",
+        description: "Requests indexing through Google's Indexing API for a URL within an owner-level Search Console property accessible to the connected Google account. Google currently restricts this API to pages containing JobPosting structured data or livestream pages containing BroadcastEvent inside VideoObject. It is not available for general webpage submission.",
         inputSchema: {
-          url: z.string().describe('The URL to submit for indexing/reindexing. Must belong to your property and contain JobPosting structured data, or be a livestream page with BroadcastEvent inside VideoObject.'),
+          site_url: z.string().describe(`${SITE_URL_DESCRIPTION} The connected Google account must be an owner of this property.`),
+          url: z.string().superRefine((value, ctx) => {
+            try {
+              assertIndexingRequestUrl(value);
+            } catch (error) {
+              ctx.addIssue({
+                code: 'custom',
+                message: (error as Error).message,
+              });
+            }
+          }).describe('The fully qualified HTTP/HTTPS URL to submit. It must fall within site_url and contain JobPosting structured data, or be a livestream page with BroadcastEvent inside VideoObject.'),
         },
         outputSchema: INDEXING_OUTPUT_SCHEMA,
         annotations: WRITE_TOOL_ANNOTATIONS['indexing.request'],
       },
-      async ({ url }) => {
+      async ({ site_url, url }) => {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
+        const sites = await listSites(accessToken);
+        assertIndexingUrlAuthorized(url, site_url, sites);
         const result = await requestIndexing(accessToken, url);
         const payload = {
           result,
