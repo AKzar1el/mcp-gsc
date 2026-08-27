@@ -12,6 +12,7 @@
 Part of the **[DigestSEO](https://digestseo.com/)** suite of open-source SEO tools.
 
 - Product: [digestseo.com/gsc-mcp](https://digestseo.com/gsc-mcp/)
+- Engineering case study: [DigestSEO MCP Suite — AI visibility, Search Console, web validation, and trend intelligence](https://tomiseregi.si/projects/digestseo-mcp-suite)
 - Support: [digestseo.com/support](https://digestseo.com/support/)
 - Privacy: [digestseo.com/privacy](https://digestseo.com/privacy/)
 
