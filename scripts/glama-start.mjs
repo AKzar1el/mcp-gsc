@@ -20,7 +20,7 @@ for (const name of forwardedVariables) {
   }
 }
 
-const wranglerCli = createRequire(import.meta.url).resolve('wrangler/bin/wrangler.js');
+const wranglerCli = createRequire(import.meta.url).resolve('wrangler');
 const child = spawn(process.execPath, [wranglerCli, ...args], { stdio: 'inherit' });
 
 const forwardSignal = (signal) => child.kill(signal);
