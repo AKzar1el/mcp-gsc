@@ -48,6 +48,12 @@ claude mcp add --transport http gsc https://<your-worker>.workers.dev/mcp
 
 [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=gsc&config=eyJ1cmwiOiJodHRwczovL21jcC1nc2MuZGlnZXN0c2VvLmNvbS9tY3AifQ%3D%3D)
 
+**Kiro**
+
+[![Add to Kiro](https://kiro.dev/images/add-to-kiro.svg)](https://kiro.dev/launch/mcp/add?name=mcp-gsc&config=%7B%22url%22%3A%22https%3A%2F%2Fmcp-gsc.digestseo.com%2Fmcp%22%2C%22disabled%22%3Afalse%2C%22autoApprove%22%3A%5B%5D%7D)
+
+Uses the hosted endpoint above; complete its Google OAuth flow on first use.
+
 **ChatGPT** — add it as a custom connector; see [Connect in your AI client](#connect-in-your-ai-client) below.
 
 A self-hostable [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for **Google Search Console**. Connect it to Claude.ai, Cursor, ChatGPT, or any MCP-compatible client and ask your AI assistant about your site's organic search performance — impressions, clicks, top queries, index status, and sitemap health — straight from your own Google account.
