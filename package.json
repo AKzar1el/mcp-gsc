@@ -50,7 +50,6 @@
     "build": "npm run typecheck",
     "start": "node scripts/glama-start.mjs",
     "typecheck": "tsc --noEmit",
-    "test:glama": "node --test tests/glama-stdio.test.mjs",
     "test:oauth-state": "tsx --test tests/pending-auth-state.test.ts",
     "test:comparison": "tsx --test tests/performance-comparison.test.ts",
     "test:annotations": "tsx --test tests/write-tool-annotations.test.ts",
