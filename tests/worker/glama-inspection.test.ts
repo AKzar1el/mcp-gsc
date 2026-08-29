@@ -36,7 +36,7 @@ async function readJsonRpc(response: Response) {
 }
 
 describe('Glama inspection mode', () => {
-  it('allows unauthenticated initialize and tools/list only when explicitly enabled', async () => {
+  it('allows unauthenticated discovery only when explicitly enabled', async () => {
     const initialize = {
       jsonrpc: '2.0',
       id: 1,
@@ -80,5 +80,20 @@ describe('Glama inspection mode', () => {
         'indexing.request',
       ]),
     );
+
+    const dataCall = await callWorker(
+      request(
+        {
+          jsonrpc: '2.0',
+          id: 3,
+          method: 'tools/call',
+          params: { name: 'sites.list', arguments: {} },
+        },
+        sessionId!,
+      ),
+      inspectionEnv,
+    );
+    const dataEnvelope = await readJsonRpc(dataCall);
+    expect(JSON.stringify(dataEnvelope)).toContain('Not authenticated');
   });
 });
