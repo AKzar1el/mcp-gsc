@@ -86,11 +86,6 @@
     "typescript": "^6.0.3",
     "vitest": "^4.1.11"
   },
-  "pnpm": {
-    "overrides": {
-      "@modelcontextprotocol/sdk": "1.29.0"
-    }
-  },
   "engines": {
     "node": ">=20.0.0"
   }
