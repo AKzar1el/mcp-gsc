@@ -1,8 +1,13 @@
 import { env } from 'cloudflare:workers';
 import { describe, expect, it } from 'vitest';
-import worker, { type Env } from '../../src/index';
+import worker from '../../src/entrypoint';
+import { type Env } from '../../src/index';
 
-const workerEnv = env as unknown as Env;
+type InspectionEnv = Env & {
+  GLAMA_INSPECTION_MODE?: string;
+};
+
+const workerEnv = env as unknown as InspectionEnv;
 const protocolVersion = '2025-06-18';
 
 function request(body: Record<string, unknown>, sessionId?: string) {
@@ -20,9 +25,13 @@ function request(body: Record<string, unknown>, sessionId?: string) {
   });
 }
 
-async function callWorker(req: Request, runtimeEnv: Env) {
+async function callWorker(req: Request, runtimeEnv: InspectionEnv) {
   return (worker as unknown as {
-    fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response>;
+    fetch(
+      request: Request,
+      env: InspectionEnv,
+      ctx: ExecutionContext,
+    ): Promise<Response>;
   }).fetch(req, runtimeEnv, {} as ExecutionContext);
 }
 
@@ -51,10 +60,10 @@ describe('Glama inspection mode', () => {
     const normal = await callWorker(request(initialize), workerEnv);
     expect(normal.status).toBe(401);
 
-    const inspectionEnv = {
+    const inspectionEnv: InspectionEnv = {
       ...workerEnv,
       GLAMA_INSPECTION_MODE: 'true',
-    } as Env;
+    };
     const initialized = await callWorker(request(initialize), inspectionEnv);
     expect(initialized.status).toBe(200);
 
