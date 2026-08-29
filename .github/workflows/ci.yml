@@ -19,5 +19,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run test:glama
       - run: npm run test:worker
       - run: npm run test:unit
