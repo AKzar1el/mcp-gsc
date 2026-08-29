@@ -1,0 +1,72 @@
+name: Glama inspection runtime reproduction
+
+on:
+  push:
+    branches: [fix/glama-stdio-entrypoint]
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - run: corepack enable && corepack prepare pnpm@10.14.0 --activate
+      - run: pnpm install
+      - run: pnpm run build
+      - name: Verify OAuth remains closed by default
+        env:
+          PORT: 8788
+          GOOGLE_CLIENT_ID: test.apps.googleusercontent.com
+          GOOGLE_CLIENT_SECRET: test-secret
+          TOKEN_ENCRYPTION_KEY: f0e1d2c3b4a5968778695a4b3c2d1e0f
+        run: |
+          set -eu
+          node scripts/glama-start.mjs > /tmp/glama-normal.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          i=0
+          until curl -fsS http://127.0.0.1:8788/ping >/dev/null 2>&1; do
+            if ! kill -0 "$pid" 2>/dev/null; then cat /tmp/glama-normal.log; exit 1; fi
+            i=$((i + 1)); test "$i" -lt 30 || { cat /tmp/glama-normal.log; exit 1; }
+            sleep 1
+          done
+          init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"glama-repro","version":"1.0.0"}}}'
+          status=$(curl -sS -o /tmp/normal-body -w '%{http_code}' -X POST http://127.0.0.1:8788/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -H 'MCP-Protocol-Version: 2025-06-18' --data "$init")
+          test "$status" = "401" || { cat /tmp/normal-body; exit 1; }
+          kill "$pid" 2>/dev/null || true
+          wait "$pid" 2>/dev/null || true
+          trap - EXIT
+      - name: Verify Glama discovery mode and fail-closed tools
+        env:
+          PORT: 8789
+          GOOGLE_CLIENT_ID: test.apps.googleusercontent.com
+          GOOGLE_CLIENT_SECRET: test-secret
+          TOKEN_ENCRYPTION_KEY: f0e1d2c3b4a5968778695a4b3c2d1e0f
+          GLAMA_INSPECTION_MODE: 'true'
+        run: |
+          set -eu
+          node scripts/glama-start.mjs > /tmp/glama-inspection.log 2>&1 &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true' EXIT
+          i=0
+          until curl -fsS http://127.0.0.1:8789/ping >/dev/null 2>&1; do
+            if ! kill -0 "$pid" 2>/dev/null; then cat /tmp/glama-inspection.log; exit 1; fi
+            i=$((i + 1)); test "$i" -lt 30 || { cat /tmp/glama-inspection.log; exit 1; }
+            sleep 1
+          done
+          init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"glama-repro","version":"1.0.0"}}}'
+          status=$(curl -sS -D /tmp/init-headers -o /tmp/init-body -w '%{http_code}' -X POST http://127.0.0.1:8789/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -H 'MCP-Protocol-Version: 2025-06-18' --data "$init")
+          test "$status" = "200" || { cat /tmp/init-body; cat /tmp/glama-inspection.log; exit 1; }
+          session=$(awk 'BEGIN{IGNORECASE=1} /^mcp-session-id:/ {gsub("\r", "", $2); print $2}' /tmp/init-headers | tail -n1)
+          test -n "$session" || { cat /tmp/init-headers; exit 1; }
+          curl -fsS -X POST http://127.0.0.1:8789/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -H 'MCP-Protocol-Version: 2025-06-18' -H "Mcp-Session-Id: $session" --data '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}' >/dev/null
+          curl -fsS -X POST http://127.0.0.1:8789/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -H 'MCP-Protocol-Version: 2025-06-18' -H "Mcp-Session-Id: $session" --data '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' > /tmp/tools-body
+          grep -q 'analytics.query' /tmp/tools-body
+          grep -q 'indexing.request' /tmp/tools-body
+          curl -fsS -X POST http://127.0.0.1:8789/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -H 'MCP-Protocol-Version: 2025-06-18' -H "Mcp-Session-Id: $session" --data '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"sites.list","arguments":{}}}' > /tmp/data-body
+          grep -q 'Not authenticated' /tmp/data-body
