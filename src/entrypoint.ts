@@ -2,10 +2,14 @@ import authenticatedWorker, { GscMcpAgent, type Env } from './index';
 
 export { GscMcpAgent, PendingAuthState, ToolRateLimiter } from './index';
 
+type EntrypointEnv = Env & {
+  GLAMA_INSPECTION_MODE?: string;
+};
+
 type WorkerHandler = {
   fetch(
     request: Request,
-    env: Env,
+    env: EntrypointEnv,
     ctx: ExecutionContext,
   ): Response | Promise<Response>;
 };
@@ -24,7 +28,7 @@ const oauthWorker = authenticatedWorker as unknown as WorkerHandler;
  * data-bearing calls fail closed.
  */
 export default {
-  fetch(request: Request, env: Env, ctx: ExecutionContext) {
+  fetch(request: Request, env: EntrypointEnv, ctx: ExecutionContext) {
     const inspectionEnabled = env.GLAMA_INSPECTION_MODE === 'true';
     const isMcpEndpoint = new URL(request.url).pathname === '/mcp';
 
