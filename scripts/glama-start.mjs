@@ -2,7 +2,12 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 const port = process.env.PORT || '8080';
-const forwardedVariables = ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'TOKEN_ENCRYPTION_KEY'];
+const forwardedVariables = [
+  'GOOGLE_CLIENT_ID',
+  'GOOGLE_CLIENT_SECRET',
+  'TOKEN_ENCRYPTION_KEY',
+  'GLAMA_INSPECTION_MODE',
+];
 const args = [
   'dev',
   '--config',
