@@ -74,7 +74,7 @@
   "mcpName": "io.github.AKzar1el/mcp-gsc",
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^0.8.1",
-    "@modelcontextprotocol/sdk": "1.29.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "agents": "^0.13.1",
     "wrangler": "^4.93.0",
     "zod": "^4.4.3"
@@ -85,6 +85,11 @@
     "tsx": "^4.20.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.11"
+  },
+  "pnpm": {
+    "overrides": {
+      "@modelcontextprotocol/sdk": "1.29.0"
+    }
   },
   "engines": {
     "node": ">=20.0.0"
