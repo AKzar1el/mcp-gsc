@@ -28,7 +28,7 @@ test('Glama stdio entrypoint exposes the production tool catalog', async () => {
   const transport = new StdioClientTransport({
     command: process.platform === 'win32' ? 'npx.cmd' : 'npx',
     args: ['tsx', 'scripts/glama-stdio.ts'],
-    stderr: 'pipe',
+    stderr: 'inherit',
   });
 
   try {
