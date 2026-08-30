@@ -6,6 +6,13 @@ on:
   pull_request:
     paths:
       - server.json
+      - package.json
+      - .github/workflows/publish-mcp.yml
+  push:
+    branches:
+      - main
+    paths:
+      - server.json
       - .github/workflows/publish-mcp.yml
 
 env:
@@ -21,6 +28,35 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Validate published install paths
+        run: |
+          PKG_NAME=$(node -p "require('./package.json').name")
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          MCP_NAME=$(node -p "require('./package.json').mcpName")
+          if ! jq -e --arg pkg "$PKG_NAME" --arg version "$PKG_VERSION" --arg mcpName "$MCP_NAME" '
+            ([.. | strings | select(contains("REPLACE-ME"))] | length == 0) and
+            (.name == $mcpName) and
+            any(.remotes[]?; .type == "streamable-http" and .url == "https://mcp-gsc.digestseo.com/mcp") and
+            any(
+              .remotes[]?;
+              .type == "streamable-http" and
+              .url == "https://{mcp_gsc_worker_domain}/mcp" and
+              (.variables.mcp_gsc_worker_domain | type == "object") and
+              .variables.mcp_gsc_worker_domain.isRequired == true
+            ) and
+            any(
+              .packages[]?;
+              .registryType == "npm" and
+              .identifier == $pkg and
+              .version == $version and
+              .transport.type == "stdio"
+            )
+          ' server.json > /dev/null; then
+            echo "::error file=server.json::server.json must expose the hosted endpoint, self-host template, and npm package matching package.json."
+            exit 1
+          fi
+
       - name: Install verified mcp-publisher
         uses: ./.github/actions/install-mcp-publisher
       - name: Validate server.json against the registry schema
@@ -28,7 +64,7 @@ jobs:
 
   publish:
     name: Publish to registry
-    if: github.event_name == 'release'
+    if: github.event_name == 'release' || github.event_name == 'push'
     needs: validate
     runs-on: ubuntu-latest
     permissions:
@@ -36,21 +72,6 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-      - name: Validate the configured remote
-        run: |
-          if ! jq -e '
-            ([.. | strings | select(contains("REPLACE-ME"))] | length == 0) and
-            any(
-              .remotes[]?;
-              .type == "streamable-http" and
-              .url == "https://{mcp_gsc_worker_domain}/mcp" and
-              (.variables.mcp_gsc_worker_domain | type == "object") and
-              .variables.mcp_gsc_worker_domain.isRequired == true
-            )
-          ' server.json > /dev/null; then
-            echo "::error file=server.json::server.json must define the required mcp_gsc_worker_domain variable for its streamable-http remote and must not contain obsolete REPLACE-ME values."
-            exit 1
-          fi
       - name: Install verified mcp-publisher
         uses: ./.github/actions/install-mcp-publisher
       - name: Log in to the registry (GitHub OIDC)

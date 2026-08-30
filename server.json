@@ -82,6 +82,10 @@
   "remotes": [
     {
       "type": "streamable-http",
+      "url": "https://mcp-gsc.digestseo.com/mcp"
+    },
+    {
+      "type": "streamable-http",
       "url": "https://{mcp_gsc_worker_domain}/mcp",
       "variables": {
         "mcp_gsc_worker_domain": {
@@ -89,6 +93,16 @@
           "isRequired": true,
           "placeholder": "mcp-gsc.your-subdomain.workers.dev"
         }
+      }
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@digestseo/mcp-gsc",
+      "version": "0.3.1",
+      "transport": {
+        "type": "stdio"
       }
     }
   ],
