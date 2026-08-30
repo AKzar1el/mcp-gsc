@@ -21,3 +21,4 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:annotations
+      # This branch-only workflow is removed after the green verification.
