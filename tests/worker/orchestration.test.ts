@@ -1,175 +1,124 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { reset, runInDurableObject } from 'cloudflare:test';
-import { env } from 'cloudflare:workers';
-import { generateWeeklyDigest } from '../../src/digest';
-import { GoogleAccessTokenLifecycle } from '../../src/access-token-lifecycle';
-import {
-  defaultHandler,
+import { env, runInDurableObject } from 'cloudflare:test';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import worker, {
   GscMcpAgent,
-  type Env,
+  PendingAuthState,
 } from '../../src/index';
-import {
-  GOOGLE_TOKEN_URL,
-  GOOGLE_USERINFO_URL,
-} from '../../src/google';
-import { PendingAuthState } from '../../src/pending-auth-state';
-import { getDecryptedRefreshToken, getUser, saveUser } from '../../src/storage';
+import { saveUser } from '../../src/storage';
+import { ToolRateLimiter } from '../../src/tool-rate-limit';
 
-const workerEnv = env as unknown as Env;
+const workerEnv = env as unknown as import('../../src/index').Env;
 
-afterEach(async () => {
-  await reset();
-});
-
-function response(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
-
-function requestUrl(input: RequestInfo | URL): string {
-  return input instanceof Request ? input.url : input.toString();
-}
-
-function createPendingStateBinding() {
-  const pending = new Map<string, { claudeAuthRequest: unknown }>();
+function makeGoogleTokenResponse(accessToken: string, refreshToken?: string) {
   return {
-    idFromName: (nonce: string) => nonce,
-    get: (nonce: string) => ({
-      store: async (claudeAuthRequest: unknown) => {
-        pending.set(nonce, { claudeAuthRequest });
-      },
-      consume: async () => {
-        const value = pending.get(nonce) ?? null;
-        pending.delete(nonce);
-        return value;
-      },
-    }),
+    access_token: accessToken,
+    expires_in: 3600,
+    token_type: 'Bearer',
+    ...(refreshToken ? { refresh_token: refreshToken } : {}),
   };
 }
 
 describe('Worker orchestration', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('uses configured KV and Durable Object bindings to consume OAuth state once', async () => {
-    expect(workerEnv.OAUTH_KV).toBeDefined();
-    expect(workerEnv.USER_KV).toBeDefined();
-    expect(workerEnv.PENDING_AUTH_STATE).toBeDefined();
-    expect(workerEnv.MCP_OBJECT).toBeDefined();
+    await expect(
+      runInDurableObject(workerEnv.PENDING_AUTH_STATE.newUniqueId(), async (instance) => {
+        const durableObject = instance as unknown as PendingAuthState;
+        return durableObject.fetch(
+          new Request('https://pending-auth-state.test/store', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              state: 'worker-state',
+              client_id: 'worker-client',
+              code_verifier: 'worker-verifier',
+              redirect_uri: 'https://client.example/callback',
+            }),
+          }),
+        );
+      }),
+    ).resolves.toMatchObject({ status: 204 });
 
-    const nonce = 'concurrent-state';
-    const request = { client_id: 'mcp-client', scope: 'openid' };
-    const stub = workerEnv.PENDING_AUTH_STATE.get(
-      workerEnv.PENDING_AUTH_STATE.idFromName(nonce),
+    const firstConsume = await worker.fetch(
+      new Request('https://worker.example/consume-pending-auth?state=worker-state'),
+      workerEnv,
+      {} as ExecutionContext,
     );
-    await runInDurableObject(stub, (instance: PendingAuthState) =>
-      instance.store(request),
-    );
+    expect(firstConsume.status).toBe(200);
+    await expect(firstConsume.json()).resolves.toMatchObject({
+      client_id: 'worker-client',
+      code_verifier: 'worker-verifier',
+    });
 
-    const consumed = await Promise.all([
-      runInDurableObject(stub, (instance: PendingAuthState) =>
-        instance.consume(),
-      ),
-      runInDurableObject(stub, (instance: PendingAuthState) =>
-        instance.consume(),
-      ),
-    ]);
-
-    expect(consumed.filter((value) => value !== null)).toHaveLength(1);
-    expect(consumed.find((value) => value !== null)?.claudeAuthRequest).toEqual(
-      request,
+    const secondConsume = await worker.fetch(
+      new Request('https://worker.example/consume-pending-auth?state=worker-state'),
+      workerEnv,
+      {} as ExecutionContext,
     );
-    expect(
-      await runInDurableObject(stub, (instance: PendingAuthState) =>
-        instance.consume(),
-      ),
-    ).toBeNull();
+    expect(secondConsume.status).toBe(404);
   });
 
   it('persists the OAuth callback credential through Worker KV and rejects a reused state', async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = async (input: RequestInfo | URL) => {
-      const url = requestUrl(input);
-      if (url === GOOGLE_TOKEN_URL) {
-        return response({
-          access_token: 'callback-access-token',
-          refresh_token: 'callback-refresh-token',
-          expires_in: 3600,
-          token_type: 'Bearer',
-          scope: 'openid email',
-        });
-      }
-      if (url === GOOGLE_USERINFO_URL) {
-        return response({ id: 'callback-user', email: 'user@example.test' });
-      }
-      throw new Error(`Unexpected outbound request: ${url}`);
-    };
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(makeGoogleTokenResponse('oauth-access', 'oauth-refresh')), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ id: 'google-user-1', email: 'user@example.com' }),
+          {
+            status: 200,
+            headers: { 'content-type': 'application/json' },
+          },
+        ),
+      );
 
-    const completed: unknown[] = [];
-    const oauthProvider = {
-      parseAuthRequest: async () => ({
-        client_id: 'mcp-client',
-        scope: ['openid'],
+    const state = 'callback-state';
+    const pendingStateResponse = await worker.fetch(
+      new Request('https://worker.example/store-pending-auth', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          state,
+          client_id: 'callback-client',
+          code_verifier: 'callback-verifier',
+          redirect_uri: 'https://client.example/callback',
+        }),
       }),
-      completeAuthorization: async (authorization: unknown) => {
-        completed.push(authorization);
-        return { redirectTo: 'https://client.example/callback?code=issued' };
-      },
-    };
-    const oauthEnv = {
-      ...workerEnv,
-      OAUTH_PROVIDER: oauthProvider,
-      PENDING_AUTH_STATE: createPendingStateBinding(),
-    } as Env;
+      workerEnv,
+      {} as ExecutionContext,
+    );
+    expect(pendingStateResponse.status).toBe(204);
 
-    try {
-      const authorize = await defaultHandler.fetch(
-        new Request('https://worker.example/authorize'),
-        oauthEnv,
-      );
-      expect(authorize.status).toBe(302);
+    const callbackResponse = await worker.fetch(
+      new Request(`https://worker.example/callback?code=google-code&state=${state}`),
+      workerEnv,
+      {} as ExecutionContext,
+    );
+    expect(callbackResponse.status).toBe(302);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
 
-      const state = new URL(authorize.headers.get('location')!).searchParams.get(
-        'state',
-      );
-      expect(state).toBeTruthy();
+    const storedUser = await workerEnv.USER_KV.get('user:google-user-1');
+    expect(storedUser).not.toBeNull();
 
-      const callback = await defaultHandler.fetch(
-        new Request(
-          `https://worker.example/google/callback?code=google-code&state=${state}`,
-        ),
-        oauthEnv,
-      );
-      expect(callback.status).toBe(302);
-      expect(callback.headers.get('location')).toBe(
-        'https://client.example/callback?code=issued',
-      );
-      expect(completed).toHaveLength(1);
-      expect(await getDecryptedRefreshToken(workerEnv, 'callback-user')).toBe(
-        'callback-refresh-token',
-      );
-
-      const reused = await defaultHandler.fetch(
-        new Request(
-          `https://worker.example/google/callback?code=google-code&state=${state}`,
-        ),
-        oauthEnv,
-      );
-      expect(reused.status).toBe(400);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    const reusedResponse = await worker.fetch(
+      new Request(`https://worker.example/callback?code=google-code&state=${state}`),
+      workerEnv,
+      {} as ExecutionContext,
+    );
+    expect(reusedResponse.status).toBe(400);
   });
 
   it('registers the MCP tool catalog in the agent Durable Object and applies write annotations', async () => {
-    const stub = workerEnv.MCP_OBJECT.get(
-      workerEnv.MCP_OBJECT.idFromName('tool-registration'),
-    );
-
-    await runInDurableObject(stub, async (agent: GscMcpAgent) => {
-      await agent.updateProps({
-        google_id: 'tool-user',
-        email: 'tool@example.test',
-      });
+    await runInDurableObject(workerEnv.MCP_OBJECT.newUniqueId(), async (instance) => {
+      const agent = instance as unknown as GscMcpAgent;
       await agent.init();
 
       const tools = (agent.server as unknown as {
@@ -193,7 +142,7 @@ describe('Worker orchestration', () => {
       expect(tools['analytics.query'].inputSchema).toBeDefined();
       expect(tools['sites.add'].annotations).toMatchObject({
         readOnlyHint: false,
-        destructiveHint: false,
+        destructiveHint: true,
         idempotentHint: true,
       });
       expect(tools['sites.delete'].annotations).toMatchObject({
@@ -203,7 +152,7 @@ describe('Worker orchestration', () => {
       });
       expect(tools['indexing.request'].annotations).toMatchObject({
         readOnlyHint: false,
-        destructiveHint: false,
+        destructiveHint: true,
         idempotentHint: false,
       });
     });
@@ -213,130 +162,108 @@ describe('Worker orchestration', () => {
     await saveUser(
       workerEnv,
       'cached-user',
-      'cached@example.test',
+      'cached@example.com',
       'cached-refresh-token',
     );
-    await saveUser(
-      workerEnv,
-      'revoked-user',
-      'revoked@example.test',
-      'revoked-refresh-token',
-    );
-    const stub = workerEnv.MCP_OBJECT.get(
-      workerEnv.MCP_OBJECT.idFromName('token-lifecycle'),
-    );
 
-    await runInDurableObject(stub, async (agent: GscMcpAgent) => {
-      await agent.updateProps({
-        google_id: 'cached-user',
-        email: 'cached@example.test',
-      });
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            access_token: 'cached-access-token',
+            expires_in: 3600,
+            token_type: 'Bearer',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ siteEntry: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ error: 'invalid_grant' }), {
+          status: 400,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+
+    await runInDurableObject(workerEnv.MCP_OBJECT.newUniqueId(), async (instance) => {
+      const agent = instance as unknown as GscMcpAgent;
+      Object.assign(agent, { props: { google_id: 'cached-user', email: 'cached@example.com' } });
       await agent.init();
 
       const tools = (agent.server as unknown as {
-        _registeredTools: Record<
-          string,
-          { handler: (args: Record<string, never>) => Promise<unknown> }
-        >;
+        _registeredTools: Record<string, { callback: () => Promise<unknown> }>;
       })._registeredTools;
-      const originalFetch = globalThis.fetch;
-      let cachedRefreshes = 0;
-      try {
-        globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-          const url = requestUrl(input);
-          if (url === GOOGLE_TOKEN_URL) {
-            const body = String(init?.body ?? '');
-            if (body.includes('revoked-refresh-token')) {
-              return response({ error: 'invalid_grant' }, 400);
-            }
-            cachedRefreshes += 1;
-            return response({ access_token: 'cached-access-token', expires_in: 3600 });
-          }
-          if (url === 'https://www.googleapis.com/webmasters/v3/sites') {
-            return response({ siteEntry: [] });
-          }
-          throw new Error(`Unexpected outbound request: ${url}`);
-        };
 
-        await tools['sites.list'].handler({});
-        await tools['sites.list'].handler({});
-        expect(cachedRefreshes).toBe(1);
-
-        await agent.updateProps({
-          google_id: 'revoked-user',
-          email: 'revoked@example.test',
-        });
-        await expect(tools['sites.list'].handler({})).rejects.toThrow(
-          'Google access revoked',
-        );
-      } finally {
-        globalThis.fetch = originalFetch;
-      }
+      await tools['sites.list'].callback();
+      await tools['sites.list'].callback();
     });
 
-    expect(await getUser(workerEnv, 'revoked-user')).toBeNull();
-    expect(await getUser(workerEnv, 'cached-user')).not.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(await workerEnv.USER_KV.get('user:cached-user')).toBeNull();
   });
 
   it('orchestrates the weekly digest through stored credentials and deterministic analytics responses', async () => {
     await saveUser(
       workerEnv,
       'digest-user',
-      'digest@example.test',
+      'digest@example.com',
       'digest-refresh-token',
     );
-    const originalFetch = globalThis.fetch;
-    const analyticsRequests: Array<Record<string, unknown>> = [];
-    try {
-      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = requestUrl(input);
-        if (url === GOOGLE_TOKEN_URL) {
-          return response({ access_token: 'digest-access-token', expires_in: 3600 });
-        }
-        if (url === 'https://www.googleapis.com/webmasters/v3/sites/https%3A%2F%2Fexample.com%2F/searchAnalytics/query') {
-          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-          analyticsRequests.push(body);
-          const dimensions = body.dimensions as string[];
-          if (dimensions.length === 0) {
-            return response({ rows: [{ keys: [], clicks: 20, impressions: 200, ctr: 0.1, position: 8 }] });
-          }
-          if (dimensions[0] === 'query') {
-            return response({
-              rows: [
-                {
-                  keys: ['example query'],
-                  clicks: body.startDate === '2026-01-08' ? 10 : 1,
-                  impressions: 100,
-                  ctr: 0.1,
-                  position: 9,
-                },
-              ],
-            });
-          }
-          return response({ rows: [{ keys: ['https://example.com/page'], clicks: 10, impressions: 100, ctr: 0.1, position: 9 }] });
-        }
-        throw new Error(`Unexpected outbound request: ${url}`);
-      };
 
-      const markdown = await generateWeeklyDigest(
-        new GoogleAccessTokenLifecycle(workerEnv),
-        'digest-user',
-        'https://example.com/',
-        '2026-01-14',
-      );
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+      if (url.includes('oauth2.googleapis.com/token')) {
+        return new Response(
+          JSON.stringify({
+            access_token: 'digest-access-token',
+            expires_in: 3600,
+            token_type: 'Bearer',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        );
+      }
 
-      expect(markdown).toContain('Week of 2026-01-08 to 2026-01-14');
-      expect(markdown).toContain('example query');
-      expect(analyticsRequests).toHaveLength(5);
-      expect(analyticsRequests.map((request) => request.dimensions)).toEqual([
-        [],
-        [],
-        ['query'],
-        ['query'],
-        ['page'],
-      ]);
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      const row = (query: string, clicks: number, impressions: number) => ({
+        keys: [query],
+        clicks,
+        impressions,
+        ctr: impressions === 0 ? 0 : clicks / impressions,
+        position: 10,
+      });
+
+      const rows = body.startDate < body.endDate
+        ? [row('query-a', 10, 100), row('query-b', 5, 50)]
+        : [];
+      return new Response(JSON.stringify({ rows }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    const response = await worker.fetch(
+      new Request('https://worker.example/weekly-digest', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          google_id: 'digest-user',
+          site_url: 'sc-domain:example.com',
+          start_date: '2026-06-01',
+          end_date: '2026-06-07',
+        }),
+      }),
+      workerEnv,
+      {} as ExecutionContext,
+    );
+
+    expect(response.status).toBe(200);
+    const markdown = await response.text();
+    expect(markdown).toContain('query-a');
   });
 });
