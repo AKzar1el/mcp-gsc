@@ -5,12 +5,13 @@
  * for removals, so repeating the same request has the same intended effect.
  * Indexing publishes a URL_UPDATED notification with POST; each call can
  * consume quota and update Google's notification state, so it is not marked
- * idempotent.
+ * idempotent. Every mutation is marked destructive so MCP clients require
+ * explicit confirmation before changing external Google state.
  */
 export const WRITE_TOOL_ANNOTATIONS = {
   'sites.add': {
     readOnlyHint: false,
-    destructiveHint: false,
+    destructiveHint: true,
     idempotentHint: true,
     openWorldHint: true,
   },
@@ -22,7 +23,7 @@ export const WRITE_TOOL_ANNOTATIONS = {
   },
   'sitemaps.submit': {
     readOnlyHint: false,
-    destructiveHint: false,
+    destructiveHint: true,
     idempotentHint: true,
     openWorldHint: true,
   },
@@ -35,7 +36,7 @@ export const WRITE_TOOL_ANNOTATIONS = {
   'indexing.request': {
     // The implementation only publishes URL_UPDATED, never URL_DELETED.
     readOnlyHint: false,
-    destructiveHint: false,
+    destructiveHint: true,
     idempotentHint: false,
     openWorldHint: true,
   },
