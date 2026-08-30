@@ -193,7 +193,7 @@ describe('Worker orchestration', () => {
       expect(tools['analytics.query'].inputSchema).toBeDefined();
       expect(tools['sites.add'].annotations).toMatchObject({
         readOnlyHint: false,
-        destructiveHint: false,
+        destructiveHint: true,
         idempotentHint: true,
       });
       expect(tools['sites.delete'].annotations).toMatchObject({
@@ -203,7 +203,7 @@ describe('Worker orchestration', () => {
       });
       expect(tools['indexing.request'].annotations).toMatchObject({
         readOnlyHint: false,
-        destructiveHint: false,
+        destructiveHint: true,
         idempotentHint: false,
       });
     });
