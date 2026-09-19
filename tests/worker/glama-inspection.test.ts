@@ -10,13 +10,12 @@ type InspectionEnv = Env & {
 const workerEnv = env as unknown as InspectionEnv;
 const protocolVersion = '2025-06-18';
 
-function request(body: Record<string, unknown>, sessionId?: string) {
+function request(body: Record<string, unknown>) {
   const headers = new Headers({
     'Content-Type': 'application/json',
     Accept: 'application/json, text/event-stream',
     'MCP-Protocol-Version': protocolVersion,
   });
-  if (sessionId) headers.set('Mcp-Session-Id', sessionId);
 
   return new Request('https://worker.example/mcp', {
     method: 'POST',
@@ -66,14 +65,12 @@ describe('Glama inspection mode', () => {
     };
     const initialized = await callWorker(request(initialize), inspectionEnv);
     expect(initialized.status).toBe(200);
-
-    const sessionId = initialized.headers.get('mcp-session-id');
-    expect(sessionId).toBeTruthy();
+    expect(initialized.headers.get('mcp-session-id')).toBeNull();
     const initializeEnvelope = await readJsonRpc(initialized);
     expect(initializeEnvelope).toHaveProperty('result');
 
     const listed = await callWorker(
-      request({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, sessionId!),
+      request({ jsonrpc: '2.0', id: 2, method: 'tools/list' }),
       inspectionEnv,
     );
     expect(listed.status).toBe(200);
@@ -98,7 +95,6 @@ describe('Glama inspection mode', () => {
           method: 'tools/call',
           params: { name: 'sites.list', arguments: {} },
         },
-        sessionId!,
       ),
       inspectionEnv,
     );

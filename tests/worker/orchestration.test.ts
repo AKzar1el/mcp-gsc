@@ -4,8 +4,9 @@ import { env } from 'cloudflare:workers';
 import { generateWeeklyDigest } from '../../src/digest';
 import { GoogleAccessTokenLifecycle } from '../../src/access-token-lifecycle';
 import {
+  createGscMcpServer,
   defaultHandler,
-  GscMcpAgent,
+  mcpApiHandler,
   type Env,
 } from '../../src/index';
 import {
@@ -30,6 +31,15 @@ function response(body: unknown, status = 200): Response {
 
 function requestUrl(input: RequestInfo | URL): string {
   return input instanceof Request ? input.url : input.toString();
+}
+
+async function readMcpJsonRpc(response: Response) {
+  const text = await response.text();
+  const dataLines = text
+    .split('\n')
+    .filter((line) => line.startsWith('data: '))
+    .map((line) => line.slice('data: '.length));
+  return JSON.parse(dataLines.length ? dataLines.join('') : text) as Record<string, unknown>;
 }
 
 function createPendingStateBinding() {
@@ -160,53 +170,102 @@ describe('Worker orchestration', () => {
     }
   });
 
-  it('registers the MCP tool catalog in the agent Durable Object and applies write annotations', async () => {
-    const stub = workerEnv.MCP_OBJECT.get(
-      workerEnv.MCP_OBJECT.idFromName('tool-registration'),
-    );
-
-    await runInDurableObject(stub, async (agent: GscMcpAgent) => {
-      await agent.updateProps({
-        google_id: 'tool-user',
-        email: 'tool@example.test',
-      });
-      await agent.init();
-
-      const tools = (agent.server as unknown as {
-        _registeredTools: Record<
-          string,
-          { annotations?: Record<string, boolean>; inputSchema?: unknown }
-        >;
-      })._registeredTools;
-
-      expect(Object.keys(tools)).toEqual(
-        expect.arrayContaining([
-          'analytics.query',
-          'reports.weekly_digest',
-          'sites.add',
-          'sites.delete',
-          'sitemaps.submit',
-          'sitemaps.delete',
-          'indexing.request',
-        ]),
-      );
-      expect(tools['analytics.query'].inputSchema).toBeDefined();
-      expect(tools['sites.add'].annotations).toMatchObject({
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: true,
-      });
-      expect(tools['sites.delete'].annotations).toMatchObject({
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: true,
-      });
-      expect(tools['indexing.request'].annotations).toMatchObject({
-        readOnlyHint: false,
-        destructiveHint: true,
-        idempotentHint: false,
-      });
+  it('registers the MCP tool catalog on a stateless server and applies write annotations', async () => {
+    const server = await createGscMcpServer(workerEnv, {
+      google_id: 'tool-user',
+      email: 'tool@example.test',
     });
+    const tools = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        { annotations?: Record<string, boolean>; inputSchema?: unknown }
+      >;
+    })._registeredTools;
+
+    expect(Object.keys(tools)).toEqual(
+      expect.arrayContaining([
+        'analytics.query',
+        'reports.weekly_digest',
+        'sites.add',
+        'sites.delete',
+        'sitemaps.submit',
+        'sitemaps.delete',
+        'indexing.request',
+      ]),
+    );
+    expect(tools['analytics.query'].inputSchema).toBeDefined();
+    expect(tools['sites.add'].annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+    });
+    expect(tools['sites.delete'].annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: true,
+    });
+    expect(tools['indexing.request'].annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+    });
+  });
+
+  it('propagates OAuth application props through the stateless MCP handler', async () => {
+    await saveUser(
+      workerEnv,
+      'handler-user',
+      'handler@example.test',
+      'handler-refresh-token',
+    );
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'handler-access-token', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites') {
+          return response({
+            siteEntry: [
+              { siteUrl: 'sc-domain:example.com', permissionLevel: 'siteOwner' },
+            ],
+          });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const result = await mcpApiHandler.fetch(
+        new Request('https://worker.example/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'MCP-Protocol-Version': '2025-06-18',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            method: 'tools/call',
+            params: { name: 'sites.list', arguments: {} },
+          }),
+        }),
+        workerEnv,
+        {
+          props: {
+            google_id: 'handler-user',
+            email: 'handler@example.test',
+          },
+        } as unknown as ExecutionContext,
+      );
+
+      expect(result.status).toBe(200);
+      const envelope = await readMcpJsonRpc(result);
+      expect(JSON.stringify(envelope)).toContain('sc-domain:example.com');
+      expect(JSON.stringify(envelope)).not.toContain('Not authenticated');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('uses the normal tool token cache and deletes a revoked stored credential', async () => {
@@ -222,57 +281,64 @@ describe('Worker orchestration', () => {
       'revoked@example.test',
       'revoked-refresh-token',
     );
-    const stub = workerEnv.MCP_OBJECT.get(
-      workerEnv.MCP_OBJECT.idFromName('token-lifecycle'),
-    );
-
-    await runInDurableObject(stub, async (agent: GscMcpAgent) => {
-      await agent.updateProps({
+    const lifecycle = new GoogleAccessTokenLifecycle(workerEnv);
+    const cachedServer = await createGscMcpServer(
+      workerEnv,
+      {
         google_id: 'cached-user',
         email: 'cached@example.test',
-      });
-      await agent.init();
-
-      const tools = (agent.server as unknown as {
+      },
+      lifecycle,
+    );
+    const cachedTools = (cachedServer as unknown as {
+      _registeredTools: Record<
+        string,
+        { handler: (args: Record<string, never>) => Promise<unknown> }
+      >;
+    })._registeredTools;
+    const revokedServer = await createGscMcpServer(
+      workerEnv,
+      {
+        google_id: 'revoked-user',
+        email: 'revoked@example.test',
+      },
+      lifecycle,
+    );
+    const revokedTools = (revokedServer as unknown as {
         _registeredTools: Record<
           string,
           { handler: (args: Record<string, never>) => Promise<unknown> }
         >;
-      })._registeredTools;
-      const originalFetch = globalThis.fetch;
-      let cachedRefreshes = 0;
-      try {
-        globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-          const url = requestUrl(input);
-          if (url === GOOGLE_TOKEN_URL) {
-            const body = String(init?.body ?? '');
-            if (body.includes('revoked-refresh-token')) {
-              return response({ error: 'invalid_grant' }, 400);
-            }
-            cachedRefreshes += 1;
-            return response({ access_token: 'cached-access-token', expires_in: 3600 });
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    let cachedRefreshes = 0;
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          const body = String(init?.body ?? '');
+          if (body.includes('revoked-refresh-token')) {
+            return response({ error: 'invalid_grant' }, 400);
           }
-          if (url === 'https://www.googleapis.com/webmasters/v3/sites') {
-            return response({ siteEntry: [] });
-          }
-          throw new Error(`Unexpected outbound request: ${url}`);
-        };
+          cachedRefreshes += 1;
+          return response({ access_token: 'cached-access-token', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites') {
+          return response({ siteEntry: [] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
 
-        await tools['sites.list'].handler({});
-        await tools['sites.list'].handler({});
-        expect(cachedRefreshes).toBe(1);
+      await cachedTools['sites.list'].handler({});
+      await cachedTools['sites.list'].handler({});
+      expect(cachedRefreshes).toBe(1);
 
-        await agent.updateProps({
-          google_id: 'revoked-user',
-          email: 'revoked@example.test',
-        });
-        await expect(tools['sites.list'].handler({})).rejects.toThrow(
-          'Google access revoked',
-        );
-      } finally {
-        globalThis.fetch = originalFetch;
-      }
-    });
+      await expect(revokedTools['sites.list'].handler({})).rejects.toThrow(
+        'Google access revoked',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
 
     expect(await getUser(workerEnv, 'revoked-user')).toBeNull();
     expect(await getUser(workerEnv, 'cached-user')).not.toBeNull();

@@ -155,7 +155,7 @@ Read-only deployments request `webmasters.readonly`, omit the Indexing API scope
 
 ## Step 6 — Apply migrations, deploy, and verify
 
-The Durable Object migrations declared in `wrangler.jsonc` are applied automatically when you deploy: `v1` creates `GscMcpAgent`; `v2` adds `PendingAuthState` for atomic OAuth-state consumption; and `v3` adds `ToolRateLimiter` for server-side per-user tool limits. The v2 and v3 migrations add new classes and do not modify existing agent or KV data. Deploy:
+The Durable Object migrations declared in `wrangler.jsonc` are applied automatically when you deploy: `v1` creates the historical `GscMcpAgent` class, `v2` adds `PendingAuthState` for atomic OAuth-state consumption, and `v3` adds `ToolRateLimiter` for server-side per-user tool limits. The MCP endpoint now uses Cloudflare's stateless MCP handler; `GscMcpAgent` remains as an unused compatibility shell so existing deployments can upgrade without a destructive Durable Object deletion migration. Do not remove or rename the existing binding/migration history. Deploy:
 
 ```bash
 npm run deploy
