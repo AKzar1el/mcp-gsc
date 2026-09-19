@@ -38,13 +38,7 @@ jobs:
             ([.. | strings | select(contains("REPLACE-ME"))] | length == 0) and
             (.name == $mcpName) and
             any(.remotes[]?; .type == "streamable-http" and .url == "https://mcp-gsc.digestseo.com/mcp") and
-            any(
-              .remotes[]?;
-              .type == "streamable-http" and
-              .url == "https://{mcp_gsc_worker_domain}/mcp" and
-              (.variables.mcp_gsc_worker_domain | type == "object") and
-              .variables.mcp_gsc_worker_domain.isRequired == true
-            ) and
+            all(.remotes[]?; (.url | contains("{") | not) and (.url | contains("}") | not)) and
             any(
               .packages[]?;
               .registryType == "npm" and
@@ -53,7 +47,7 @@ jobs:
               .transport.type == "stdio"
             )
           ' server.json > /dev/null; then
-            echo "::error file=server.json::server.json must expose the hosted endpoint, self-host template, and npm package matching package.json."
+            echo "::error file=server.json::server.json must expose only concrete remote URLs, including the hosted endpoint, plus the npm package matching package.json."
             exit 1
           fi
 
