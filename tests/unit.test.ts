@@ -29,6 +29,7 @@ import {
   refreshAccessToken,
   listSites,
   listSitemaps,
+  inspectUrlsSequentially,
   querySearchAnalytics,
   GoogleRefreshTokenRevokedError,
   GSC_ACCESS_REVOKED_MESSAGE,
@@ -406,6 +407,54 @@ test('listSites: empty account returns [] (not undefined)', async () => {
     () => listSites('at'),
   );
   assert.deepEqual(result, []);
+});
+
+test('inspectUrlsSequentially: preserves input order and returns per-URL failures', async () => {
+  const { result, calls } = await withMockFetch(
+    (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      if (body.inspectionUrl.endsWith('/bad')) {
+        return new Response('temporary failure', { status: 503 });
+      }
+      return json(200, {
+        inspectionResult: { indexStatusResult: { verdict: 'PASS' } },
+      });
+    },
+    () =>
+      inspectUrlsSequentially(
+        'at',
+        'https://example.com/',
+        ['https://example.com/good', 'https://example.com/bad'],
+        'en-US',
+      ),
+  );
+
+  assert.equal(calls.length, 2);
+  assert.deepEqual(result, [
+    {
+      inspectionUrl: 'https://example.com/good',
+      inspectionResult: { indexStatusResult: { verdict: 'PASS' } },
+    },
+    {
+      inspectionUrl: 'https://example.com/bad',
+      error: 'URL inspection failed: 503 temporary failure',
+    },
+  ]);
+});
+
+test('inspectUrlsSequentially: stops immediately when Google access is revoked', async () => {
+  await assert.rejects(
+    withMockFetch(
+      () => new Response('', { status: 401 }),
+      () =>
+        inspectUrlsSequentially(
+          'expired-token',
+          'https://example.com/',
+          ['https://example.com/a', 'https://example.com/b'],
+        ),
+    ),
+    new RegExp(GSC_ACCESS_REVOKED_MESSAGE.slice(0, 22)),
+  );
 });
 
 test('listSitemaps: percent-encodes the property URL in the path', async () => {

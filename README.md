@@ -64,7 +64,7 @@ It runs on [Cloudflare Workers](https://workers.cloudflare.com/) and ships with 
 
 ## Tools
 
-By default (`GSC_ACCESS_MODE=readwrite`), this server exposes 17 tools. Read-only analytics and reporting tools are marked with MCP's `readOnlyHint`; the write tools below can change Search Console properties, sitemaps, or indexing state. Set `GSC_ACCESS_MODE=readonly` to request only the Search Console read-only scope and expose the 12 read-only tools.
+By default (`GSC_ACCESS_MODE=readwrite`), this server exposes 18 tools. Read-only analytics and reporting tools are marked with MCP's `readOnlyHint`; the write tools below can change Search Console properties, sitemaps, or indexing state. Set `GSC_ACCESS_MODE=readonly` to request only the Search Console read-only scope and expose the 13 read-only tools.
 
 | Tool | Access | What it does |
 |---|---|---|
@@ -72,6 +72,7 @@ By default (`GSC_ACCESS_MODE=readwrite`), this server exposes 17 tools. Read-onl
 | **`sites.list`** | Read | List the Search Console properties the connected Google account can access (`siteUrl`, `permissionLevel`). |
 | **`analytics.query`** | Read | Impressions, clicks, CTR, and average position over a date range, with dimensions, filters, pagination, and selectable search type. |
 | **`urls.inspect`** | Read | Google's URL Inspection report for a single page. |
+| **`urls.inspect_many`** | Read | Inspect up to 10 URLs sequentially in one call. Each URL still consumes one Google URL Inspection request and one unit of the server's shared inspection safety budget. |
 | **`sitemaps.list`** / **`sitemaps.get`** | Read | List submitted sitemaps or retrieve one sitemap's details. |
 | **`insights.quick_wins`** / **`insights.cannibalization`** / **`insights.content_decay`** | Read | Surface optimization opportunities, competing pages, and declining content. |
 | **`indexing.list_pages`** / **`analytics.compare`** | Read | Analyze pages receiving impressions and compare two periods. |

@@ -293,6 +293,45 @@ export async function inspectUrl(
   return data.inspectionResult ?? null;
 }
 
+export interface UrlInspectionBatchResult {
+  inspectionUrl: string;
+  inspectionResult?: unknown;
+  error?: string;
+}
+
+export async function inspectUrlsSequentially(
+  accessToken: string,
+  siteUrl: string,
+  inspectionUrls: readonly string[],
+  languageCode?: string,
+): Promise<UrlInspectionBatchResult[]> {
+  const results: UrlInspectionBatchResult[] = [];
+
+  for (const inspectionUrl of inspectionUrls) {
+    try {
+      results.push({
+        inspectionUrl,
+        inspectionResult: await inspectUrl(
+          accessToken,
+          siteUrl,
+          inspectionUrl,
+          languageCode,
+        ),
+      });
+    } catch (error) {
+      if (error instanceof Error && error.message === GSC_ACCESS_REVOKED_MESSAGE) {
+        throw error;
+      }
+      results.push({
+        inspectionUrl,
+        error: error instanceof Error ? error.message : 'URL inspection failed.',
+      });
+    }
+  }
+
+  return results;
+}
+
 export interface SitemapEntry {
   path: string;
   lastSubmitted?: string | null;

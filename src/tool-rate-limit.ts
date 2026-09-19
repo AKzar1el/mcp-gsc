@@ -41,7 +41,7 @@ export const TOOL_RATE_LIMIT_POLICIES = {
   },
   url_inspection: {
     category: 'url-inspection',
-    tools: ['urls.inspect'],
+    tools: ['urls.inspect', 'urls.inspect_many'],
     // This is one percent of GSC's published 2,000
     // inspections-per-site-per-day quota for each user.
     windowMs: DAY_MS,
@@ -98,7 +98,11 @@ interface ToolRateLimiterEnv {
 }
 
 interface ToolRateLimiterStub {
-  take(userBucket: string, policy: ToolRateLimitPolicy): Promise<ToolRateLimitResult>;
+  take(
+    userBucket: string,
+    policy: ToolRateLimitPolicy,
+    units?: number,
+  ): Promise<ToolRateLimitResult>;
 }
 
 function currentWindow(
@@ -131,7 +135,11 @@ export class ToolRateLimiter {
   async take(
     userBucket: string,
     policy: ToolRateLimitPolicy,
+    units = 1,
   ): Promise<ToolRateLimitResult> {
+    if (!Number.isInteger(units) || units < 1) {
+      throw new Error('Rate-limit units must be a positive integer.');
+    }
     return this.state.storage.transaction(async (txn) => {
       const now = this.now();
       const userKey = `user:${userBucket}`;
@@ -148,9 +156,9 @@ export class ToolRateLimiter {
           policy.windowMs,
         );
 
-      const userExceeded = userWindow.count >= policy.userLimit;
+      const userExceeded = userWindow.count + units > policy.userLimit;
       const projectExceeded = projectWindow !== undefined
-        && projectWindow.count >= policy.projectLimit!;
+        && projectWindow.count + units > policy.projectLimit!;
       if (userExceeded || projectExceeded) {
         const waits = [
           ...(userExceeded
@@ -168,11 +176,11 @@ export class ToolRateLimiter {
         };
       }
 
-      await txn.put(userKey, { ...userWindow, count: userWindow.count + 1 });
+      await txn.put(userKey, { ...userWindow, count: userWindow.count + units });
       if (projectWindow) {
         await txn.put('project', {
           ...projectWindow,
-          count: projectWindow.count + 1,
+          count: projectWindow.count + units,
         });
       }
       return { allowed: true };
@@ -211,10 +219,11 @@ export async function enforceToolRateLimit(
   env: ToolRateLimiterEnv,
   googleId: string,
   toolName: string,
+  units = 1,
 ): Promise<ToolRateLimitResult> {
   const policy = getToolRateLimitPolicy(toolName);
   if (!policy) return { allowed: true };
 
   const userBucket = await userBucketFor(googleId);
-  return getToolRateLimiterStub(env, policy, userBucket).take(userBucket, policy);
+  return getToolRateLimiterStub(env, policy, userBucket).take(userBucket, policy, units);
 }
