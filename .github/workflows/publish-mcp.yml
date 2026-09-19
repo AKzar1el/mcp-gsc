@@ -13,7 +13,6 @@ on:
       - main
     paths:
       - server.json
-      - .github/workflows/publish-mcp.yml
 
 env:
   MCP_PUBLISHER_VERSION: v1.8.1
@@ -28,6 +27,24 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Require a new Registry version for server.json changes
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if git diff --quiet "$BASE_SHA" -- server.json; then
+            exit 0
+          fi
+
+          BASE_VERSION=$(git show "$BASE_SHA:server.json" | jq -r '.version')
+          CURRENT_VERSION=$(jq -r '.version' server.json)
+          if [ "$CURRENT_VERSION" = "$BASE_VERSION" ]; then
+            echo "::error file=server.json::server.json changed but Registry version stayed at $CURRENT_VERSION. Bump the independent Registry document version before merge."
+            exit 1
+          fi
 
       - name: Validate published install paths
         run: |
