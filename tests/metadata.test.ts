@@ -52,6 +52,22 @@ test('registry package identity remains aligned', () => {
   );
 });
 
+test('registry remotes are concrete monitorable endpoints', () => {
+  const remoteUrls = serverJson.remotes.map((entry: { url: string }) => entry.url);
+
+  assert.ok(
+    remoteUrls.includes('https://mcp-gsc.digestseo.com/mcp'),
+    'server.json must publish the owner-operated hosted MCP endpoint',
+  );
+  for (const url of remoteUrls) {
+    assert.doesNotMatch(
+      url,
+      /[{}]/,
+      'server.json remotes must be concrete endpoints; self-host templates belong in setup docs',
+    );
+  }
+});
+
 test('published tool catalogs remain aligned', () => {
   const serverToolNames = sortedToolNames(serverJson, 'server.json');
 
