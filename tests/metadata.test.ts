@@ -23,10 +23,9 @@ const manifestJson = readJson('manifest.json');
 const claudePlugin = readJson('.claude-plugin/plugin.json');
 const cursorPlugin = readJson('.cursor-plugin/plugin.json');
 
-test('release versions remain aligned across machine-readable metadata', () => {
+test('package release versions remain aligned across machine-readable metadata', () => {
   const expectedVersion = packageJson.version;
 
-  assert.equal(serverJson.version, expectedVersion, 'server.json version must match package.json');
   assert.equal(manifestJson.version, expectedVersion, 'manifest.json version must match package.json');
   assert.equal(claudePlugin.version, expectedVersion, 'Claude plugin version must match package.json');
   assert.equal(cursorPlugin.version, expectedVersion, 'Cursor plugin version must match package.json');
@@ -37,6 +36,18 @@ test('registry package identity remains aligned', () => {
     serverJson.name,
     packageJson.mcpName,
     'server.json name must match package.json mcpName',
+  );
+
+  const npmPackage = serverJson.packages.find(
+    (entry: { registryType?: string; identifier?: string }) =>
+      entry.registryType === 'npm' && entry.identifier === packageJson.name,
+  );
+
+  assert.ok(npmPackage, 'server.json must publish the package.json npm package');
+  assert.equal(
+    npmPackage.version,
+    packageJson.version,
+    'server.json npm package version must match package.json',
   );
 });
 
