@@ -420,6 +420,24 @@ test('listSitemaps: percent-encodes the property URL in the path', async () => {
   );
 });
 
+test('listSitemaps: forwards an optional sitemap index filter', async () => {
+  const { calls } = await withMockFetch(
+    () => json(200, { sitemap: [] }),
+    () =>
+      listSitemaps(
+        'at',
+        'https://example.com/',
+        'https://example.com/sitemap-index.xml',
+      ),
+  );
+  assert.equal(calls.length, 1);
+  const url = new URL(calls[0].url);
+  assert.equal(
+    url.searchParams.get('sitemapIndex'),
+    'https://example.com/sitemap-index.xml',
+  );
+});
+
 test('listSitemaps: omits Google\'s deprecated indexed count', async () => {
   const { result } = await withMockFetch(
     () =>

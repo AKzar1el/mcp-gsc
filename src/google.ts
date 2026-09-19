@@ -318,10 +318,14 @@ function normalizeSitemap(entry: SitemapEntry): SitemapEntry {
 export async function listSitemaps(
   accessToken: string,
   siteUrl: string,
+  sitemapIndex?: string,
 ): Promise<SitemapEntry[]> {
   const encoded = encodeURIComponent(siteUrl);
+  const query = sitemapIndex
+    ? `?sitemapIndex=${encodeURIComponent(sitemapIndex)}`
+    : '';
   const resp = await fetch(
-    `https://www.googleapis.com/webmasters/v3/sites/${encoded}/sitemaps`,
+    `https://www.googleapis.com/webmasters/v3/sites/${encoded}/sitemaps${query}`,
     {
       headers: { authorization: `Bearer ${accessToken}` },
     },
