@@ -591,6 +591,8 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           '- CTR in the response is a 0–1 fraction. Multiply by 100 for percent.',
           '- Use search_type to query image/video/news/discover indexes',
           '  separately from web.',
+          '- For hourly breakdowns, include "hour" in dimensions and set',
+          '  data_state to "hourly_all". Hourly data is preliminary.',
           '- Use dimension_filter_groups to filter by country, device, query',
           '  content, page URL, or search feature. includingRegex and',
           '  excludingRegex use RE2 syntax. For brand vs non-brand splits,',
@@ -613,6 +615,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
                 'country',
                 'device',
                 'date',
+                'hour',
                 'searchAppearance',
               ]),
             )
@@ -638,10 +641,10 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
               'Zero-based row offset for pagination. When a response contains next_start_row, pass it here to fetch the next page.',
             ),
           data_state: z
-            .enum(['all', 'final'])
+            .enum(['all', 'final', 'hourly_all'])
             .default('all')
             .describe(
-              "'all' includes fresh (preliminary) data and matches the GSC dashboard; 'final' returns only finalized data.",
+              "'all' includes fresh (preliminary) data and matches the GSC dashboard; 'final' returns only finalized data; 'hourly_all' returns hourly preliminary data and should be paired with the 'hour' dimension.",
             ),
           search_type: z
             .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])

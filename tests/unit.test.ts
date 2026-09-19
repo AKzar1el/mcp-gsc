@@ -471,6 +471,24 @@ test('querySearchAnalytics: sends the query body including startRow and returns 
   assert.equal(body.startDate, '2026-05-01');
 });
 
+test('querySearchAnalytics: forwards hourly Search Analytics parameters', async () => {
+  const { calls } = await withMockFetch(
+    () => json(200, { rows: [] }),
+    () =>
+      querySearchAnalytics('at', 'https://example.com/', {
+        startDate: '2026-05-31',
+        endDate: '2026-05-31',
+        dimensions: ['hour'],
+        rowLimit: 100,
+        dataState: 'hourly_all',
+      }),
+  );
+
+  const body = JSON.parse(String(calls[0].init?.body));
+  assert.deepEqual(body.dimensions, ['hour']);
+  assert.equal(body.dataState, 'hourly_all');
+});
+
 test('querySearchAnalytics: missing rows field returns an empty rows array (no data, not an error)', async () => {
   const { result } = await withMockFetch(
     () => json(200, {}),
