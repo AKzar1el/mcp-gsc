@@ -541,17 +541,24 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       {
         title: 'List submitted sitemaps',
         description:
-          'List all sitemaps submitted for a Search Console property. Returns sitemap URLs, last submitted/downloaded dates, submitted URL counts, warning and error counts, and sitemap status. Google\'s deprecated sitemap indexed count is intentionally omitted. Use this when the user asks about sitemap health, submission status, or wants to audit which sitemaps are working.',
+          'List sitemaps submitted for a Search Console property. Optionally filter to entries included by one sitemap index. Returns sitemap URLs, last submitted/downloaded dates, submitted URL counts, warning and error counts, and sitemap status. Google\'s deprecated sitemap indexed count is intentionally omitted. Use this when the user asks about sitemap health, submission status, wants to audit which sitemaps are working, or needs the child sitemaps belonging to a specific sitemap index.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          sitemap_index: z
+            .string()
+            .url()
+            .optional()
+            .describe(
+              'Optional sitemap index URL. When supplied, Google returns sitemap entries included in that index.',
+            ),
         },
         outputSchema: SITEMAPS_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url }) => {
+      async ({ site_url, sitemap_index }) => {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
-        const sitemaps = await listSitemaps(accessToken, site_url);
+        const sitemaps = await listSitemaps(accessToken, site_url, sitemap_index);
         return toolResponse(JSON.stringify(sitemaps, null, 2), { sitemaps });
       },
     );
