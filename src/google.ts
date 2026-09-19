@@ -158,6 +158,7 @@ export type SearchDimension =
   | 'country'
   | 'device'
   | 'date'
+  | 'hour'
   | 'searchAppearance';
 
 export type SearchType =
@@ -170,7 +171,7 @@ export type SearchType =
 
 export type AggregationType = 'auto' | 'byPage' | 'byProperty';
 
-export type DataState = 'all' | 'final';
+export type DataState = 'all' | 'final' | 'hourly_all';
 
 export type FilterDimension =
   | 'query'
