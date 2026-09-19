@@ -76,12 +76,12 @@
     "@cloudflare/workers-oauth-provider": "^0.8.1",
     "@modelcontextprotocol/server": "2.0.0",
     "agents": "^0.24.0",
-    "wrangler": "^4.93.0",
+    "wrangler": "^4.135.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
-    "@cloudflare/workers-types": "^4.20260520.1",
+    "@cloudflare/workers-types": "^5.20260919.1",
     "tsx": "^4.20.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.11"
