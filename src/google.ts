@@ -169,7 +169,11 @@ export type SearchType =
   | 'discover'
   | 'googleNews';
 
-export type AggregationType = 'auto' | 'byPage' | 'byProperty';
+export type AggregationType =
+  | 'auto'
+  | 'byNewsShowcasePanel'
+  | 'byPage'
+  | 'byProperty';
 
 export type DataState = 'all' | 'final' | 'hourly_all';
 
