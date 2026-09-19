@@ -10,6 +10,7 @@ import {
   GoogleRefreshTokenRevokedError,
   GSC_ACCESS_REVOKED_MESSAGE,
   inspectUrl,
+  inspectUrlsSequentially,
   listSitemaps,
   listSites,
   querySearchAnalytics,
@@ -150,6 +151,19 @@ const SITES_OUTPUT_SCHEMA = {
 
 const INSPECTION_OUTPUT_SCHEMA = {
   inspection_result: z.unknown(),
+};
+
+const INSPECTION_BATCH_OUTPUT_SCHEMA = {
+  requested_count: z.number().int().positive(),
+  succeeded_count: z.number().int().nonnegative(),
+  failed_count: z.number().int().nonnegative(),
+  results: z.array(
+    z.object({
+      inspection_url: z.string(),
+      inspection_result: z.unknown().optional(),
+      error: z.string().optional(),
+    }),
+  ),
 };
 
 const SITEMAPS_OUTPUT_SCHEMA = {
@@ -339,6 +353,11 @@ const TOOL_CATALOG = [
       "Inspect a single URL's index status in Google: indexed state, last crawl, mobile usability, and rich-results eligibility.",
   },
   {
+    name: 'urls.inspect_many',
+    description:
+      'Inspect up to 10 URLs sequentially in one MCP call while charging the same URL Inspection safety budget per URL.',
+  },
+  {
     name: 'sitemaps.list',
     description:
       'List all sitemaps submitted for a property, with submission/processing status, submitted URL counts, and warning/error counts. Google\'s deprecated sitemap indexed count is intentionally omitted.',
@@ -416,8 +435,12 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
     return googleId;
   }
 
-  private async rateLimitError(googleId: string, toolName: RateLimitedToolName) {
-    const result = await enforceToolRateLimit(this.env, googleId, toolName);
+  private async rateLimitError(
+    googleId: string,
+    toolName: RateLimitedToolName,
+    units = 1,
+  ) {
+    const result = await enforceToolRateLimit(this.env, googleId, toolName, units);
     if (result.allowed) return null;
 
     const retryAfterSeconds = Math.max(
@@ -533,6 +556,67 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         return toolResponse(JSON.stringify(result, null, 2), {
           inspection_result: result,
         });
+      },
+    );
+
+    this.server.registerTool(
+      'urls.inspect_many',
+      {
+        title: 'Inspect multiple URLs',
+        description: `Inspect up to 10 URLs from one Search Console property in a single MCP call. Google still processes one URL Inspection request per URL, so every requested URL consumes one quota unit and one unit of this server's shared URL-inspection safety budget. Requests are sent sequentially to avoid unnecessary bursts. Use this for a small group of important, recently changed, or debugging-target URLs; do not use it to crawl an entire site.`,
+        inputSchema: {
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          inspection_urls: z
+            .array(z.string().url())
+            .min(1)
+            .max(10)
+            .describe(
+              'Between 1 and 10 fully-qualified URLs to inspect. Each URL must belong to the site_url property.',
+            ),
+          language_code: z
+            .string()
+            .default('en-US')
+            .describe(
+              "BCP-47 language code for translatable strings in the results, e.g. 'en-US' or 'de-DE'.",
+            ),
+        },
+        outputSchema: INSPECTION_BATCH_OUTPUT_SCHEMA,
+        annotations: READ_ONLY_ANNOTATIONS,
+      },
+      async ({ site_url, inspection_urls, language_code }) => {
+        const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(
+          googleId,
+          'urls.inspect_many',
+          inspection_urls.length,
+        );
+        if (rateLimitError) return rateLimitError;
+
+        const accessToken = await this.getAccessToken(googleId);
+        const batchResults = await inspectUrlsSequentially(
+          accessToken,
+          site_url,
+          inspection_urls,
+          language_code,
+        );
+        const results = batchResults.map((result) => ({
+          inspection_url: result.inspectionUrl,
+          ...(result.inspectionResult !== undefined
+            ? { inspection_result: result.inspectionResult }
+            : {}),
+          ...(result.error !== undefined ? { error: result.error } : {}),
+        }));
+
+        const succeededCount = results.filter(
+          (result) => result.inspection_result !== undefined,
+        ).length;
+        const payload = {
+          requested_count: inspection_urls.length,
+          succeeded_count: succeededCount,
+          failed_count: results.length - succeededCount,
+          results,
+        };
+        return toolResponse(JSON.stringify(payload, null, 2), payload);
       },
     );
 

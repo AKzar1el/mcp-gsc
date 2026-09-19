@@ -168,6 +168,7 @@ test(
       'sites.list',
       'analytics.query',
       'urls.inspect',
+      'urls.inspect_many',
       'sitemaps.list',
       'reports.weekly_digest',
       'server.capabilities',

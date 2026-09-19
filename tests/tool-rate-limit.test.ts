@@ -75,7 +75,7 @@ test('tool rate-limit policy table assigns the documented categories and limits'
     },
     {
       category: 'url-inspection',
-      tools: ['urls.inspect'],
+      tools: ['urls.inspect', 'urls.inspect_many'],
       windowMs: 24 * 60 * 60 * 1000,
       userLimit: 20,
       projectLimit: undefined,
@@ -114,6 +114,22 @@ test('ToolRateLimiter allows calls through the configured boundary then rejects 
   assert.deepEqual(await limiter.take('user-a', TEST_POLICY), { allowed: true });
   assert.deepEqual(await limiter.take('user-a', TEST_POLICY), { allowed: true });
   assert.deepEqual(await limiter.take('user-a', TEST_POLICY), {
+    allowed: false,
+    retry_after_ms: 1_000,
+  });
+});
+
+test('ToolRateLimiter reserves weighted units atomically', async () => {
+  const limiter = createLimiter(() => 1_000);
+  const policy: ToolRateLimitPolicy = { ...TEST_POLICY, userLimit: 10 };
+
+  assert.deepEqual(await limiter.take('user-a', policy, 7), { allowed: true });
+  assert.deepEqual(await limiter.take('user-a', policy, 4), {
+    allowed: false,
+    retry_after_ms: 1_000,
+  });
+  assert.deepEqual(await limiter.take('user-a', policy, 3), { allowed: true });
+  assert.deepEqual(await limiter.take('user-a', policy), {
     allowed: false,
     retry_after_ms: 1_000,
   });

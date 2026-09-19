@@ -21,6 +21,10 @@
       "description": "Google's URL Inspection report for a single page: index status, last crawl, mobile usability."
     },
     {
+      "name": "urls.inspect_many",
+      "description": "Inspect up to 10 URLs sequentially while preserving one URL Inspection quota unit per URL."
+    },
+    {
       "name": "sitemaps.list",
       "description": "All sitemaps submitted for a property, with status and warning/error counts."
     },
