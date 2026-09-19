@@ -37,7 +37,7 @@
     },
     {
       "name": "urls.inspect",
-      "description": "Google's URL Inspection report for a single page: index status, last crawl, mobile usability, rich-results eligibility, AMP."
+      "description": "Google's URL Inspection report for a single page: index status, last crawl, mobile usability, rich-results eligibility, AMP. Use urls.inspect_many for 2-10 URLs."
     },
     {
       "name": "urls.inspect_many",

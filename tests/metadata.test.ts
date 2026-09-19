@@ -22,6 +22,7 @@ const serverJson = readJson('server.json');
 const manifestJson = readJson('manifest.json');
 const claudePlugin = readJson('.claude-plugin/plugin.json');
 const cursorPlugin = readJson('.cursor-plugin/plugin.json');
+const indexSource = readFileSync(resolve(projectRoot, 'src/index.ts'), 'utf8');
 
 test('package release versions remain aligned across machine-readable metadata', () => {
   const expectedVersion = packageJson.version;
@@ -58,5 +59,18 @@ test('published tool catalogs remain aligned', () => {
     sortedToolNames(manifestJson, 'manifest.json'),
     serverToolNames,
     'manifest.json tools must match server.json tools',
+  );
+});
+
+test('URL inspection guidance routes bounded multi-URL work to the batch tool', () => {
+  assert.doesNotMatch(
+    indexSource,
+    /there is no batch endpoint/i,
+    'single-URL inspection guidance must not claim the batch tool is unavailable',
+  );
+  assert.match(
+    indexSource,
+    /For a bounded group of 2-10 URLs, prefer urls\.inspect_many/,
+    'runtime tool guidance must route bounded multi-URL work to urls.inspect_many',
   );
 });

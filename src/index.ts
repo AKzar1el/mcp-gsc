@@ -350,7 +350,7 @@ const TOOL_CATALOG = [
   {
     name: 'urls.inspect',
     description:
-      "Inspect a single URL's index status in Google: indexed state, last crawl, mobile usability, and rich-results eligibility.",
+      "Inspect a single URL's index status in Google: indexed state, last crawl, mobile usability, and rich-results eligibility. Use urls.inspect_many for 2-10 URLs.",
   },
   {
     name: 'urls.inspect_many',
@@ -524,7 +524,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
       'urls.inspect',
       {
         title: 'Inspect URL index status',
-        description: `Inspect a single URL's index status in Google. Returns: whether the URL is indexed, last crawl date, indexing state, mobile usability, rich-results eligibility, and any AMP results. Use this when the user asks 'is X indexed?', 'why isn't X showing in Google?', or wants a deep look at one specific page. For bulk checks across many URLs, call this tool repeatedly — there is no batch endpoint — but note Google caps URL inspection at roughly 2,000 calls per property per day.`,
+        description: `Inspect a single URL's index status in Google. Returns: whether the URL is indexed, last crawl date, indexing state, mobile usability, rich-results eligibility, and any AMP results. Use this when the user asks 'is X indexed?', 'why isn't X showing in Google?', or wants a deep look at one specific page. For a bounded group of 2-10 URLs, prefer urls.inspect_many; Google still processes one URL Inspection request per URL and applies the same quota semantics.`,
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           inspection_url: z
