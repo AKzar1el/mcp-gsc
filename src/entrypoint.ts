@@ -1,4 +1,4 @@
-import authenticatedWorker, { GscMcpAgent, type Env } from './index';
+import authenticatedWorker, { mcpApiHandler, type Env } from './index';
 
 export { GscMcpAgent, PendingAuthState, ToolRateLimiter } from './index';
 
@@ -14,9 +14,7 @@ type WorkerHandler = {
   ): Response | Promise<Response>;
 };
 
-const inspectionWorker = GscMcpAgent.serve('/mcp', {
-  transport: 'auto',
-}) as unknown as WorkerHandler;
+const inspectionWorker = mcpApiHandler as WorkerHandler;
 
 const oauthWorker = authenticatedWorker as unknown as WorkerHandler;
 

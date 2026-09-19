@@ -55,7 +55,7 @@ Edit `wrangler.jsonc` and replace the two placeholder ids with the ids from Step
 ]
 ```
 
-Change **only** those two ids. Do not rename the `OAUTH_KV`/`USER_KV` bindings, the Durable Object bindings `MCP_OBJECT` with class `GscMcpAgent` or `PENDING_AUTH_STATE` with class `PendingAuthState`, or the migrations (`v1` for `GscMcpAgent` and `v2` for `PendingAuthState`) — the code depends on these exact names, and the migrations are applied automatically on first deploy.
+Change **only** those two ids. Do not rename the `OAUTH_KV`/`USER_KV` bindings, the Durable Object bindings `MCP_OBJECT` with class `GscMcpAgent` or `PENDING_AUTH_STATE` with class `PendingAuthState`, or the migrations (`v1` for `GscMcpAgent` and `v2` for `PendingAuthState`). The MCP endpoint itself is stateless; `GscMcpAgent` is retained as a compatibility shell so existing deployments do not need a destructive Durable Object migration. The remaining bindings are used by OAuth state and tool-rate-limit coordination.
 
 ## Step 4 — First deploy (to learn the Worker URL)
 

@@ -57,7 +57,7 @@ const skipReason = MCP_ACCESS_TOKEN
   ? false
   : 'MCP_ACCESS_TOKEN not set; skipping authenticated checks';
 
-async function mcpInitSession() {
+async function mcpInitialize() {
   const resp = await fetch(`${MCP_BASE_URL}/mcp`, {
     method: 'POST',
     headers: {
@@ -77,10 +77,15 @@ async function mcpInitSession() {
       },
     }),
   });
-  return resp.headers.get('mcp-session-id') || '';
+  assert.equal(resp.status, 200);
+  assert.equal(
+    resp.headers.get('mcp-session-id'),
+    null,
+    'stateless MCP endpoint unexpectedly created a session',
+  );
 }
 
-async function mcpCall(sessionId, body) {
+async function mcpCall(body) {
   const resp = await fetch(`${MCP_BASE_URL}/mcp`, {
     method: 'POST',
     headers: {
@@ -88,7 +93,6 @@ async function mcpCall(sessionId, body) {
       'Content-Type': 'application/json',
       Accept: 'application/json, text/event-stream',
       'MCP-Protocol-Version': '2025-06-18',
-      'Mcp-Session-Id': sessionId,
     },
     body: JSON.stringify(body),
   });
@@ -154,9 +158,8 @@ test(
   'CHECK 5: tools/list contains all expected tool names',
   { skip: skipReason },
   async () => {
-    const session = await mcpInitSession();
-    assert.ok(session, 'no Mcp-Session-Id returned from initialize');
-    const env = await mcpCall(session, {
+    await mcpInitialize();
+    const env = await mcpCall({
       jsonrpc: '2.0',
       id: 2,
       method: 'tools/list',
@@ -189,9 +192,8 @@ test(
   'CHECK 6: sites.list returns a JSON array',
   { skip: skipReason },
   async () => {
-    const session = await mcpInitSession();
-    assert.ok(session, 'no Mcp-Session-Id returned from initialize');
-    const env = await mcpCall(session, {
+    await mcpInitialize();
+    const env = await mcpCall({
       jsonrpc: '2.0',
       id: 3,
       method: 'tools/call',

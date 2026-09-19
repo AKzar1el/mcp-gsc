@@ -1,6 +1,7 @@
 import { OAuthProvider } from '@cloudflare/workers-oauth-provider';
-import { McpAgent } from 'agents/mcp';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { DurableObject } from 'cloudflare:workers';
+import { createMcpHandler, getMcpAuthContext } from 'agents/mcp/server';
+import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import pkg from '../package.json';
 import {
@@ -73,7 +74,7 @@ export interface Env {
   GSC_ACCESS_MODE?: string;
 }
 
-interface AgentProps extends Record<string, unknown> {
+export interface AgentProps extends Record<string, unknown> {
   google_id: string;
   email: string;
 }
@@ -419,13 +420,17 @@ const TOOL_CATALOG = [
   },
 ] as const;
 
-export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
+class GscMcpRuntime {
   server = new McpServer({
     name: SERVER_NAME,
     version: SERVER_VERSION,
   });
 
-  private accessTokens?: GoogleAccessTokenLifecycle;
+  constructor(
+    private readonly env: Env,
+    private readonly props?: AgentProps,
+    private readonly accessTokens = getSharedAccessTokenLifecycle(env),
+  ) {}
 
   private requireGoogleId(): string {
     const googleId = this.props?.google_id;
@@ -457,7 +462,6 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
   }
 
   private getAccessTokenLifecycle(): GoogleAccessTokenLifecycle {
-    this.accessTokens ??= new GoogleAccessTokenLifecycle(this.env);
     return this.accessTokens;
   }
 
@@ -955,7 +959,7 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
         title: 'Identify SEO Quick Wins',
         description: 'Find search queries with at least the requested impressions that rank in a configurable striking-distance position range (8-20 by default). Returns clicks, impressions, CTR, and average position; CTR is context, not an eligibility filter. Pagination metadata flags when the local 100,000-row safety ceiling stopped fetching; a false flag does not guarantee Search Console returned every underlying row.',
         inputSchema: createQuickWinsInputSchema(SITE_URL_DESCRIPTION),
-        outputSchema: QUICK_WIN_OUTPUT_SCHEMA,
+        outputSchema: z.object(QUICK_WIN_OUTPUT_SCHEMA),
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url, start_date, end_date, min_impressions, min_position, max_position }) => {
@@ -1250,6 +1254,54 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
   }
 }
 
+let sharedAccessTokens: GoogleAccessTokenLifecycle | undefined;
+
+function getSharedAccessTokenLifecycle(env: Env): GoogleAccessTokenLifecycle {
+  sharedAccessTokens ??= new GoogleAccessTokenLifecycle(env);
+  return sharedAccessTokens;
+}
+
+function currentAgentProps(): AgentProps | undefined {
+  const props = getMcpAuthContext()?.props;
+  if (!props) return undefined;
+  if (typeof props.google_id !== 'string' || typeof props.email !== 'string') {
+    return undefined;
+  }
+  return { google_id: props.google_id, email: props.email };
+}
+
+export async function createGscMcpServer(
+  env: Env,
+  props: AgentProps | undefined = currentAgentProps(),
+  accessTokens = getSharedAccessTokenLifecycle(env),
+): Promise<McpServer> {
+  const runtime = new GscMcpRuntime(env, props, accessTokens);
+  await runtime.init();
+  return runtime.server;
+}
+
+export const mcpApiHandler = {
+  fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const handler = createMcpHandler(() => createGscMcpServer(env), {
+      route: '/mcp',
+    });
+    return handler(request, env, ctx);
+  },
+};
+
+/**
+ * Compatibility shell for the existing Durable Object binding. The MCP
+ * transport no longer routes through this class, but retaining the class and
+ * binding avoids a destructive Durable Object deletion migration.
+ */
+export class GscMcpAgent extends DurableObject<Env> {
+  fetch(): Response {
+    return new Response('Legacy MCP transport is no longer routed here.', {
+      status: 410,
+    });
+  }
+}
+
 function googleRedirectUri(request: Request): string {
   return new URL('/google/callback', request.url).toString();
 }
@@ -1413,7 +1465,7 @@ export const defaultHandler = {
 
 export default new OAuthProvider({
   apiHandlers: {
-    '/mcp': GscMcpAgent.serve('/mcp', { transport: 'auto' }),
+    '/mcp': mcpApiHandler,
   },
   defaultHandler: defaultHandler as any,
   authorizeEndpoint: '/authorize',
