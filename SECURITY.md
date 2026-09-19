@@ -18,7 +18,7 @@ its users. The full data inventory:
 | Pending OAuth state | Durable Object storage (`PendingAuthState`) | Stored per nonce; consumed through a strongly consistent transaction so exactly one callback succeeds; expires after 10 minutes. |
 | Tool rate-limit state | Durable Object storage (`ToolRateLimiter`) | Stores a SHA-256-derived user bucket plus counter/window state; never stores tool arguments, URLs, tokens, or response data. |
 | MCP client tokens | Workers KV (`OAUTH_KV`) | Managed by [`@cloudflare/workers-oauth-provider`](https://github.com/cloudflare/workers-oauth-provider). |
-| Google **access tokens** | In-memory only (Durable Object) | Never written to storage; expire within an hour. |
+| Google **access tokens** | Worker isolate memory only | Cached per Google user id by `GoogleAccessTokenLifecycle`; never written to storage and discarded with the isolate. Tokens expire within an hour. |
 
 Notes:
 
@@ -42,6 +42,9 @@ Notes:
   are read from Worker secrets / `.dev.vars`, never from the repository.
 - When Google reports a refresh token as revoked (`invalid_grant`), the stored
   user record is deleted immediately.
+- MCP requests use Cloudflare's stateless MCP handler. The historical
+  `GscMcpAgent` Durable Object remains only as an unrouted compatibility shell;
+  it does not hold Google access-token cache state.
 - Search Console data is fetched on demand and returned to the MCP client;
   it is never persisted by this server.
 
