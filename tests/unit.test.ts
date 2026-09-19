@@ -507,6 +507,49 @@ test('querySearchAnalytics: forwards hourly Search Analytics parameters', async 
   assert.equal(body.dataState, 'hourly_all');
 });
 
+test('querySearchAnalytics: forwards News Showcase panel aggregation parameters', async () => {
+  const { calls } = await withMockFetch(
+    () => json(200, { rows: [] }),
+    () =>
+      querySearchAnalytics('at', 'https://example.com/', {
+        startDate: '2026-05-01',
+        endDate: '2026-05-31',
+        dimensions: ['query'],
+        rowLimit: 100,
+        type: 'googleNews',
+        aggregationType: 'byNewsShowcasePanel',
+        dimensionFilterGroups: [
+          {
+            groupType: 'and',
+            filters: [
+              {
+                dimension: 'searchAppearance',
+                operator: 'equals',
+                expression: 'NEWS_SHOWCASE',
+              },
+            ],
+          },
+        ],
+      }),
+  );
+
+  const body = JSON.parse(String(calls[0].init?.body));
+  assert.equal(body.type, 'googleNews');
+  assert.equal(body.aggregationType, 'byNewsShowcasePanel');
+  assert.deepEqual(body.dimensionFilterGroups, [
+    {
+      groupType: 'and',
+      filters: [
+        {
+          dimension: 'searchAppearance',
+          operator: 'equals',
+          expression: 'NEWS_SHOWCASE',
+        },
+      ],
+    },
+  ]);
+});
+
 test('querySearchAnalytics: missing rows field returns an empty rows array (no data, not an error)', async () => {
   const { result } = await withMockFetch(
     () => json(200, {}),

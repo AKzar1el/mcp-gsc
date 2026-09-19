@@ -598,6 +598,11 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
           '- CTR in the response is a 0–1 fraction. Multiply by 100 for percent.',
           '- Use search_type to query image/video/news/discover indexes',
           '  separately from web.',
+          '- News Showcase panel reporting: set aggregation_type to',
+          '  "byNewsShowcasePanel", use search_type "discover" or',
+          '  "googleNews", and include a searchAppearance equals',
+          '  "NEWS_SHOWCASE" filter. Do not group/filter by page or add',
+          '  another searchAppearance filter for that aggregation mode.',
           '- For hourly breakdowns, include "hour" in dimensions and set',
           '  data_state to "hourly_all". Hourly data is preliminary.',
           '- Use dimension_filter_groups to filter by country, device, query',
@@ -658,10 +663,10 @@ export class GscMcpAgent extends McpAgent<Env, unknown, AgentProps> {
             .default('web')
             .describe('Which search index to query. Defaults to web.'),
           aggregation_type: z
-            .enum(['auto', 'byPage', 'byProperty'])
+            .enum(['auto', 'byNewsShowcasePanel', 'byPage', 'byProperty'])
             .default('auto')
             .describe(
-              "How Google aggregates metrics. Leave as 'auto' unless you specifically need byPage or byProperty semantics.",
+              "How Google aggregates metrics. Leave as 'auto' unless specific semantics are needed. 'byNewsShowcasePanel' requires search_type discover/googleNews plus a searchAppearance equals NEWS_SHOWCASE filter, and cannot be combined with page grouping/filtering or another searchAppearance filter.",
             ),
           dimension_filter_groups: z
             .array(
