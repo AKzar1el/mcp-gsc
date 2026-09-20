@@ -47,6 +47,65 @@ function createLifecycle(
   };
 }
 
+function installDigestAnalyticsMock(
+  currentQueryRows: Array<{
+    keys: string[];
+    clicks: number;
+    impressions: number;
+    ctr: number;
+    position: number;
+  }>,
+): () => void {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    const body = JSON.parse(String(init?.body)) as {
+      startDate: string;
+      dimensions?: string[];
+    };
+    const currentPeriod = body.startDate === '2026-08-04';
+    const dimension = body.dimensions?.[0];
+
+    let rows: Array<{
+      keys: string[];
+      clicks: number;
+      impressions: number;
+      ctr: number;
+      position: number;
+    }> = [];
+    if (!dimension) {
+      rows = [
+        {
+          keys: [],
+          clicks: 0,
+          impressions: currentPeriod ? 40 : 10,
+          ctr: 0,
+          position: currentPeriod ? 8 : 9,
+        },
+      ];
+    } else if (dimension === 'query' && currentPeriod) {
+      rows = currentQueryRows;
+    } else if (dimension === 'page' && currentPeriod) {
+      rows = [
+        {
+          keys: ['https://example.com/page'],
+          clicks: 0,
+          impressions: 40,
+          ctr: 0,
+          position: 8,
+        },
+      ];
+    }
+
+    return new Response(JSON.stringify({ rows }), {
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+
+  return () => {
+    globalThis.fetch = originalFetch;
+  };
+}
+
 test('GoogleAccessTokenLifecycle reuses a valid cached token for normal tool calls', async () => {
   const fixture = createLifecycle();
 
@@ -147,5 +206,68 @@ test('generateWeeklyDigest uses the shared access-token provider', async () => {
     assert.deepEqual(authHeaders, Array(5).fill('Bearer access-token-1'));
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('weekly digest does not infer branded demand from operator-only query rows', async () => {
+  const fixture = createLifecycle();
+  const restoreFetch = installDigestAnalyticsMock([
+    {
+      keys: ['site:example.com'],
+      clicks: 0,
+      impressions: 40,
+      ctr: 0,
+      position: 1,
+    },
+  ]);
+
+  try {
+    const digest = await generateWeeklyDigest(
+      fixture.lifecycle,
+      'user-a',
+      'https://example.com/',
+      '2026-08-10',
+    );
+
+    assert.match(digest, /visible query rows are search-operator checks/i);
+    assert.match(digest, /do not prove that your impressions came from branded demand/i);
+    assert.match(digest, /Branded\/Non-branded query filter/);
+    assert.match(digest, /Search-result impressions this week/);
+    assert.doesNotMatch(digest, /people who already know/i);
+    assert.doesNotMatch(digest, /Almost all of your search impressions.*branded/i);
+    assert.doesNotMatch(digest, /People who saw your site/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest grounds zero-click guidance in Search Console evidence', async () => {
+  const fixture = createLifecycle();
+  const restoreFetch = installDigestAnalyticsMock([
+    {
+      keys: ['best trail shoes'],
+      clicks: 0,
+      impressions: 40,
+      ctr: 0,
+      position: 8,
+    },
+  ]);
+
+  try {
+    const digest = await generateWeeklyDigest(
+      fixture.lifecycle,
+      'user-a',
+      'https://example.com/',
+      '2026-08-10',
+    );
+
+    assert.match(digest, /recorded 40 impressions and zero clicks/i);
+    assert.match(digest, /not unique people/i);
+    assert.match(digest, /same date range/i);
+    assert.match(digest, /manual Google search can differ by location, device, and personalization/i);
+    assert.doesNotMatch(digest, /The most common reason/i);
+    assert.doesNotMatch(digest, /Go to https:\/\/google\.com/i);
+  } finally {
+    restoreFetch();
   }
 });
