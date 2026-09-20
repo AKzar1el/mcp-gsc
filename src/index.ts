@@ -1695,5 +1695,6 @@ export default new OAuthProvider({
   defaultHandler: defaultHandler as any,
   authorizeEndpoint: '/authorize',
   tokenEndpoint: '/token',
+  clientIdMetadataDocumentEnabled: true,
   clientRegistrationEndpoint: '/register',
 });

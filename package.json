@@ -73,7 +73,7 @@
   },
   "mcpName": "io.github.AKzar1el/mcp-gsc",
   "dependencies": {
-    "@cloudflare/workers-oauth-provider": "^0.8.1",
+    "@cloudflare/workers-oauth-provider": "^0.10.3",
     "@modelcontextprotocol/server": "2.0.0",
     "agents": "^0.24.0",
     "wrangler": "^4.135.0",
