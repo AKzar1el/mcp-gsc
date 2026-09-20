@@ -14,7 +14,7 @@ const args = [
   'wrangler.example.jsonc',
   '--local',
   '--ip',
-  '0.0.0.0',
+  '127.0.0.1',
   '--port',
   port,
 ];
