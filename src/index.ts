@@ -821,7 +821,7 @@ class GscMcpRuntime {
             .enum(['auto', 'byNewsShowcasePanel', 'byPage', 'byProperty'])
             .default('auto')
             .describe(
-              "How Google aggregates metrics. Leave as 'auto' unless specific semantics are needed. 'byNewsShowcasePanel' requires search_type discover/googleNews plus a searchAppearance equals NEWS_SHOWCASE filter, and cannot be combined with page grouping/filtering or another searchAppearance filter.",
+              "How Google aggregates metrics. Leave as 'auto' unless specific semantics are needed. 'byProperty' cannot be used with page grouping/filtering or search_type discover/googleNews. 'byNewsShowcasePanel' requires search_type discover/googleNews plus a searchAppearance equals NEWS_SHOWCASE filter, and cannot be combined with page grouping/filtering or another searchAppearance filter.",
             ),
           dimension_filter_groups: z
             .array(
@@ -844,7 +844,7 @@ class GscMcpRuntime {
                       'includingRegex',
                       'excludingRegex',
                     ]),
-                    expression: z.string(),
+                    expression: z.string().max(4096),
                   }),
                 ),
               }),
