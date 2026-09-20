@@ -300,10 +300,9 @@ function pickActionAndBuild(
       return {
         key: 'ctr_zero',
         item: {
-          headline:
-            'Your site is mostly being found by people who already know about it',
-          why: "Almost all of your search impressions this week came from branded queries — people typing your domain or site name directly. That's good (people know you exist) but it means Google isn't yet showing your site to people searching for what you offer. To grow, you need to rank for queries about the topic of your site, not just the site itself.",
-          how: "1. Pick the single most important thing your site is about (your product, your service, the topic you write about).\n2. Write a 500-word page that answers the most basic question someone would have about that topic.\n3. Publish it. Make sure it's linked from your homepage.",
+          headline: 'The visible query rows are search-operator checks',
+          why: "The query rows available to this digest are operator-style searches such as `site:` or `inurl:`. Those searches can be useful for diagnostics, but they do not prove that your impressions came from branded demand. Search Console's branded-query classification is a separate signal and may not be available for every property.",
+          how: "1. Open Search Console's Performance report for the same date range and review Queries and Pages together.\n2. If your property offers the Branded/Non-branded query filter, use that instead of inferring brand intent from search operators.\n3. Prioritize non-operator query/page pairs with impressions but no clicks, then compare CTR and average position before deciding whether the page, snippet, or ranking needs work.",
         },
       };
     }
@@ -311,9 +310,9 @@ function pickActionAndBuild(
     return {
       key: 'ctr_zero',
       item: {
-        headline: 'Your site appears in search but nobody clicks',
-        why: `Google showed your site to ${formatNumber(currentTotals.impressions)} people this week, but zero clicked. The most common reason is that the title and description shown in search results don't match what people are searching for, or look unappealing compared to other results on the page.`,
-        how: `1. Go to https://google.com and search for the query that got the most impressions this week: '${topRealQuery.query}'.\n2. Look at your result. Is the title clear? Does the description answer what someone searching for that would want to know?\n3. If not, edit the page's <title> tag and meta description to match the search intent. Re-check in a week.`,
+        headline: 'Your site recorded search impressions but no clicks',
+        why: `Search Console recorded ${formatNumber(currentTotals.impressions)} impressions and zero clicks for this period. Impressions are search-result appearances, not unique people, and this aggregate alone does not show whether the cause is average position, search intent, SERP features, or snippet presentation.`,
+        how: `1. In Search Console's Performance report, keep this same date range and filter to '${topRealQuery.query}'.\n2. Review the matching page rows, CTR, and average position, then compare them with the previous period.\n3. Change the title or meta description only if that query/page evidence suggests the snippet mismatches intent. A manual Google search can differ by location, device, and personalization, so do not treat it as authoritative reproduction.`,
       },
     };
   }
@@ -390,10 +389,10 @@ function renderMarkdown(data: {
   lines.push('## Quick numbers');
   lines.push('');
   lines.push(
-    `- **People who saw your site in Google search this week:** ${formatNumber(currentTotals.impressions)} (${formatPctChange(currentTotals.impressions, prevTotals.impressions)})`,
+    `- **Search-result impressions this week:** ${formatNumber(currentTotals.impressions)} (${formatPctChange(currentTotals.impressions, prevTotals.impressions)})`,
   );
   lines.push(
-    `- **People who clicked through to your site:** ${formatNumber(currentTotals.clicks)} (${formatPctChange(currentTotals.clicks, prevTotals.clicks)})`,
+    `- **Clicks from Google Search:** ${formatNumber(currentTotals.clicks)} (${formatPctChange(currentTotals.clicks, prevTotals.clicks)})`,
   );
   lines.push(
     `- **Average rank when your site appeared:** ${formatPosition(currentTotals.position)} (${formatPositionChange(currentTotals.position, prevTotals.position)})`,
@@ -435,7 +434,7 @@ function renderMarkdown(data: {
     lines.push('');
     for (const m of movers.newImpressions) {
       lines.push(
-        `- **"${m.query}"** — ${m.currentImpressions} people saw your site in results for this search for the first time.`,
+        `- **"${m.query}"** — ${m.currentImpressions} impressions this week (was ${m.prevImpressions} last week).`,
       );
     }
     lines.push('');
@@ -507,9 +506,9 @@ function renderMarkdown(data: {
   lines.push('<summary>What do these numbers actually mean?</summary>');
   lines.push('');
   lines.push(
-    '- **Saw your site:** Google calls these "impressions." Your site appeared in someone\'s search results page.',
+    '- **Impressions:** Your site appeared in Google Search results. This counts result appearances according to Search Console\'s reporting rules; it is not a unique-person count.',
   );
-  lines.push('- **Clicked through:** Your link was clicked from the search results.');
+  lines.push('- **Clicks:** Your link was clicked from Google Search results.');
   lines.push(
     '- **Average rank:** Where your site appeared in search results on average. Lower is better. #1 is the top result.',
   );
@@ -613,9 +612,9 @@ function describeSiteLevelMove(
 
   if (winner.metric === 'impressions') {
     if (impressionsChangePct >= 25) {
-      return `Google showed your site to many more people this week (+${impressionsChangePct.toFixed(0)}%), but the increase was spread across lots of small queries rather than one big winner.`;
+      return `Your site recorded many more search impressions this week (+${impressionsChangePct.toFixed(0)}%), but the increase was spread across lots of small queries rather than one big winner.`;
     }
-    return `Google showed your site to fewer people this week (${impressionsChangePct.toFixed(0)}%). The drop is spread across many queries rather than one specific search losing traction.`;
+    return `Your site recorded fewer search impressions this week (${impressionsChangePct.toFixed(0)}%). The drop is spread across many queries rather than one specific search losing traction.`;
   }
 
   if (winner.metric === 'position') {
