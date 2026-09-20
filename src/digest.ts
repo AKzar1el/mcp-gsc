@@ -63,6 +63,17 @@ interface ActionItem {
   how: string;
 }
 
+export function resolveWeeklyDigestEndDate(
+  endDate: string | undefined,
+  today: string,
+): string {
+  if (endDate) return endDate;
+
+  const latestCompleteDate = new Date(`${today}T00:00:00Z`);
+  latestCompleteDate.setUTCDate(latestCompleteDate.getUTCDate() - 3);
+  return latestCompleteDate.toISOString().slice(0, 10);
+}
+
 export async function generateWeeklyDigest(
   accessTokens: GoogleAccessTokenProvider,
   googleId: string,

@@ -17,6 +17,7 @@ import {
   SEARCH_CONSOLE_DATE_SCHEMA,
 } from '../src/date-validation';
 import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from '../src/content-decay-schema';
+import { resolveWeeklyDigestEndDate } from '../src/digest';
 import { resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
 import { createQuickWinsInputSchema } from '../src/quick-wins-schema';
 import {
@@ -76,6 +77,12 @@ test('weekly digest end dates reject invalid dates and future dates', () => {
     () => assertDateNotInFuture('2026-08-19', '2026-08-18'),
     /End date must be today or earlier/,
   );
+});
+
+test('weekly digest defaults to the latest usually-complete Search Console date', () => {
+  assert.equal(resolveWeeklyDigestEndDate(undefined, '2026-09-20'), '2026-09-17');
+  assert.equal(resolveWeeklyDigestEndDate(undefined, '2026-03-02'), '2026-02-27');
+  assert.equal(resolveWeeklyDigestEndDate('2026-09-19', '2026-09-20'), '2026-09-19');
 });
 
 test('content decay comparison days must be positive and default to 30', () => {
