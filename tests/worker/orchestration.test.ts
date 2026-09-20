@@ -517,7 +517,7 @@ describe('Worker orchestration', () => {
       expect(cachedRefreshes).toBe(1);
 
       await expect(revokedTools['sites.list'].handler({})).rejects.toThrow(
-        'Google access revoked',
+        "Google access revoked. Please reconnect this server from your MCP client's connector or app settings.",
       );
     } finally {
       globalThis.fetch = originalFetch;

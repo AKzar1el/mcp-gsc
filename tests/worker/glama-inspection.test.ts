@@ -101,6 +101,9 @@ describe('Glama inspection mode', () => {
       inspectionEnv,
     );
     const dataEnvelope = await readJsonRpc(dataCall);
-    expect(JSON.stringify(dataEnvelope)).toContain('Not authenticated');
+    const dataText = JSON.stringify(dataEnvelope);
+    expect(dataText).toContain('Not authenticated');
+    expect(dataText).toContain("connector or app settings");
+    expect(dataText).not.toContain('Settings → Connectors');
   });
 });

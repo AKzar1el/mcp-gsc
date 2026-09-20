@@ -10,6 +10,7 @@ import {
   fetchGoogleUserInfo,
   GoogleRefreshTokenRevokedError,
   GSC_ACCESS_REVOKED_MESSAGE,
+  MCP_RECONNECT_INSTRUCTION,
   inspectUrl,
   inspectUrlsSequentially,
   listSitemaps,
@@ -85,7 +86,7 @@ const SERVER_NAME = 'mcp-gsc';
 const SERVER_VERSION = pkg.version;
 
 const NOT_AUTHENTICATED_MESSAGE =
-  'Not authenticated. Please reconnect this server in your MCP client (e.g. Claude.ai → Settings → Connectors).';
+  `Not authenticated. ${MCP_RECONNECT_INSTRUCTION}`;
 
 // Annotation utilities for read-only vs write actions.
 const READ_ONLY_ANNOTATIONS = {
