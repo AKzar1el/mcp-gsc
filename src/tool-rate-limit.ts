@@ -125,7 +125,7 @@ function retryAfterMs(window: RateLimitWindow, now: number, windowMs: number): n
  * authenticated user's hashed bucket. Indexing uses one category instance so
  * its small Google project quota can be enforced together with user limits.
  */
-export class ToolRateLimiter {
+export class ToolRateLimiterCore {
   constructor(
     private readonly state: DurableObjectState,
     _env: unknown,
