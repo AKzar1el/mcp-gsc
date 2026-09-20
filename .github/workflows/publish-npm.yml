@@ -1,0 +1,82 @@
+name: Publish to npm
+
+on:
+  pull_request:
+    paths:
+      - package.json
+      - package-lock.json
+      - .github/workflows/publish-npm.yml
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
+      - package-lock.json
+      - .github/workflows/publish-npm.yml
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+env:
+  NPM_CLI_VERSION: 11.19.1
+
+jobs:
+  validate:
+    name: Validate npm package
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+
+      - name: Install trusted-publishing-capable npm
+        run: npm install --global "npm@$NPM_CLI_VERSION"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run package qualification
+        run: |
+          npm test
+          npm pack --dry-run
+
+  publish:
+    name: Publish npm package
+    if: github.event_name == 'release'
+    needs: validate
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Install trusted-publishing-capable npm
+        run: npm install --global "npm@$NPM_CLI_VERSION"
+
+      - name: Require release tag to match package version
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [ "$RELEASE_TAG" != "v$VERSION" ]; then
+            echo "::error file=package.json::Release tag $RELEASE_TAG must match package version v$VERSION."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm ci
+
+      # npm Trusted Publishing supplies short-lived OIDC credentials here.
+      # No NPM_TOKEN is required; provenance is generated automatically.
+      - name: Publish
+        run: npm publish --access public
