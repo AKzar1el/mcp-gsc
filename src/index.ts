@@ -35,8 +35,11 @@ import {
   saveUser,
 } from './storage';
 import { GoogleAccessTokenLifecycle } from './access-token-lifecycle';
-import { consumePendingAuth, stashPendingAuth } from './pending-auth-state';
-export { PendingAuthState } from './pending-auth-state';
+import {
+  consumePendingAuth,
+  PendingAuthStateStore,
+  stashPendingAuth,
+} from './pending-auth-state';
 import { enforceToolRateLimit, type RateLimitedToolName } from './tool-rate-limit';
 export { ToolRateLimiter } from './tool-rate-limiter-do';
 import { generateWeeklyDigest, resolveWeeklyDigestEndDate } from './digest';
@@ -1525,6 +1528,27 @@ export class GscMcpAgent extends DurableObject<Env> {
     return new Response('Legacy MCP transport is no longer routed here.', {
       status: 410,
     });
+  }
+}
+
+/**
+ * OAuth nonces are addressed one Durable Object per nonce. Extending the
+ * platform base class is required for the store/consume methods to be exposed
+ * through Durable Object RPC.
+ */
+export class PendingAuthState extends DurableObject<Env> {
+  private readonly pending = new PendingAuthStateStore(this.ctx.storage);
+
+  store(claudeAuthRequest: unknown): Promise<void> {
+    return this.pending.store(claudeAuthRequest);
+  }
+
+  consume() {
+    return this.pending.consume();
+  }
+
+  alarm(): Promise<void> {
+    return this.pending.alarm();
   }
 }
 

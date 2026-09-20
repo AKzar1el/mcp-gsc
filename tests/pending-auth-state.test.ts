@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { PendingAuthState } from '../src/pending-auth-state';
+import { PendingAuthStateStore } from '../src/pending-auth-state';
 
 class InMemoryTransactionalStorage {
   private values = new Map<string, unknown>();
@@ -50,8 +50,13 @@ class InMemoryTransactionalStorage {
 
 function createPendingAuthState(now: () => number) {
   const storage = new InMemoryTransactionalStorage();
-  const state = { storage } as unknown as DurableObjectState;
-  return { storage, pendingAuthState: new PendingAuthState(state, undefined, now) };
+  return {
+    storage,
+    pendingAuthState: new PendingAuthStateStore(
+      storage as unknown as DurableObjectStorage,
+      now,
+    ),
+  };
 }
 
 test('PendingAuthState consumes a nonce exactly once under concurrent attempts', async () => {

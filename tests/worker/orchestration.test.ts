@@ -7,13 +7,13 @@ import {
   createGscMcpServer,
   defaultHandler,
   mcpApiHandler,
+  PendingAuthState,
   type Env,
 } from '../../src/index';
 import {
   GOOGLE_TOKEN_URL,
   GOOGLE_USERINFO_URL,
 } from '../../src/google';
-import { PendingAuthState } from '../../src/pending-auth-state';
 import { getDecryptedRefreshToken, getUser, saveUser } from '../../src/storage';
 
 const workerEnv = env as unknown as Env;
