@@ -2,6 +2,9 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 const port = process.env.PORT || '8080';
+const localBaseUrl = `http://127.0.0.1:${port}`;
+const mcpUrl = `${localBaseUrl}/mcp`;
+const googleRedirectUri = `${localBaseUrl}/google/callback`;
 const forwardedVariables = [
   'GOOGLE_CLIENT_ID',
   'GOOGLE_CLIENT_SECRET',
@@ -24,6 +27,9 @@ for (const name of forwardedVariables) {
     args.push('--var', `${name}:${process.env[name]}`);
   }
 }
+
+console.error(`[mcp-gsc] Local MCP endpoint: ${mcpUrl}`);
+console.error(`[mcp-gsc] Google OAuth redirect URI: ${googleRedirectUri}`);
 
 const wranglerCli = createRequire(import.meta.url).resolve('wrangler');
 const child = spawn(process.execPath, [wranglerCli, ...args], { stdio: 'inherit' });

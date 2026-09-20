@@ -24,6 +24,8 @@ const claudePlugin = readJson('.claude-plugin/plugin.json');
 const cursorPlugin = readJson('.cursor-plugin/plugin.json');
 const indexSource = readFileSync(resolve(projectRoot, 'src/index.ts'), 'utf8');
 const npmLauncherSource = readFileSync(resolve(projectRoot, 'scripts/glama-start.mjs'), 'utf8');
+const readmeSource = readFileSync(resolve(projectRoot, 'README.md'), 'utf8');
+const setupSource = readFileSync(resolve(projectRoot, 'SETUP.md'), 'utf8');
 
 test('package release versions remain aligned across machine-readable metadata', () => {
   const expectedVersion = packageJson.version;
@@ -89,6 +91,31 @@ test('registry package identity remains aligned', () => {
     npmLauncherSource,
     /'--ip',\s*'0\.0\.0\.0'/,
     'npm launcher must not expose its local MCP endpoint on every network interface',
+  );
+  assert.match(
+    npmLauncherSource,
+    /const googleRedirectUri = `\$\{localBaseUrl\}\/google\/callback`/,
+    'npm launcher must derive the Google callback from the same loopback base URL as the MCP endpoint',
+  );
+  assert.match(
+    npmLauncherSource,
+    /Google OAuth redirect URI: \$\{googleRedirectUri\}/,
+    'npm launcher must print the exact Google OAuth redirect URI users need to authorize',
+  );
+  assert.match(
+    readmeSource,
+    /http:\/\/127\.0\.0\.1:8080\/google\/callback/,
+    'README npm onboarding must name the launcher default Google OAuth callback',
+  );
+  assert.match(
+    setupSource,
+    /http:\/\/127\.0\.0\.1:8080\/google\/callback/,
+    'SETUP must document the npm launcher default Google OAuth callback',
+  );
+  assert.match(
+    setupSource,
+    /If you set `PORT`, replace `8080` with that exact port/,
+    'SETUP must explain how a custom launcher port changes the OAuth callback',
   );
 });
 
