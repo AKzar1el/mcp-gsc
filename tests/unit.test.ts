@@ -33,6 +33,7 @@ import {
   getSite,
   listSitemaps,
   inspectUrlsSequentially,
+  assertSearchAnalyticsQueryCompatible,
   querySearchAnalytics,
   GoogleRefreshTokenRevokedError,
   GSC_ACCESS_REVOKED_MESSAGE,
@@ -634,6 +635,114 @@ test('querySearchAnalytics: forwards News Showcase panel aggregation parameters'
       ],
     },
   ]);
+});
+
+test('Search Analytics request validation rejects documented invalid cross-field combinations', () => {
+  const base = {
+    startDate: '2026-05-01',
+    endDate: '2026-05-31',
+    dimensions: ['query'] as const,
+    rowLimit: 100,
+    type: 'web' as const,
+    aggregationType: 'auto' as const,
+  };
+
+  assert.throws(
+    () => assertSearchAnalyticsQueryCompatible({ ...base, dimensions: ['query', 'query'] }),
+    /dimensions must not contain duplicates/,
+  );
+  assert.throws(
+    () =>
+      assertSearchAnalyticsQueryCompatible({
+        ...base,
+        dimensions: ['page'],
+        aggregationType: 'byProperty',
+      }),
+    /byProperty cannot be combined with page grouping or filtering/,
+  );
+  assert.throws(
+    () =>
+      assertSearchAnalyticsQueryCompatible({
+        ...base,
+        type: 'discover',
+        aggregationType: 'byProperty',
+      }),
+    /byProperty is not supported for discover or googleNews/,
+  );
+  assert.throws(
+    () =>
+      assertSearchAnalyticsQueryCompatible({
+        ...base,
+        type: 'web',
+        aggregationType: 'byNewsShowcasePanel',
+      }),
+    /byNewsShowcasePanel requires type discover or googleNews/,
+  );
+  assert.throws(
+    () =>
+      assertSearchAnalyticsQueryCompatible({
+        ...base,
+        type: 'googleNews',
+        aggregationType: 'byNewsShowcasePanel',
+        dimensionFilterGroups: [
+          {
+            groupType: 'and',
+            filters: [
+              {
+                dimension: 'searchAppearance',
+                operator: 'equals',
+                expression: 'OTHER_FEATURE',
+              },
+            ],
+          },
+        ],
+      }),
+    /requires exactly the NEWS_SHOWCASE searchAppearance filter/,
+  );
+  assert.throws(
+    () =>
+      assertSearchAnalyticsQueryCompatible({
+        ...base,
+        dimensionFilterGroups: [
+          {
+            groupType: 'and',
+            filters: [
+              {
+                dimension: 'query',
+                operator: 'equals',
+                expression: 'x'.repeat(4097),
+              },
+            ],
+          },
+        ],
+      }),
+    /filter expressions must be at most 4096 characters/,
+  );
+});
+
+test('Search Analytics request validation accepts a valid News Showcase panel query', () => {
+  assert.doesNotThrow(() =>
+    assertSearchAnalyticsQueryCompatible({
+      startDate: '2026-05-01',
+      endDate: '2026-05-31',
+      dimensions: ['query'],
+      rowLimit: 100,
+      type: 'googleNews',
+      aggregationType: 'byNewsShowcasePanel',
+      dimensionFilterGroups: [
+        {
+          groupType: 'and',
+          filters: [
+            {
+              dimension: 'searchAppearance',
+              operator: 'equals',
+              expression: 'NEWS_SHOWCASE',
+            },
+          ],
+        },
+      ],
+    }),
+  );
 });
 
 test('querySearchAnalytics: missing rows field returns an empty rows array (no data, not an error)', async () => {

@@ -239,6 +239,63 @@ export interface SearchAnalyticsQuery {
   dimensionFilterGroups?: DimensionFilterGroup[];
 }
 
+export function assertSearchAnalyticsQueryCompatible(body: SearchAnalyticsQuery): void {
+  if (new Set(body.dimensions).size !== body.dimensions.length) {
+    throw new Error('Search Analytics dimensions must not contain duplicates.');
+  }
+
+  const filters = body.dimensionFilterGroups?.flatMap((group) => group.filters) ?? [];
+  const hasPageGroupingOrFilter =
+    body.dimensions.includes('page') || filters.some((filter) => filter.dimension === 'page');
+
+  for (const filter of filters) {
+    if (filter.expression.length > 4096) {
+      throw new Error('Search Analytics filter expressions must be at most 4096 characters.');
+    }
+  }
+
+  if (body.aggregationType === 'byProperty') {
+    if (hasPageGroupingOrFilter) {
+      throw new Error(
+        'Search Analytics aggregationType byProperty cannot be combined with page grouping or filtering.',
+      );
+    }
+    if (body.type === 'discover' || body.type === 'googleNews') {
+      throw new Error(
+        'Search Analytics aggregationType byProperty is not supported for discover or googleNews.',
+      );
+    }
+  }
+
+  if (body.aggregationType === 'byNewsShowcasePanel') {
+    if (body.type !== 'discover' && body.type !== 'googleNews') {
+      throw new Error(
+        'Search Analytics aggregationType byNewsShowcasePanel requires type discover or googleNews.',
+      );
+    }
+    if (hasPageGroupingOrFilter) {
+      throw new Error(
+        'Search Analytics aggregationType byNewsShowcasePanel cannot be combined with page grouping or filtering.',
+      );
+    }
+
+    const searchAppearanceFilters = filters.filter(
+      (filter) => filter.dimension === 'searchAppearance',
+    );
+    const hasRequiredNewsShowcaseFilter = searchAppearanceFilters.some(
+      (filter) => filter.operator === 'equals' && filter.expression === 'NEWS_SHOWCASE',
+    );
+    const hasOtherSearchAppearanceFilter = searchAppearanceFilters.some(
+      (filter) => filter.operator !== 'equals' || filter.expression !== 'NEWS_SHOWCASE',
+    );
+    if (!hasRequiredNewsShowcaseFilter || hasOtherSearchAppearanceFilter) {
+      throw new Error(
+        'Search Analytics aggregationType byNewsShowcasePanel requires exactly the NEWS_SHOWCASE searchAppearance filter and no other searchAppearance filter.',
+      );
+    }
+  }
+}
+
 export type PaginatedSearchAnalyticsQuery = Omit<
   SearchAnalyticsQuery,
   'rowLimit'
@@ -413,6 +470,7 @@ export async function querySearchAnalytics(
   siteUrl: string,
   body: SearchAnalyticsQuery,
 ): Promise<SearchAnalyticsResponse> {
+  assertSearchAnalyticsQueryCompatible(body);
   const encoded = encodeURIComponent(siteUrl);
   const resp = await fetch(
     `https://www.googleapis.com/webmasters/v3/sites/${encoded}/searchAnalytics/query`,
