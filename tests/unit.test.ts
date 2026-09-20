@@ -28,6 +28,7 @@ import {
   exchangeCodeForTokens,
   refreshAccessToken,
   listSites,
+  getSite,
   listSitemaps,
   inspectUrlsSequentially,
   querySearchAnalytics,
@@ -407,6 +408,23 @@ test('listSites: empty account returns [] (not undefined)', async () => {
     () => listSites('at'),
   );
   assert.deepEqual(result, []);
+});
+
+test('getSite: percent-encodes the exact property and returns its permission level', async () => {
+  const site = {
+    siteUrl: 'sc-domain:example.com',
+    permissionLevel: 'siteOwner',
+  };
+  const { result, calls } = await withMockFetch(
+    () => json(200, site),
+    () => getSite('at', 'sc-domain:example.com'),
+  );
+  assert.equal(calls.length, 1);
+  assert.ok(
+    calls[0].url.endsWith('/sites/sc-domain%3Aexample.com'),
+    `URL not encoded: ${calls[0].url}`,
+  );
+  assert.deepEqual(result, site);
 });
 
 test('inspectUrlsSequentially: preserves input order and returns per-URL failures', async () => {

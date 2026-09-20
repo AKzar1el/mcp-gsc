@@ -13,6 +13,10 @@
       "description": "List the Search Console properties the connected Google account can access."
     },
     {
+      "name": "sites.get",
+      "description": "Get one exact Search Console property and the connected account's permission level for it."
+    },
+    {
       "name": "analytics.query",
       "description": "Impressions, clicks, CTR, and average position over a date range."
     },
@@ -77,7 +81,7 @@
       "description": "Generate a plain-language weekly SEO report with movers, top pages, and a recommended action."
     }
   ],
-  "version": "0.3.2-registry.3",
+  "version": "0.3.2-registry.4",
   "repository": {
     "url": "https://github.com/AKzar1el/mcp-gsc",
     "source": "github"

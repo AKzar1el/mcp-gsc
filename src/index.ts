@@ -14,6 +14,7 @@ import {
   inspectUrlsSequentially,
   listSitemaps,
   listSites,
+  getSite,
   querySearchAnalytics,
   querySearchAnalyticsPaginated,
   addSite,
@@ -148,6 +149,10 @@ const CAPABILITIES_OUTPUT_SCHEMA = {
 
 const SITES_OUTPUT_SCHEMA = {
   sites: z.array(z.object(SITE_OUTPUT_SCHEMA)),
+};
+
+const SITE_DETAIL_OUTPUT_SCHEMA = {
+  site: z.object(SITE_OUTPUT_SCHEMA),
 };
 
 const INSPECTION_OUTPUT_SCHEMA = {
@@ -332,6 +337,11 @@ const TOOL_CATALOG = [
     name: 'sites.list',
     description:
       'List the Google Search Console properties (sites) the connected Google account can access.',
+  },
+  {
+    name: 'sites.get',
+    description:
+      'Get one exact Search Console property and the connected account\'s permission level for it.',
   },
   {
     name: 'sites.add',
@@ -521,6 +531,26 @@ class GscMcpRuntime {
         const accessToken = await this.getAccessToken(googleId);
         const sites = await listSites(accessToken);
         return toolResponse(JSON.stringify(sites, null, 2), { sites });
+      },
+    );
+
+    this.server.registerTool(
+      'sites.get',
+      {
+        title: 'Get Search Console property',
+        description:
+          "Retrieve one exact Google Search Console property and the connected account's permission level for it. Use this when the user has already named a property and you need to confirm that exact property or its access level without listing every property first.",
+        inputSchema: {
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+        },
+        outputSchema: SITE_DETAIL_OUTPUT_SCHEMA,
+        annotations: READ_ONLY_ANNOTATIONS,
+      },
+      async ({ site_url }) => {
+        const googleId = this.requireGoogleId();
+        const accessToken = await this.getAccessToken(googleId);
+        const site = await getSite(accessToken, site_url);
+        return toolResponse(JSON.stringify(site, null, 2), { site });
       },
     );
 
