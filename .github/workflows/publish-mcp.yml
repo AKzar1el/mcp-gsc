@@ -61,10 +61,16 @@ jobs:
               .registryType == "npm" and
               .identifier == $pkg and
               .version == $version and
-              .transport.type == "stdio"
+              .runtimeHint == "npx" and
+              .transport.type == "streamable-http" and
+              .transport.url == "http://127.0.0.1:{PORT}/mcp" and
+              any(.environmentVariables[]?; .name == "PORT" and .default == "8080") and
+              any(.environmentVariables[]?; .name == "GOOGLE_CLIENT_ID" and .isRequired == true) and
+              any(.environmentVariables[]?; .name == "GOOGLE_CLIENT_SECRET" and .isRequired == true and .isSecret == true) and
+              any(.environmentVariables[]?; .name == "TOKEN_ENCRYPTION_KEY" and .isRequired == true and .isSecret == true)
             )
           ' server.json > /dev/null; then
-            echo "::error file=server.json::server.json must expose only concrete remote URLs, including the hosted endpoint, plus the npm package matching package.json."
+            echo "::error file=server.json::server.json must expose only concrete remote URLs, including the hosted endpoint, plus the npm package with its actual local Streamable HTTP launcher contract."
             exit 1
           fi
 

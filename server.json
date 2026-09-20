@@ -77,7 +77,7 @@
       "description": "Generate a plain-language weekly SEO report with movers, top pages, and a recommended action."
     }
   ],
-  "version": "0.3.2-registry.2",
+  "version": "0.3.2-registry.3",
   "repository": {
     "url": "https://github.com/AKzar1el/mcp-gsc",
     "source": "github"
@@ -94,9 +94,42 @@
       "registryType": "npm",
       "identifier": "@digestseo/mcp-gsc",
       "version": "0.3.1",
+      "runtimeHint": "npx",
       "transport": {
-        "type": "stdio"
-      }
+        "type": "streamable-http",
+        "url": "http://127.0.0.1:{PORT}/mcp"
+      },
+      "environmentVariables": [
+        {
+          "name": "PORT",
+          "description": "Local HTTP port used by the npm launcher.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string",
+          "default": "8080"
+        },
+        {
+          "name": "GOOGLE_CLIENT_ID",
+          "description": "Google OAuth client ID for the local Worker.",
+          "isRequired": true,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "GOOGLE_CLIENT_SECRET",
+          "description": "Google OAuth client secret for the local Worker.",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        },
+        {
+          "name": "TOKEN_ENCRYPTION_KEY",
+          "description": "Base64-encoded 32-byte key used to encrypt stored Google refresh tokens.",
+          "isRequired": true,
+          "isSecret": true,
+          "format": "string"
+        }
+      ]
     }
   ],
   "_meta": {
