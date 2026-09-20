@@ -66,15 +66,18 @@ npx wrangler login
 
 1. Go to **APIs & Services → Credentials → Create credentials → OAuth client ID**.
 2. **Application type: Web application.**
-3. Under **Authorized redirect URIs**, add both of these:
+3. Under **Authorized redirect URIs**, add the entries for the ways you will run mcp-gsc:
 
    ```
    https://<your-worker>.workers.dev/google/callback
    http://localhost:8787/google/callback
+   http://127.0.0.1:8080/google/callback
    ```
 
    - Replace `<your-worker>` with your Worker's name + subdomain. If you don't know it yet, deploy once (Step 6) to see the assigned `*.workers.dev` URL, then come back and add it here. The default Worker name is `mcp-gsc` (set in `wrangler.jsonc`).
    - The `http://localhost:8787/google/callback` entry is for local development with `npm run dev`.
+   - The `http://127.0.0.1:8080/google/callback` entry is for the published `npx -y @digestseo/mcp-gsc` launcher, whose Registry transport is `http://127.0.0.1:8080/mcp` by default. If you set `PORT`, replace `8080` with that exact port.
+   - The Worker derives Google's redirect URI from the MCP request URL. Google requires an exact authorized-URI match, so keep the same scheme, host, port, and `/google/callback` path. `localhost` and `127.0.0.1` are different hosts for this check.
    - The path must be exactly `/google/callback` — that's the route this server handles.
    - The DigestSEO-hosted instance also requires this exact callback URI in the OAuth client configured on its Worker: `https://mcp-gsc.digestseo.com/google/callback`.
 4. Click **Create**. Copy the **Client ID** and **Client secret** — you'll set them as secrets in the next step.

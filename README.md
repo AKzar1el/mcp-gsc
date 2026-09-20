@@ -22,7 +22,7 @@ The self-hosting launcher is available as [`@digestseo/mcp-gsc`](https://www.npm
 npx -y @digestseo/mcp-gsc
 ```
 
-The npm launcher starts a loopback-only **Streamable HTTP** Worker on `127.0.0.1` (port `8080` by default); it is not a stdio MCP process. Clients that launch the package should connect to `http://127.0.0.1:8080/mcp` after supplying the Google OAuth and token-encryption environment variables described in [SETUP.md](SETUP.md).
+The npm launcher starts a loopback-only **Streamable HTTP** Worker on `127.0.0.1` (port `8080` by default); it is not a stdio MCP process. Clients that launch the package should connect to `http://127.0.0.1:8080/mcp` after supplying the Google OAuth and token-encryption environment variables described in [SETUP.md](SETUP.md). Before the first OAuth sign-in, authorize the exact callback `http://127.0.0.1:8080/google/callback` in Google Cloud (or use the same custom `PORT` you launch with); the launcher prints both URLs at startup.
 
 For Google OAuth and Cloudflare deployment configuration, follow [SETUP.md](SETUP.md).
 
