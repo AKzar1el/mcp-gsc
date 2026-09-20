@@ -184,4 +184,127 @@ describe('OAuth discovery', () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it('keeps CIMD installations independent while revoking only the reconnected installation', async () => {
+    const clientId = 'https://client.example/oauth/client.json';
+    const redirectUriA = 'https://client.example/install-a/callback';
+    const redirectUriB = 'https://client.example/install-b/callback';
+    const resource = 'https://worker.example/mcp';
+    const verifier = 'mcp-gsc-cimd-pkce-verifier-0123456789-abcdefghijklmnopqrstuvwxyz';
+    const challenge = await pkceChallenge(verifier);
+    let cimdFetches = 0;
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : input.toString();
+      if (url === clientId) {
+        cimdFetches += 1;
+        return Response.json(
+          {
+            client_id: clientId,
+            client_name: 'mcp-gsc CIMD integration test',
+            redirect_uris: [redirectUriA, redirectUriB],
+            token_endpoint_auth_method: 'none',
+          },
+          { headers: { 'cache-control': 'no-store' } },
+        );
+      }
+      if (url === GOOGLE_TOKEN_URL) {
+        return Response.json({
+          access_token: 'google-access-token',
+          refresh_token: 'google-refresh-token',
+          expires_in: 3600,
+          token_type: 'Bearer',
+          scope: 'openid email',
+        });
+      }
+      if (url === GOOGLE_USERINFO_URL) {
+        return Response.json({ id: 'cimd-user', email: 'cimd@example.test' });
+      }
+      throw new Error(`Unexpected outbound request: ${url}`);
+    };
+
+    const authorize = async (redirectUri: string, state: string): Promise<string> => {
+      const url = new URL('https://worker.example/authorize');
+      url.searchParams.set('response_type', 'code');
+      url.searchParams.set('client_id', clientId);
+      url.searchParams.set('redirect_uri', redirectUri);
+      url.searchParams.set('state', state);
+      url.searchParams.set('resource', resource);
+      url.searchParams.set('code_challenge', challenge);
+      url.searchParams.set('code_challenge_method', 'S256');
+
+      const authorization = await callWorker(new Request(url));
+      expect(authorization.status).toBe(302);
+      const googleRedirect = new URL(authorization.headers.get('location')!);
+      const providerState = googleRedirect.searchParams.get('state');
+      expect(providerState).toBeTruthy();
+
+      const callback = await callWorker(
+        new Request(
+          `https://worker.example/google/callback?code=google-code&state=${providerState}`,
+        ),
+      );
+      expect(callback.status).toBe(302);
+      const clientRedirect = new URL(callback.headers.get('location')!);
+      expect(`${clientRedirect.origin}${clientRedirect.pathname}`).toBe(redirectUri);
+      expect(clientRedirect.searchParams.get('state')).toBe(state);
+      expect(clientRedirect.searchParams.get('iss')).toBe('https://worker.example');
+      const code = clientRedirect.searchParams.get('code');
+      expect(code).toBeTruthy();
+      return code!;
+    };
+
+    const exchangeCode = (redirectUri: string, code: string) => callWorker(
+      new Request('https://worker.example/token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          client_id: clientId,
+          code,
+          redirect_uri: redirectUri,
+          code_verifier: verifier,
+          resource,
+        }),
+      }),
+    );
+
+    const probeBearer = (token: string) => callWorker(
+      new Request(resource, {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+
+    try {
+      const codeA1 = await authorize(redirectUriA, 'install-a-first');
+      const exchangeA1 = await exchangeCode(redirectUriA, codeA1);
+      expect(exchangeA1.status).toBe(200);
+      const tokensA1 = await exchangeA1.json() as { access_token?: string };
+      expect(tokensA1.access_token).toBeTruthy();
+
+      const codeB1 = await authorize(redirectUriB, 'install-b-first');
+      const exchangeB1 = await exchangeCode(redirectUriB, codeB1);
+      expect(exchangeB1.status).toBe(200);
+      const tokensB1 = await exchangeB1.json() as { access_token?: string };
+      expect(tokensB1.access_token).toBeTruthy();
+
+      expect((await probeBearer(tokensA1.access_token!)).status).not.toBe(401);
+      expect((await probeBearer(tokensB1.access_token!)).status).not.toBe(401);
+
+      const codeA2 = await authorize(redirectUriA, 'install-a-reconnect');
+      expect((await probeBearer(tokensA1.access_token!)).status).toBe(401);
+      expect((await probeBearer(tokensB1.access_token!)).status).not.toBe(401);
+
+      const exchangeA2 = await exchangeCode(redirectUriA, codeA2);
+      expect(exchangeA2.status).toBe(200);
+      const tokensA2 = await exchangeA2.json() as { access_token?: string };
+      expect(tokensA2.access_token).toBeTruthy();
+      expect((await probeBearer(tokensA2.access_token!)).status).not.toBe(401);
+      expect((await probeBearer(tokensB1.access_token!)).status).not.toBe(401);
+      expect(cimdFetches).toBeGreaterThan(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
