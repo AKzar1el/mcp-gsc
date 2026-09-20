@@ -1,11 +1,20 @@
 import { env } from 'cloudflare:workers';
-import { describe, expect, it } from 'vitest';
+import { reset } from 'cloudflare:test';
+import { afterEach, describe, expect, it } from 'vitest';
 import worker from '../../src/entrypoint';
+import { GOOGLE_TOKEN_URL, GOOGLE_USERINFO_URL } from '../../src/google';
 import { type Env } from '../../src/index';
 
 const workerEnv = env as unknown as Env;
 
-async function callWorker(path: string) {
+afterEach(async () => {
+  await reset();
+});
+
+async function callWorker(input: string | Request, init?: RequestInit) {
+  const request = input instanceof Request
+    ? input
+    : new Request(`https://worker.example${input}`, init);
   return (worker as unknown as {
     fetch(
       request: Request,
@@ -13,10 +22,21 @@ async function callWorker(path: string) {
       ctx: ExecutionContext,
     ): Promise<Response>;
   }).fetch(
-    new Request(`https://worker.example${path}`),
+    request,
     workerEnv,
     {} as ExecutionContext,
   );
+}
+
+async function pkceChallenge(verifier: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(verifier),
+  );
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
 }
 
 describe('OAuth discovery', () => {
@@ -51,5 +71,117 @@ describe('OAuth discovery', () => {
       client_id_metadata_document_supported: true,
     });
     expect(metadata.code_challenge_methods_supported).toEqual(['S256']);
+  });
+
+  it('completes a DCR authorization flow and revokes the previous bearer token on reconnect', async () => {
+    const redirectUri = 'https://client.example/callback';
+    const resource = 'https://worker.example/mcp';
+    const verifier = 'mcp-gsc-worker-pkce-verifier-0123456789-abcdefghijklmnopqrstuvwxyz';
+    const challenge = await pkceChallenge(verifier);
+
+    const registration = await callWorker(
+      new Request('https://worker.example/register', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          client_name: 'mcp-gsc worker integration test',
+          redirect_uris: [redirectUri],
+          token_endpoint_auth_method: 'none',
+        }),
+      }),
+    );
+    expect(registration.status).toBe(201);
+    const client = await registration.json() as { client_id?: string };
+    expect(client.client_id).toBeTruthy();
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input: RequestInfo | URL) => {
+      const url = input instanceof Request ? input.url : input.toString();
+      if (url === GOOGLE_TOKEN_URL) {
+        return Response.json({
+          access_token: 'google-access-token',
+          refresh_token: 'google-refresh-token',
+          expires_in: 3600,
+          token_type: 'Bearer',
+          scope: 'openid email',
+        });
+      }
+      if (url === GOOGLE_USERINFO_URL) {
+        return Response.json({ id: 'reconnect-user', email: 'reconnect@example.test' });
+      }
+      throw new Error(`Unexpected outbound request: ${url}`);
+    };
+
+    const authorize = async (state: string): Promise<string> => {
+      const url = new URL('https://worker.example/authorize');
+      url.searchParams.set('response_type', 'code');
+      url.searchParams.set('client_id', client.client_id!);
+      url.searchParams.set('redirect_uri', redirectUri);
+      url.searchParams.set('state', state);
+      url.searchParams.set('resource', resource);
+      url.searchParams.set('code_challenge', challenge);
+      url.searchParams.set('code_challenge_method', 'S256');
+
+      const authorization = await callWorker(new Request(url));
+      expect(authorization.status).toBe(302);
+      const googleRedirect = new URL(authorization.headers.get('location')!);
+      const providerState = googleRedirect.searchParams.get('state');
+      expect(providerState).toBeTruthy();
+
+      const callback = await callWorker(
+        new Request(
+          `https://worker.example/google/callback?code=google-code&state=${providerState}`,
+        ),
+      );
+      expect(callback.status).toBe(302);
+      const clientRedirect = new URL(callback.headers.get('location')!);
+      expect(`${clientRedirect.origin}${clientRedirect.pathname}`).toBe(redirectUri);
+      expect(clientRedirect.searchParams.get('state')).toBe(state);
+      expect(clientRedirect.searchParams.get('iss')).toBe('https://worker.example');
+      const code = clientRedirect.searchParams.get('code');
+      expect(code).toBeTruthy();
+      return code!;
+    };
+
+    const exchangeCode = (code: string) => callWorker(
+      new Request('https://worker.example/token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code',
+          client_id: client.client_id!,
+          code,
+          redirect_uri: redirectUri,
+          code_verifier: verifier,
+          resource,
+        }),
+      }),
+    );
+
+    const probeBearer = (token: string) => callWorker(
+      new Request(resource, {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+
+    try {
+      const firstCode = await authorize('first-connect');
+      const firstExchange = await exchangeCode(firstCode);
+      expect(firstExchange.status).toBe(200);
+      const firstTokens = await firstExchange.json() as { access_token?: string };
+      expect(firstTokens.access_token).toBeTruthy();
+      expect((await probeBearer(firstTokens.access_token!)).status).not.toBe(401);
+
+      const secondCode = await authorize('reconnect');
+      expect((await probeBearer(firstTokens.access_token!)).status).toBe(401);
+
+      const secondExchange = await exchangeCode(secondCode);
+      expect(secondExchange.status).toBe(200);
+      const secondTokens = await secondExchange.json() as { access_token?: string };
+      expect(secondTokens.access_token).toBeTruthy();
+      expect((await probeBearer(secondTokens.access_token!)).status).not.toBe(401);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

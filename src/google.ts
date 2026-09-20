@@ -38,8 +38,11 @@ export interface GoogleTokenResponse {
   scope: string;
 }
 
+export const MCP_RECONNECT_INSTRUCTION =
+  "Please reconnect this server from your MCP client's connector or app settings.";
+
 export const GSC_ACCESS_REVOKED_MESSAGE =
-  'Google access revoked. Please reconnect this server in your MCP client (e.g. Claude.ai → Settings → Connectors).';
+  `Google access revoked. ${MCP_RECONNECT_INSTRUCTION}`;
 
 export class GoogleRefreshTokenRevokedError extends Error {
   constructor() {

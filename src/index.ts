@@ -10,6 +10,7 @@ import {
   fetchGoogleUserInfo,
   GoogleRefreshTokenRevokedError,
   GSC_ACCESS_REVOKED_MESSAGE,
+  MCP_RECONNECT_INSTRUCTION,
   inspectUrl,
   inspectUrlsSequentially,
   listSitemaps,
@@ -34,8 +35,11 @@ import {
   saveUser,
 } from './storage';
 import { GoogleAccessTokenLifecycle } from './access-token-lifecycle';
-import { consumePendingAuth, stashPendingAuth } from './pending-auth-state';
-export { PendingAuthState } from './pending-auth-state';
+import {
+  consumePendingAuth,
+  PendingAuthStateStore,
+  stashPendingAuth,
+} from './pending-auth-state';
 import { enforceToolRateLimit, type RateLimitedToolName } from './tool-rate-limit';
 export { ToolRateLimiter } from './tool-rate-limiter-do';
 import { generateWeeklyDigest, resolveWeeklyDigestEndDate } from './digest';
@@ -85,7 +89,7 @@ const SERVER_NAME = 'mcp-gsc';
 const SERVER_VERSION = pkg.version;
 
 const NOT_AUTHENTICATED_MESSAGE =
-  'Not authenticated. Please reconnect this server in your MCP client (e.g. Claude.ai → Settings → Connectors).';
+  `Not authenticated. ${MCP_RECONNECT_INSTRUCTION}`;
 
 // Annotation utilities for read-only vs write actions.
 const READ_ONLY_ANNOTATIONS = {
@@ -1524,6 +1528,27 @@ export class GscMcpAgent extends DurableObject<Env> {
     return new Response('Legacy MCP transport is no longer routed here.', {
       status: 410,
     });
+  }
+}
+
+/**
+ * OAuth nonces are addressed one Durable Object per nonce. Extending the
+ * platform base class is required for the store/consume methods to be exposed
+ * through Durable Object RPC.
+ */
+export class PendingAuthState extends DurableObject<Env> {
+  private readonly pending = new PendingAuthStateStore(this.ctx.storage);
+
+  store(claudeAuthRequest: unknown): Promise<void> {
+    return this.pending.store(claudeAuthRequest);
+  }
+
+  consume() {
+    return this.pending.consume();
+  }
+
+  alarm(): Promise<void> {
+    return this.pending.alarm();
   }
 }
 

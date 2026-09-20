@@ -7,13 +7,13 @@ import {
   createGscMcpServer,
   defaultHandler,
   mcpApiHandler,
+  PendingAuthState,
   type Env,
 } from '../../src/index';
 import {
   GOOGLE_TOKEN_URL,
   GOOGLE_USERINFO_URL,
 } from '../../src/google';
-import { PendingAuthState } from '../../src/pending-auth-state';
 import { getDecryptedRefreshToken, getUser, saveUser } from '../../src/storage';
 
 const workerEnv = env as unknown as Env;
@@ -517,7 +517,7 @@ describe('Worker orchestration', () => {
       expect(cachedRefreshes).toBe(1);
 
       await expect(revokedTools['sites.list'].handler({})).rejects.toThrow(
-        'Google access revoked',
+        "Google access revoked. Please reconnect this server from your MCP client's connector or app settings.",
       );
     } finally {
       globalThis.fetch = originalFetch;

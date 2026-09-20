@@ -20,10 +20,14 @@ interface PendingAuthStateStub {
  * consumption a single read-check-delete operation, even for concurrent
  * callbacks routed to the same Durable Object.
  */
-export class PendingAuthState {
+/**
+ * Storage-only pending authorization state. Keeping this independent from the
+ * Worker runtime lets the single-use/expiry semantics stay covered by the
+ * fast Node test suite while the exported Durable Object delegates to it.
+ */
+export class PendingAuthStateStore {
   constructor(
-    private readonly state: DurableObjectState,
-    _env: unknown,
+    private readonly storage: DurableObjectStorage,
     private readonly now: () => number = Date.now,
   ) {}
 
@@ -36,13 +40,13 @@ export class PendingAuthState {
     };
 
     await Promise.all([
-      this.state.storage.put('pending', record),
-      this.state.storage.setAlarm(record.expires_at),
+      this.storage.put('pending', record),
+      this.storage.setAlarm(record.expires_at),
     ]);
   }
 
   async consume(): Promise<PendingAuthRequest | null> {
-    return this.state.storage.transaction(async (txn) => {
+    return this.storage.transaction(async (txn) => {
       const record = await txn.get<PendingAuthRequest>('pending');
       if (!record) return null;
 
@@ -54,7 +58,7 @@ export class PendingAuthState {
   }
 
   async alarm(): Promise<void> {
-    await this.state.storage.deleteAll();
+    await this.storage.deleteAll();
   }
 }
 
