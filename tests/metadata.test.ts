@@ -26,6 +26,7 @@ const indexSource = readFileSync(resolve(projectRoot, 'src/index.ts'), 'utf8');
 const npmLauncherSource = readFileSync(resolve(projectRoot, 'scripts/glama-start.mjs'), 'utf8');
 const readmeSource = readFileSync(resolve(projectRoot, 'README.md'), 'utf8');
 const setupSource = readFileSync(resolve(projectRoot, 'SETUP.md'), 'utf8');
+const llmsInstallSource = readFileSync(resolve(projectRoot, 'llms-install.md'), 'utf8');
 
 test('package release versions remain aligned across machine-readable metadata', () => {
   const expectedVersion = packageJson.version;
@@ -142,6 +143,11 @@ test('published tool catalogs remain aligned', () => {
     sortedToolNames(manifestJson, 'manifest.json'),
     serverToolNames,
     'manifest.json tools must match server.json tools',
+  );
+  assert.match(
+    llmsInstallSource,
+    new RegExp(`with ${serverToolNames.length} tools in the default read-write mode`),
+    'llms-install.md must describe the current default tool count',
   );
 });
 
