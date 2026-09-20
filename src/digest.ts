@@ -283,9 +283,9 @@ function pickActionAndBuild(
     return {
       key: 'indexing_blocked',
       item: {
-        headline: "Your site isn't showing up in Google yet",
-        why: "Google has crawled your site but nothing is appearing in search results. This usually means either your homepage uses JavaScript to load content (Google can't read it), or your pages haven't been submitted for indexing.",
-        how: "1. Open https://search.google.com/search-console and click 'URL inspection' at the top.\n2. Paste your homepage URL.\n3. Click 'Request indexing.' If it says 'URL is not on Google' and the page looks blank when you view the 'Tested page' tab, your site is JavaScript-rendered and you need to add server-side rendering. Ask your developer.",
+        headline: 'No Google Search impressions were recorded this week',
+        why: "Search Console reported zero impressions for this date range. Search Analytics alone does not tell us whether Google crawled or indexed your pages, or why they did not appear in search results. Use URL Inspection to check those signals directly.",
+        how: "1. In Search Console, inspect your homepage and one important page, or use this server's `urls.inspect` tool.\n2. Check the index status, last crawl, page-fetch result, robots/noindex state, and canonical URL.\n3. Fix the specific issue URL Inspection reports. If the page is indexed and fetchable, treat zero impressions as a visibility, ranking, or query-demand problem rather than assuming an indexing failure.",
       },
     };
   }
