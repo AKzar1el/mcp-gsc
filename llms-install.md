@@ -81,10 +81,10 @@ These steps happen in the user's browser at <https://console.cloud.google.com/> 
 
 1. Create a new Google Cloud project (any name, e.g. `mcp-gsc`).
 2. Enable the **Google Search Console API**: <https://console.cloud.google.com/apis/library/searchconsole.googleapis.com> → **Enable**.
-3. Configure the OAuth consent screen (**APIs & Services → OAuth consent screen**):
-   - **User type: External** → Create.
-   - Fill in app name, user support email, developer contact email.
-   - On the **Scopes** step, add only the scopes that match the `GSC_ACCESS_MODE` selected in Step 3:
+3. Configure Google Auth Platform:
+   - Open **Google Auth platform → Branding**. If Google says the Auth platform is not configured yet, click **Get Started**, enter the app name and user support email, choose **Audience: External**, add the developer contact email, review the Google API Services User Data Policy, then **Continue → Create**. If it is already configured, review the existing Branding/Audience settings instead of starting over.
+   - Open **Google Auth platform → Audience** and add the user's Google email under **Test users**.
+   - Open **Google Auth platform → Data Access → Add or remove scopes** and add only the scopes that match the `GSC_ACCESS_MODE` selected in Step 3:
 
      | `GSC_ACCESS_MODE` | Google OAuth scopes to add |
      |---|---|
@@ -93,9 +93,8 @@ These steps happen in the user's browser at <https://console.cloud.google.com/> 
 
      Do not add the broader write/indexing scopes to a read-only deployment. Google recommends requesting the narrowest scopes an app actually needs.
 
-   - On the **Test users** step, add the user's own Google email address.
-   - Save, leaving **Publishing status** as **Testing**. (Important caveat: in Testing mode, Google expires refresh tokens after **7 days** and shows an "unverified app" warning at sign-in. See [SETUP.md Step 7](SETUP.md#step-7--important-google-verification) — tell the user about this.)
-4. Create the OAuth client (**APIs & Services → Credentials → Create credentials → OAuth client ID**):
+   - Save the Data Access changes and leave **Publishing status** as **Testing** on the **Audience** page. (Important caveat: in Testing mode, Google expires refresh tokens after **7 days** and shows an "unverified app" warning at sign-in. See [SETUP.md Step 7](SETUP.md#step-7--important-google-verification) — tell the user about this.)
+4. Create the OAuth client from **Google Auth platform → Clients → Create Client**:
    - **Application type: Web application.**
    - Under **Authorized redirect URIs**, add both (replace `<worker-host>` with the host from Step 4, path exactly `/google/callback`):
 
