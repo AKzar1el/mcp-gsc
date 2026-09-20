@@ -46,6 +46,7 @@ import {
 import {
   assertDateNotInFuture,
   assertDateRange,
+  getSearchConsoleCalendarDate,
   SEARCH_CONSOLE_DATE_SCHEMA,
 } from './date-validation';
 import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from './content-decay-schema';
@@ -1211,8 +1212,9 @@ class GscMcpRuntime {
 
         const formatDate = (d: Date) => d.toISOString().split('T')[0];
 
-        const now = new Date();
-        const endRecentDate = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+        const today = getSearchConsoleCalendarDate();
+        const endRecentDate = new Date(`${today}T00:00:00Z`);
+        endRecentDate.setUTCDate(endRecentDate.getUTCDate() - 3);
         const startRecentDate = new Date(endRecentDate.getTime() - (compare_days - 1) * 24 * 60 * 60 * 1000);
 
         const endPreviousDate = new Date(startRecentDate.getTime() - 24 * 60 * 60 * 1000);
@@ -1310,7 +1312,7 @@ class GscMcpRuntime {
         const { startDate, endDate } = resolveIndexedPagesDateRange(
           start_date,
           end_date,
-          new Date().toISOString().slice(0, 10),
+          getSearchConsoleCalendarDate(),
         );
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'indexing.list_pages');
@@ -1454,7 +1456,7 @@ class GscMcpRuntime {
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'reports.weekly_digest');
         if (rateLimitError) return rateLimitError;
-        const today = new Date().toISOString().slice(0, 10);
+        const today = getSearchConsoleCalendarDate();
         const resolvedEndDate = resolveWeeklyDigestEndDate(end_date, today);
         assertDateNotInFuture(resolvedEndDate, today);
 

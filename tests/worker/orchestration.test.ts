@@ -613,7 +613,7 @@ describe('Worker orchestration', () => {
     const originalFetch = globalThis.fetch;
     const analyticsRequests: Array<Record<string, unknown>> = [];
     vi.useFakeTimers();
-    vi.setSystemTime(new Date('2026-09-20T12:00:00Z'));
+    vi.setSystemTime(new Date('2026-09-20T06:30:00Z'));
 
     try {
       globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -636,18 +636,18 @@ describe('Worker orchestration', () => {
 
       expect(analyticsRequests).toHaveLength(5);
       expect(analyticsRequests.map((request) => request.startDate)).toEqual([
-        '2026-09-11',
-        '2026-09-04',
-        '2026-09-11',
-        '2026-09-04',
-        '2026-09-11',
+        '2026-09-10',
+        '2026-09-03',
+        '2026-09-10',
+        '2026-09-03',
+        '2026-09-10',
       ]);
       expect(analyticsRequests.map((request) => request.endDate)).toEqual([
-        '2026-09-17',
-        '2026-09-10',
-        '2026-09-17',
-        '2026-09-10',
-        '2026-09-17',
+        '2026-09-16',
+        '2026-09-09',
+        '2026-09-16',
+        '2026-09-09',
+        '2026-09-16',
       ]);
     } finally {
       globalThis.fetch = originalFetch;
