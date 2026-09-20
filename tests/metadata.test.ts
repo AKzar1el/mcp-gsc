@@ -23,6 +23,7 @@ const manifestJson = readJson('manifest.json');
 const claudePlugin = readJson('.claude-plugin/plugin.json');
 const cursorPlugin = readJson('.cursor-plugin/plugin.json');
 const indexSource = readFileSync(resolve(projectRoot, 'src/index.ts'), 'utf8');
+const npmLauncherSource = readFileSync(resolve(projectRoot, 'scripts/glama-start.mjs'), 'utf8');
 
 test('package release versions remain aligned across machine-readable metadata', () => {
   const expectedVersion = packageJson.version;
@@ -49,6 +50,35 @@ test('registry package identity remains aligned', () => {
     npmPackage.version,
     packageJson.version,
     'server.json npm package version must match package.json',
+  );
+  assert.equal(
+    npmPackage.runtimeHint,
+    'npx',
+    'server.json npm package must identify the npx launcher runtime',
+  );
+  assert.deepEqual(
+    npmPackage.transport,
+    { type: 'streamable-http', url: 'http://127.0.0.1:{PORT}/mcp' },
+    'server.json npm transport must match the launcher\'s local HTTP behavior',
+  );
+
+  const environmentVariables = new Map(
+    npmPackage.environmentVariables.map((entry: { name: string }) => [entry.name, entry]),
+  );
+  assert.equal(environmentVariables.get('PORT')?.default, '8080');
+  assert.equal(environmentVariables.get('GOOGLE_CLIENT_ID')?.isRequired, true);
+  assert.equal(environmentVariables.get('GOOGLE_CLIENT_SECRET')?.isSecret, true);
+  assert.equal(environmentVariables.get('TOKEN_ENCRYPTION_KEY')?.isSecret, true);
+
+  assert.match(
+    npmLauncherSource,
+    /const port = process\.env\.PORT \|\| '8080'/,
+    'npm launcher default port must stay aligned with Registry metadata',
+  );
+  assert.match(
+    npmLauncherSource,
+    /'--port',\s*port/,
+    'npm launcher must continue serving an HTTP port rather than pretending to be stdio',
   );
 });
 
