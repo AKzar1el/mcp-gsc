@@ -2,7 +2,7 @@
 
 This file is for AI agents (Cline, Claude Code, Cursor, etc.) installing `mcp-gsc` on behalf of a user. It takes the user from zero to a personal, self-hosted instance on Cloudflare Workers. The human-oriented walkthrough with full explanations is [SETUP.md](SETUP.md) — this file mirrors it in deterministic, copy-pasteable steps.
 
-**What you are deploying:** a remote MCP server for Google Search Console with 21 tools in the default read-write mode: read-only analytics/reporting plus explicit property, sitemap, and indexing operations. It runs on the user's own Cloudflare account with the user's own Google OAuth credentials. The connect URL at the end is `https://<worker-host>/mcp`.
+**What you are deploying:** a remote MCP server for Google Search Console with 21 tools in the default read-write mode: read-only analytics/reporting plus explicit property, sitemap, and indexing operations. It runs on the user's own Cloudflare account with the user's own Google OAuth credentials. The connect URL at the end is `https://<worker-host>/mcp`. For analytics/reporting-only installs, prefer the least-privilege `GSC_ACCESS_MODE=readonly` mode: it requests only Search Console read access and exposes the 16 non-mutating tools.
 
 **Security rule for agents:** the three secrets in Step 6 are entered by the **user directly into the terminal prompt** opened by `wrangler secret put`. Never ask the user to paste a secret into the chat, and never echo a secret back.
 
@@ -55,7 +55,17 @@ Edit `wrangler.jsonc` and replace the two placeholder ids with the ids from Step
 ]
 ```
 
-Change **only** those two ids. Do not rename the `OAUTH_KV`/`USER_KV` bindings, the Durable Object bindings `MCP_OBJECT` with class `GscMcpAgent` or `PENDING_AUTH_STATE` with class `PendingAuthState`, or the migrations (`v1` for `GscMcpAgent` and `v2` for `PendingAuthState`). The MCP endpoint itself is stateless; `GscMcpAgent` is retained as a compatibility shell so existing deployments do not need a destructive Durable Object migration. The remaining bindings are used by OAuth state and tool-rate-limit coordination.
+After pasting the two ids, choose the deployment access mode in the existing `vars` block. For analytics, reporting, URL inspection, and other non-mutating workflows, prefer least-privilege read-only access:
+
+```jsonc
+"vars": {
+  "GSC_ACCESS_MODE": "readonly"
+}
+```
+
+Keep `"GSC_ACCESS_MODE": "readwrite"` only when the user explicitly needs the five mutation tools for property, sitemap, or eligible Indexing API operations. This choice also determines which Google OAuth scopes to add in Step 5; changing it later requires affected users to reconnect so Google grants the matching scope set.
+
+Do not rename the `OAUTH_KV`/`USER_KV` bindings, the Durable Object bindings `MCP_OBJECT` with class `GscMcpAgent` or `PENDING_AUTH_STATE` with class `PendingAuthState`, or the migrations (`v1` for `GscMcpAgent` and `v2` for `PendingAuthState`). The MCP endpoint itself is stateless; `GscMcpAgent` is retained as a compatibility shell so existing deployments do not need a destructive Durable Object migration. The remaining bindings are used by OAuth state and tool-rate-limit coordination.
 
 ## Step 4 — First deploy (to learn the Worker URL)
 
@@ -74,12 +84,14 @@ These steps happen in the user's browser at <https://console.cloud.google.com/> 
 3. Configure the OAuth consent screen (**APIs & Services → OAuth consent screen**):
    - **User type: External** → Create.
    - Fill in app name, user support email, developer contact email.
-   - On the **Scopes** step, add these scopes:
+   - On the **Scopes** step, add only the scopes that match the `GSC_ACCESS_MODE` selected in Step 3:
 
-     ```
-     https://www.googleapis.com/auth/webmasters
-     https://www.googleapis.com/auth/indexing
-     ```
+     | `GSC_ACCESS_MODE` | Google OAuth scopes to add |
+     |---|---|
+     | `readonly` (preferred for analytics/reporting-only installs) | `https://www.googleapis.com/auth/webmasters.readonly` |
+     | `readwrite` (needed for mutation tools) | `https://www.googleapis.com/auth/webmasters` and `https://www.googleapis.com/auth/indexing` |
+
+     Do not add the broader write/indexing scopes to a read-only deployment. Google recommends requesting the narrowest scopes an app actually needs.
 
    - On the **Test users** step, add the user's own Google email address.
    - Save, leaving **Publishing status** as **Testing**. (Important caveat: in Testing mode, Google expires refresh tokens after **7 days** and shows an "unverified app" warning at sign-in. See [SETUP.md Step 7](SETUP.md#step-7--important-google-verification) — tell the user about this.)
