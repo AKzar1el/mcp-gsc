@@ -169,6 +169,28 @@ test('agent installation guide preserves the least-privilege readonly path', () 
   );
 });
 
+test('onboarding docs use current Google Auth Platform navigation', () => {
+  for (const [label, source] of [
+    ['SETUP.md', setupSource],
+    ['llms-install.md', llmsInstallSource],
+  ] as const) {
+    assert.match(source, /Google Auth platform[^\n]*Branding/i, `${label} must route branding through Google Auth Platform`);
+    assert.match(source, /Google Auth platform[^\n]*Audience/i, `${label} must route audience/test users through Google Auth Platform`);
+    assert.match(source, /Google Auth platform[^\n]*Data Access/i, `${label} must route scopes through Google Auth Platform`);
+    assert.match(source, /Google Auth platform[^\n]*Clients/i, `${label} must route OAuth clients through Google Auth Platform`);
+    assert.doesNotMatch(
+      source,
+      /APIs & Services\s*→\s*OAuth consent screen/i,
+      `${label} must not send users to the retired OAuth consent-screen navigation`,
+    );
+    assert.doesNotMatch(
+      source,
+      /APIs & Services\s*→\s*Credentials\s*→\s*Create credentials\s*→\s*OAuth client ID/i,
+      `${label} must not send users through the retired OAuth client navigation`,
+    );
+  }
+});
+
 test('URL inspection guidance routes bounded multi-URL work to the batch tool', () => {
   assert.doesNotMatch(
     indexSource,

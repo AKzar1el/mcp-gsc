@@ -42,12 +42,17 @@ npx wrangler login
 
 ---
 
-## Step 2 — Configure the OAuth consent screen
+## Step 2 — Configure Google Auth Platform
 
-1. Go to **APIs & Services → OAuth consent screen**.
-2. Choose **User type: External**, then **Create**.
-3. Fill in the required app info (app name, user support email, developer contact email). The app name is what users see on the Google sign-in screen.
-4. Choose the access mode for this deployment, then on the **Scopes** step click **Add or remove scopes** and add the matching scope set:
+1. In the Google Cloud console, go to **Google Auth platform → Branding**.
+2. If Google says the Auth platform is not configured yet, click **Get Started** and complete the setup wizard:
+   - **App Information:** enter the app name and user support email.
+   - **Audience:** choose **External**.
+   - **Contact Information:** enter the developer contact email.
+   - **Finish:** review the Google API Services User Data Policy, agree if appropriate, then click **Continue → Create**.
+   If the Auth platform is already configured, review the existing **Branding** and **Audience** settings instead of starting over.
+3. Go to **Google Auth platform → Audience**. Under **Test users**, click **Add users** and add your own Google email address (and any teammates who need access while the app is in Testing).
+4. Go to **Google Auth platform → Data Access → Add or remove scopes**. Choose the access mode for this deployment and add the matching scope set:
 
    | `GSC_ACCESS_MODE` | Scopes to add |
    |---|---|
@@ -57,14 +62,13 @@ npx wrangler login
    `readwrite` preserves the full tool surface: it grants Search Console read-write access and the Indexing API scope required to manage sites, sitemaps, and request URL crawling. `readonly` requests only the Search Console read-only scope and omits the mutation tools.
 
    Note that the Indexing API itself is narrow: Google currently restricts it to pages containing `JobPosting` structured data or livestream pages containing `BroadcastEvent` inside `VideoObject`. It is not available for general webpage submission — the `indexing.request` tool checks a page's structured data before submitting and returns an error for ineligible URLs.
-5. On the **Test users** step, click **Add users** and add your own Google email address (and any teammates who need access while the app is in Testing).
-6. Save. Leave the **Publishing status** as **Testing** for now — see [Step 7](#step-7--important-google-verification).
+5. Save the Data Access changes. In **Google Auth platform → Audience**, leave **Publishing status** as **Testing** for now — see [Step 7](#step-7--important-google-verification).
 
 ---
 
 ## Step 3 — Create an OAuth client (Web application)
 
-1. Go to **APIs & Services → Credentials → Create credentials → OAuth client ID**.
+1. Go to **Google Auth platform → Clients → Create Client**.
 2. **Application type: Web application.**
 3. Under **Authorized redirect URIs**, add the entries for the ways you will run mcp-gsc:
 
@@ -197,10 +201,10 @@ While your OAuth app's **Publishing status** is **Testing** (where it starts, an
 - **100-user cap.** At most 100 Google accounts can ever authorize the app.
 - **Refresh tokens expire after 7 days.** This is the big one. In Testing mode, Google expires every refresh token **7 days** after it's issued. When that happens the tools start returning *"Google access revoked. Please reconnect this connector in Claude.ai"*, and the user has to reconnect to get a fresh token. **Any automation or scheduled job you build on top will break every 7 days** until you fix this.
 
-To remove all three limits you must move the app to **Publishing status: In production**:
+To remove all three limits you must move the app to **Publishing status: In production** and complete any verification Google requires for the scopes you use:
 
-- In **APIs & Services → OAuth consent screen**, click **Publish app**.
-- Because the requested Search Console scope (and, in read-write mode, `indexing`) is **sensitive**, Google requires **OAuth verification**: you submit the app for review, justify the scopes, and (for sensitive/restricted scopes) may need to verify domain ownership and complete a security assessment. **This review can take days to several weeks.**
+- In **Google Auth platform → Audience**, click **Publish app** and confirm the move to production.
+- Google requires public production apps that use **sensitive or restricted scopes** to complete OAuth verification. Follow **Google Auth platform → Verification Center** for the requirements that apply to your selected scopes. Google's additional security assessment applies to **restricted** scopes; do not assume every sensitive scope requires one. Review time varies by the checks your app requires.
 - Once the app is **In production and verified**, the unverified-app screen goes away, the 100-user cap is lifted, and refresh tokens stop expiring on the 7-day clock.
 
 **Bottom line:** for personal use with one or two Google accounts, Testing mode is fine as long as you don't mind reconnecting roughly every 7 days. For anything shared or automated, you'll want to complete Google's verification — and that, not the code, is the heaviest part of self-hosting a Google Search Console MCP.
