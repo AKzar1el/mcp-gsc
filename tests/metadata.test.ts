@@ -151,6 +151,24 @@ test('published tool catalogs remain aligned', () => {
   );
 });
 
+test('agent installation guide preserves the least-privilege readonly path', () => {
+  assert.match(
+    llmsInstallSource,
+    /GSC_ACCESS_MODE["`:= ]+readonly/,
+    'llms-install.md must show autonomous installers how to select readonly mode',
+  );
+  assert.match(
+    llmsInstallSource,
+    /https:\/\/www\.googleapis\.com\/auth\/webmasters\.readonly/,
+    'llms-install.md must document the Search Console readonly OAuth scope',
+  );
+  assert.match(
+    llmsInstallSource,
+    /narrowest scopes an app actually needs/i,
+    'llms-install.md must preserve least-privilege OAuth guidance',
+  );
+});
+
 test('URL inspection guidance routes bounded multi-URL work to the batch tool', () => {
   assert.doesNotMatch(
     indexSource,
