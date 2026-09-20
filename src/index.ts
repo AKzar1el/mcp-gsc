@@ -220,6 +220,28 @@ const QUICK_WIN_OUTPUT_SCHEMA = {
   pagination: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
 };
 
+const PAGE_QUERIES_OUTPUT_SCHEMA = {
+  page: z.string(),
+  queries: z.array(
+    z.object({
+      query: z.string(),
+      ...METRIC_OUTPUT_SCHEMA,
+    }),
+  ),
+  pagination: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
+};
+
+const QUERY_PAGES_OUTPUT_SCHEMA = {
+  query: z.string(),
+  pages: z.array(
+    z.object({
+      page: z.string(),
+      ...METRIC_OUTPUT_SCHEMA,
+    }),
+  ),
+  pagination: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
+};
+
 const CANNIBALIZATION_OUTPUT_SCHEMA = {
   candidates: z.array(
     z.object({
@@ -357,6 +379,16 @@ const TOOL_CATALOG = [
     name: 'analytics.query',
     description:
       'Query Search Console search analytics (impressions, clicks, CTR, average position) over a date range, broken down by query, page, country, device, date, or search appearance. Supports filters and pagination.',
+  },
+  {
+    name: 'insights.page_queries',
+    description:
+      'For one exact page URL, list the Search Console queries that produced impressions for it, with clicks, impressions, CTR, average position, search type, and bounded pagination.',
+  },
+  {
+    name: 'insights.query_pages',
+    description:
+      'For one exact search query, list the site pages that received impressions for it, with clicks, impressions, CTR, average position, search type, and bounded pagination.',
   },
   {
     name: 'urls.inspect',
@@ -868,6 +900,116 @@ class GscMcpRuntime {
         // Compact JSON on purpose: analytics responses are the largest this
         // server produces, and pretty-printing them costs ~3x the tokens.
         return toolResponse(JSON.stringify(payload), payload);
+      },
+    );
+
+    this.server.registerTool(
+      'insights.page_queries',
+      {
+        title: 'Find queries for a page',
+        description: 'For one exact page URL, return the Search Console queries that produced impressions for it over a date range. This wraps an exact page dimension filter so agents do not need to construct analytics.query filter groups manually. Exact page matching is case-sensitive in Search Console. Pagination metadata flags when the local 100,000-row safety ceiling stopped fetching; Search Console can still omit anonymized queries.',
+        inputSchema: {
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          page_url: z.string().url().describe('Exact fully-qualified page URL to filter on, e.g. https://example.com/guides/seo/. Search Console exact page filters are case-sensitive.'),
+          start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
+          end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
+          search_type: z
+            .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
+            .default('web')
+            .describe('Which search index to query. Defaults to web.'),
+        },
+        outputSchema: PAGE_QUERIES_OUTPUT_SCHEMA,
+        annotations: READ_ONLY_ANNOTATIONS,
+      },
+      async ({ site_url, page_url, start_date, end_date, search_type }) => {
+        assertDateRange(start_date, end_date);
+        const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'insights.page_queries');
+        if (rateLimitError) return rateLimitError;
+        const accessToken = await this.getAccessToken(googleId);
+        const source = await querySearchAnalyticsPaginated(accessToken, site_url, {
+          startDate: start_date,
+          endDate: end_date,
+          dimensions: ['query'],
+          type: search_type,
+          dimensionFilterGroups: [
+            {
+              groupType: 'and',
+              filters: [
+                { dimension: 'page', operator: 'equals', expression: page_url },
+              ],
+            },
+          ],
+        });
+        const payload = {
+          page: page_url,
+          queries: source.rows
+            .filter((row) => row.keys.length > 0)
+            .map((row) => ({
+              query: row.keys[0],
+              clicks: row.clicks,
+              impressions: row.impressions,
+              ctr: row.ctr,
+              position: row.position,
+            })),
+          pagination: paginationMetadata(source),
+        };
+        return toolResponse(JSON.stringify(payload, null, 2), payload);
+      },
+    );
+
+    this.server.registerTool(
+      'insights.query_pages',
+      {
+        title: 'Find pages for a query',
+        description: 'For one exact search query, return the site pages that received impressions for it over a date range. This wraps an exact query dimension filter so agents do not need to construct analytics.query filter groups manually. Exact query matching is case-sensitive in Search Console. Use this to verify which URL Google is surfacing for a target query before diagnosing cannibalization or content targeting. Pagination metadata flags when the local 100,000-row safety ceiling stopped fetching.',
+        inputSchema: {
+          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          query: z.string().min(1).describe('Exact Search Console query text to filter on. Exact query filters are case-sensitive.'),
+          start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
+          end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
+          search_type: z
+            .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
+            .default('web')
+            .describe('Which search index to query. Defaults to web.'),
+        },
+        outputSchema: QUERY_PAGES_OUTPUT_SCHEMA,
+        annotations: READ_ONLY_ANNOTATIONS,
+      },
+      async ({ site_url, query, start_date, end_date, search_type }) => {
+        assertDateRange(start_date, end_date);
+        const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'insights.query_pages');
+        if (rateLimitError) return rateLimitError;
+        const accessToken = await this.getAccessToken(googleId);
+        const source = await querySearchAnalyticsPaginated(accessToken, site_url, {
+          startDate: start_date,
+          endDate: end_date,
+          dimensions: ['page'],
+          type: search_type,
+          dimensionFilterGroups: [
+            {
+              groupType: 'and',
+              filters: [
+                { dimension: 'query', operator: 'equals', expression: query },
+              ],
+            },
+          ],
+        });
+        const payload = {
+          query,
+          pages: source.rows
+            .filter((row) => row.keys.length > 0)
+            .map((row) => ({
+              page: row.keys[0],
+              clicks: row.clicks,
+              impressions: row.impressions,
+              ctr: row.ctr,
+              position: row.position,
+            })),
+          pagination: paginationMetadata(source),
+        };
+        return toolResponse(JSON.stringify(payload, null, 2), payload);
       },
     );
 

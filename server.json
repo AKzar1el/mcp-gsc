@@ -21,6 +21,14 @@
       "description": "Impressions, clicks, CTR, and average position over a date range."
     },
     {
+      "name": "insights.page_queries",
+      "description": "For one exact page URL, list the Search Console queries that produced impressions for it."
+    },
+    {
+      "name": "insights.query_pages",
+      "description": "For one exact search query, list the site pages that received impressions for it."
+    },
+    {
       "name": "urls.inspect",
       "description": "Google's URL Inspection report for a single page: index status, last crawl, mobile usability. Use urls.inspect_many for 2-10 URLs."
     },
@@ -81,7 +89,7 @@
       "description": "Generate a plain-language weekly SEO report with movers, top pages, and a recommended action."
     }
   ],
-  "version": "0.3.2-registry.4",
+  "version": "0.3.2-registry.5",
   "repository": {
     "url": "https://github.com/AKzar1el/mcp-gsc",
     "source": "github"

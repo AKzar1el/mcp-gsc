@@ -40,6 +40,14 @@
       "description": "Impressions, clicks, CTR, and average position over a date range — broken down by query, page, country, device, date, or search appearance."
     },
     {
+      "name": "insights.page_queries",
+      "description": "For one exact page URL, list the Search Console queries that produced impressions for it."
+    },
+    {
+      "name": "insights.query_pages",
+      "description": "For one exact search query, list the site pages that received impressions for it."
+    },
+    {
       "name": "urls.inspect",
       "description": "Google's URL Inspection report for a single page: index status, last crawl, mobile usability, rich-results eligibility, AMP. Use urls.inspect_many for 2-10 URLs."
     },

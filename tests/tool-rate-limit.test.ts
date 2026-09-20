@@ -63,6 +63,8 @@ test('tool rate-limit policy table assigns the documented categories and limits'
       category: 'search-analytics',
       tools: [
         'analytics.query',
+        'insights.page_queries',
+        'insights.query_pages',
         'insights.quick_wins',
         'insights.cannibalization',
         'insights.content_decay',
@@ -103,6 +105,8 @@ test('tool rate-limit policy table assigns the documented categories and limits'
     },
   ]);
   assert.equal(getToolRateLimitPolicy('analytics.query')?.category, 'search-analytics');
+  assert.equal(getToolRateLimitPolicy('insights.page_queries')?.category, 'search-analytics');
+  assert.equal(getToolRateLimitPolicy('insights.query_pages')?.category, 'search-analytics');
   assert.equal(getToolRateLimitPolicy('sitemaps.delete')?.category, 'search-console-write');
   assert.equal(getToolRateLimitPolicy('sites.list'), undefined);
 });
