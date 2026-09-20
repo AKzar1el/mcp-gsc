@@ -81,6 +81,8 @@ describe('Glama inspection mode', () => {
         'server.capabilities',
         'sites.list',
         'analytics.query',
+        'insights.page_queries',
+        'insights.query_pages',
         'urls.inspect',
         'reports.weekly_digest',
         'indexing.request',

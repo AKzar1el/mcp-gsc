@@ -170,6 +170,8 @@ test(
     const expected = [
       'sites.list',
       'analytics.query',
+      'insights.page_queries',
+      'insights.query_pages',
       'urls.inspect',
       'urls.inspect_many',
       'sitemaps.list',

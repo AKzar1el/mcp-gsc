@@ -185,6 +185,8 @@ describe('Worker orchestration', () => {
     expect(Object.keys(tools)).toEqual(
       expect.arrayContaining([
         'analytics.query',
+        'insights.page_queries',
+        'insights.query_pages',
         'reports.weekly_digest',
         'sites.add',
         'sites.delete',
@@ -194,6 +196,8 @@ describe('Worker orchestration', () => {
       ]),
     );
     expect(tools['analytics.query'].inputSchema).toBeDefined();
+    expect(tools['insights.page_queries'].inputSchema).toBeDefined();
+    expect(tools['insights.query_pages'].inputSchema).toBeDefined();
     expect(tools['sites.add'].annotations).toMatchObject({
       readOnlyHint: false,
       destructiveHint: true,
@@ -209,6 +213,93 @@ describe('Worker orchestration', () => {
       destructiveHint: true,
       idempotentHint: false,
     });
+  });
+
+  it('routes exact page/query drilldowns through Search Analytics filters', async () => {
+    await saveUser(
+      workerEnv,
+      'drilldown-user',
+      'drilldown@example.test',
+      'drilldown-refresh-token',
+    );
+    const server = await createGscMcpServer(
+      workerEnv,
+      {
+        google_id: 'drilldown-user',
+        email: 'drilldown@example.test',
+      },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        { handler: (args: Record<string, unknown>) => Promise<unknown> }
+      >;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const analyticsRequests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'drilldown-access-token', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          analyticsRequests.push(body);
+          const dimensions = body.dimensions as string[];
+          return response({
+            rows: dimensions[0] === 'query'
+              ? [{ keys: ['seo audit'], clicks: 7, impressions: 90, ctr: 0.077, position: 8.2 }]
+              : [{ keys: ['https://example.com/seo-audit/'], clicks: 7, impressions: 90, ctr: 0.077, position: 8.2 }],
+          });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const pageResult = await tools['insights.page_queries'].handler({
+        site_url: 'sc-domain:example.com',
+        page_url: 'https://example.com/seo-audit/',
+        start_date: '2026-08-01',
+        end_date: '2026-08-31',
+        search_type: 'web',
+      }) as { structuredContent: { page: string; queries: Array<{ query: string }> } };
+      const queryResult = await tools['insights.query_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        query: 'seo audit',
+        start_date: '2026-08-01',
+        end_date: '2026-08-31',
+        search_type: 'web',
+      }) as { structuredContent: { query: string; pages: Array<{ page: string }> } };
+
+      expect(pageResult.structuredContent).toMatchObject({
+        page: 'https://example.com/seo-audit/',
+        queries: [{ query: 'seo audit' }],
+      });
+      expect(queryResult.structuredContent).toMatchObject({
+        query: 'seo audit',
+        pages: [{ page: 'https://example.com/seo-audit/' }],
+      });
+      expect(analyticsRequests).toHaveLength(2);
+      expect(analyticsRequests[0]).toMatchObject({
+        dimensions: ['query'],
+        type: 'web',
+        dimensionFilterGroups: [{
+          groupType: 'and',
+          filters: [{ dimension: 'page', operator: 'equals', expression: 'https://example.com/seo-audit/' }],
+        }],
+      });
+      expect(analyticsRequests[1]).toMatchObject({
+        dimensions: ['page'],
+        type: 'web',
+        dimensionFilterGroups: [{
+          groupType: 'and',
+          filters: [{ dimension: 'query', operator: 'equals', expression: 'seo audit' }],
+        }],
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('propagates OAuth application props through the stateless MCP handler', async () => {

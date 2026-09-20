@@ -29,6 +29,8 @@ export const TOOL_RATE_LIMIT_POLICIES = {
     category: 'search-analytics',
     tools: [
       'analytics.query',
+      'insights.page_queries',
+      'insights.query_pages',
       'insights.quick_wins',
       'insights.cannibalization',
       'insights.content_decay',
