@@ -1,5 +1,6 @@
 import { querySearchAnalytics, type SearchAnalyticsRow } from './google';
 import type { GoogleAccessTokenProvider } from './access-token-lifecycle';
+import { getSearchConsoleCalendarDate } from './date-validation';
 
 interface DateRanges {
   currentStart: string;
@@ -574,7 +575,7 @@ function isOperatorQuery(q: string): boolean {
 }
 
 function isWithinLast3Days(endDate: string): boolean {
-  const todayISO = new Date().toISOString().slice(0, 10);
+  const todayISO = getSearchConsoleCalendarDate();
   const todayUTC = new Date(`${todayISO}T00:00:00Z`);
   const endUTC = new Date(`${endDate}T00:00:00Z`);
   const diffDays =

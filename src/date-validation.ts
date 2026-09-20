@@ -1,6 +1,25 @@
 import { z } from 'zod';
 
 const YYYY_MM_DD = /^(\d{4})-(\d{2})-(\d{2})$/;
+const SEARCH_CONSOLE_TIME_ZONE = 'America/Los_Angeles';
+
+export function getSearchConsoleCalendarDate(now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: SEARCH_CONSOLE_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value;
+  const year = value('year');
+  const month = value('month');
+  const day = value('day');
+  if (!year || !month || !day) {
+    throw new Error('Could not resolve the Search Console calendar date.');
+  }
+  return `${year}-${month}-${day}`;
+}
 
 export function isValidCalendarDate(value: string): boolean {
   const match = YYYY_MM_DD.exec(value);

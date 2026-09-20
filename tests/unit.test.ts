@@ -14,6 +14,7 @@ import { encryptToken, decryptToken } from '../src/crypto';
 import {
   assertDateNotInFuture,
   assertDateRange,
+  getSearchConsoleCalendarDate,
   SEARCH_CONSOLE_DATE_SCHEMA,
 } from '../src/date-validation';
 import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from '../src/content-decay-schema';
@@ -68,6 +69,17 @@ test('Search Console date ranges allow same-day queries and reject reversed rang
   assert.throws(
     () => assertDateRange('2026-08-19', '2026-08-18'),
     /start_date must be on or before end_date/,
+  );
+});
+
+test('Search Console calendar dates use Pacific Time instead of UTC', () => {
+  assert.equal(
+    getSearchConsoleCalendarDate(new Date('2026-09-20T06:59:59Z')),
+    '2026-09-19',
+  );
+  assert.equal(
+    getSearchConsoleCalendarDate(new Date('2026-09-20T07:00:00Z')),
+    '2026-09-20',
   );
 });
 
