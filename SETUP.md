@@ -2,7 +2,7 @@
 
 This guide walks you through deploying your own instance of `mcp-gsc` on Cloudflare Workers with your own Google OAuth credentials ("bring your own OAuth"). Budget about 30–40 minutes the first time.
 
-By the end you'll have a Worker at `https://<your-worker>.workers.dev/mcp` that you can connect as a custom MCP connector in Claude.ai, Cursor, or ChatGPT.
+By the end you'll have a Worker at `https://<your-worker>.workers.dev/mcp` that you can connect as a remote MCP integration in Claude, Cursor, or ChatGPT.
 
 > **Read [Step 7](#step-7--important-google-verification) before you start.** While your Google OAuth app is unverified, refresh tokens expire after **7 days** and you're capped at **100 users**. This is the single biggest reason self-hosting a Google Search Console MCP is heavier than a key-based MCP — it's how Google's OAuth works for the sensitive `webmasters` and `indexing` scopes, not a limitation of this project.
 
@@ -179,15 +179,13 @@ curl https://<your-worker>.workers.dev/healthz
 
 Opening the root URL in a browser also prints the `/mcp` connect URL.
 
-Now connect it in **Claude.ai**:
+Now connect it in your client:
 
-1. Settings → **Connectors** → **Add custom connector**.
-2. Paste `https://<your-worker>.workers.dev/mcp`.
-3. Leave **Client ID** and **Client Secret** blank.
-4. Click through; Claude opens a Google sign-in flow. Sign in with a Google account you added as a **test user** in Step 2, and grant the access requested by your selected deployment mode.
-5. The connector turns green. Ask: *"What sites do I have in Search Console?"*
+- **Claude.ai / Claude Desktop** — go to **Customize → Connectors**, click **+ → Add custom connector**, enter a name, and paste `https://<your-worker>.workers.dev/mcp`. Leave the optional advanced OAuth Client ID/Secret fields blank. On Team/Enterprise, an Owner or Primary Owner must first add the custom Web connector from **Organization settings → Connectors**; members then connect it from Customize → Connectors. On first connection, Claude opens the Google sign-in flow.
+- **Cursor** — add a remote **Streamable HTTP** MCP server with the same `/mcp` URL. Cursor supports OAuth for remote HTTP servers.
+- **ChatGPT** — enable **Developer mode**, then create a custom MCP **app** from **Settings → Apps → Create** (admins/owners can also use **Workspace settings → Apps → Create**). Provide the `/mcp` endpoint, select the applicable authentication option, click **Scan Tools**, complete OAuth, then create the app. Full MCP including write/modify tools is currently available to Business and Enterprise/Edu; Pro custom MCP access is read/fetch-only, so use `GSC_ACCESS_MODE=readonly` for that path.
 
-The same `/mcp` URL works in Cursor and ChatGPT.
+After the client starts OAuth, sign in with a Google account you added as a **test user** in Step 2 and grant the access requested by your selected deployment mode. Then ask: *"What sites do I have in Search Console?"*
 
 ---
 

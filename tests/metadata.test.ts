@@ -27,6 +27,7 @@ const npmLauncherSource = readFileSync(resolve(projectRoot, 'scripts/glama-start
 const readmeSource = readFileSync(resolve(projectRoot, 'README.md'), 'utf8');
 const setupSource = readFileSync(resolve(projectRoot, 'SETUP.md'), 'utf8');
 const llmsInstallSource = readFileSync(resolve(projectRoot, 'llms-install.md'), 'utf8');
+const testsReadmeSource = readFileSync(resolve(projectRoot, 'tests/README.md'), 'utf8');
 
 test('package release versions remain aligned across machine-readable metadata', () => {
   const expectedVersion = packageJson.version;
@@ -188,6 +189,36 @@ test('onboarding docs use current Google Auth Platform navigation', () => {
       /APIs & Services\s*→\s*Credentials\s*→\s*Create credentials\s*→\s*OAuth client ID/i,
       `${label} must not send users through the retired OAuth client navigation`,
     );
+  }
+});
+
+test('host-native MCP onboarding uses current Claude and ChatGPT surfaces', () => {
+  for (const [label, source] of [
+    ['README.md', readmeSource],
+    ['SETUP.md', setupSource],
+    ['llms-install.md', llmsInstallSource],
+    ['tests/README.md', testsReadmeSource],
+  ] as const) {
+    assert.match(
+      source,
+      /Customize\s*→\s*Connectors/i,
+      `${label} must route Claude remote MCP setup through Customize -> Connectors`,
+    );
+    assert.doesNotMatch(
+      source,
+      /Settings\s*→\s*Connectors\s*→\s*(?:\*\*)?Add custom connector/i,
+      `${label} must not use Claude's retired Settings -> Connectors path`,
+    );
+  }
+
+  for (const [label, source] of [
+    ['README.md', readmeSource],
+    ['SETUP.md', setupSource],
+    ['llms-install.md', llmsInstallSource],
+  ] as const) {
+    assert.match(source, /ChatGPT[^\n]*Developer mode/i, `${label} must mention ChatGPT developer mode`);
+    assert.match(source, /Settings\s*→\s*Apps\s*→\s*Create/i, `${label} must use ChatGPT's current Apps -> Create flow`);
+    assert.match(source, /Pro[^\n]*(?:read\/fetch|read-fetch|read and fetch)/i, `${label} must preserve ChatGPT Pro's read/fetch limitation`);
   }
 });
 

@@ -39,7 +39,7 @@ Without `MCP_ACCESS_TOKEN`, checks 5-6 are reported as skipped — checks 1-4 re
 
 ## Obtaining `MCP_ACCESS_TOKEN` once
 
-1. In Claude.ai → Settings → Connectors → Add custom connector, paste `${MCP_BASE_URL}/mcp` and complete the Google OAuth handshake. The connector should turn green.
+1. In Claude.ai, open **Customize → Connectors → + → Add custom connector**, enter a name, paste `${MCP_BASE_URL}/mcp`, and complete the Google OAuth handshake. On Team/Enterprise, an Owner or Primary Owner must add the custom Web connector from **Organization settings → Connectors** first.
 
 2. List the OAuth provider's KV namespace:
 

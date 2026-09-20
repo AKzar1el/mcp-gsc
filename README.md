@@ -56,7 +56,7 @@ claude mcp add --transport http gsc https://<your-worker>.workers.dev/mcp
 
 Uses the hosted endpoint above; complete its Google OAuth flow on first use.
 
-**ChatGPT** — add it as a custom connector; see [Connect in your AI client](#connect-in-your-ai-client) below.
+**ChatGPT** — add it as a custom MCP app in developer mode; see [Connect in your AI client](#connect-in-your-ai-client) below.
 
 A self-hostable [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for **Google Search Console**. Connect it to Claude.ai, Cursor, ChatGPT, or any MCP-compatible client and ask your AI assistant about your site's organic search performance — impressions, clicks, top queries, index status, and sitemap health — straight from your own Google account.
 
@@ -110,11 +110,11 @@ Once you've deployed the server (see **[SETUP.md](SETUP.md)**), connect it by pa
 https://<your-worker>.workers.dev/mcp
 ```
 
-- **Claude.ai** — Settings → Connectors → **Add custom connector** → paste the `/mcp` URL. Leave Client ID and Client Secret blank. On first use, Claude opens a Google sign-in flow; grant the access requested by the deployment and the connector turns green.
-- **Cursor** — add it as a custom MCP server pointing at the same `/mcp` URL.
-- **ChatGPT** (with connector/MCP support) — add a custom connector with the `/mcp` URL.
+- **Claude.ai / Claude Desktop** — go to **Customize → Connectors**, click **+ → Add custom connector**, enter a name and paste the `/mcp` URL. Leave the optional advanced OAuth Client ID/Secret fields blank. On Team/Enterprise, an Owner or Primary Owner must first add the custom Web connector from **Organization settings → Connectors**; members then connect it from Customize → Connectors. On first connection, Claude opens the Google sign-in flow.
+- **Cursor** — add a remote **Streamable HTTP** MCP server pointing at the same `/mcp` URL; Cursor supports OAuth for remote HTTP MCP servers. The hosted Add to Cursor button above uses this endpoint directly.
+- **ChatGPT** — enable **Developer mode**, then create a custom MCP **app** from **Settings → Apps → Create** (admins/owners can also use **Workspace settings → Apps → Create**). Provide the `/mcp` endpoint, select the applicable authentication option, **Scan Tools**, complete OAuth, then create the app. Full MCP including write/modify tools is currently available to Business and Enterprise/Edu; Pro custom MCP access is read/fetch-only, so use `GSC_ACCESS_MODE=readonly` for that path.
 
-Any MCP-compatible client works — they all point at the same `/mcp` endpoint and share the same OAuth flow.
+The `/mcp` endpoint is the same across clients, but each host has its own setup and permission flow.
 
 ## Setup
 

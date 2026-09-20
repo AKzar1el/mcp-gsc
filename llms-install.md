@@ -156,9 +156,10 @@ npx wrangler deploy
    https://<worker-host>/mcp
    ```
 
-   - **Claude.ai / Claude Desktop** — Settings → Connectors → **Add custom connector** → paste the `/mcp` URL, leave Client ID and Client Secret blank.
+   - **Claude.ai / Claude Desktop** — open **Customize → Connectors**, click **+ → Add custom connector**, enter a name, and paste the `/mcp` URL. Leave the optional advanced OAuth Client ID/Secret fields blank. On Team/Enterprise, an Owner or Primary Owner must first add the custom Web connector from **Organization settings → Connectors**; members then connect it from Customize → Connectors.
    - **Claude Code** — `claude mcp add --transport http gsc https://<worker-host>/mcp`
-   - **Cline / Cursor / ChatGPT** — add a remote (streamable HTTP) MCP server with the same `/mcp` URL.
+   - **Cursor / Cline** — add a remote **Streamable HTTP** MCP server with the same `/mcp` URL. Cursor supports OAuth for remote HTTP MCP servers.
+   - **ChatGPT** — enable **Developer mode**, then create a custom MCP **app** from **Settings → Apps → Create** (admins/owners can also use **Workspace settings → Apps → Create**). Provide the `/mcp` endpoint, select the applicable authentication option, **Scan Tools**, complete OAuth, then create the app. Full write/modify MCP is currently Business/Enterprise/Edu; Pro custom MCP is read/fetch-only, so keep this deployment in `GSC_ACCESS_MODE=readonly` for that path.
 
 3. **Final confirmation (requires the user):** when the client connects, it opens a Google sign-in page. Have the user sign in once with the Google account added as a **test user** in Step 5 and grant read access. Expect Google's *"Google hasn't verified this app"* warning (Testing mode) — the user clicks **Advanced → Go to \<app\> (unsafe)** to continue; this is expected for an unverified personal instance. The install is verified when a tool call succeeds, e.g. asking the assistant: *"What sites do I have in Search Console?"*
 
