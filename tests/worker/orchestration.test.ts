@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { reset, runInDurableObject } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
 import { generateWeeklyDigest } from '../../src/digest';
@@ -495,6 +495,72 @@ describe('Worker orchestration', () => {
       ]);
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('defaults the weekly digest to the latest usually-complete Search Console date', async () => {
+    await saveUser(
+      workerEnv,
+      'digest-default-user',
+      'digest-default@example.test',
+      'digest-default-refresh-token',
+    );
+    const server = await createGscMcpServer(
+      workerEnv,
+      {
+        google_id: 'digest-default-user',
+        email: 'digest-default@example.test',
+      },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        { handler: (args: Record<string, unknown>) => Promise<unknown> }
+      >;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const analyticsRequests: Array<Record<string, unknown>> = [];
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-20T12:00:00Z'));
+
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'digest-default-access-token', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/https%3A%2F%2Fexample.com%2F/searchAnalytics/query') {
+          analyticsRequests.push(
+            JSON.parse(String(init?.body)) as Record<string, unknown>,
+          );
+          return response({ rows: [] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      await tools['reports.weekly_digest'].handler({
+        site_url: 'https://example.com/',
+      });
+
+      expect(analyticsRequests).toHaveLength(5);
+      expect(analyticsRequests.map((request) => request.startDate)).toEqual([
+        '2026-09-11',
+        '2026-09-04',
+        '2026-09-11',
+        '2026-09-04',
+        '2026-09-11',
+      ]);
+      expect(analyticsRequests.map((request) => request.endDate)).toEqual([
+        '2026-09-17',
+        '2026-09-10',
+        '2026-09-17',
+        '2026-09-10',
+        '2026-09-17',
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+      vi.useRealTimers();
     }
   });
 });

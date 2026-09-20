@@ -38,7 +38,7 @@ import { consumePendingAuth, stashPendingAuth } from './pending-auth-state';
 export { PendingAuthState } from './pending-auth-state';
 import { enforceToolRateLimit, type RateLimitedToolName } from './tool-rate-limit';
 export { ToolRateLimiter } from './tool-rate-limiter-do';
-import { generateWeeklyDigest } from './digest';
+import { generateWeeklyDigest, resolveWeeklyDigestEndDate } from './digest';
 import {
   CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
   CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
@@ -1298,12 +1298,12 @@ class GscMcpRuntime {
       {
         title: 'Weekly GSC Performance Digest',
         description:
-          'Generate a plain-language weekly SEO report for one Google Search Console property. Returns a markdown digest covering the 7 days ending on end_date, with week-over-week comparison, top pages, queries gaining or losing traction, and one specific action item. Defaults end_date to today if omitted.',
+          'Generate a plain-language weekly SEO report for one Google Search Console property. Returns a markdown digest covering the 7 days ending on end_date, with week-over-week comparison, top pages, queries gaining or losing traction, and one specific action item. Defaults end_date to 3 days ago so the report uses the latest usually-complete Search Console data; pass end_date explicitly to include fresher preliminary data.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA
             .optional()
-            .describe('End date (inclusive) in YYYY-MM-DD format. Defaults to today.'),
+            .describe('End date (inclusive) in YYYY-MM-DD format. Defaults to 3 days ago, which is usually the latest complete Search Console date. Pass a more recent date explicitly to include preliminary data.'),
         },
         outputSchema: WEEKLY_DIGEST_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
@@ -1313,7 +1313,7 @@ class GscMcpRuntime {
         const rateLimitError = await this.rateLimitError(googleId, 'reports.weekly_digest');
         if (rateLimitError) return rateLimitError;
         const today = new Date().toISOString().slice(0, 10);
-        const resolvedEndDate = end_date ?? today;
+        const resolvedEndDate = resolveWeeklyDigestEndDate(end_date, today);
         assertDateNotInFuture(resolvedEndDate, today);
 
         try {
