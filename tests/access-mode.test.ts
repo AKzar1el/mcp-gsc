@@ -11,6 +11,7 @@ import { buildAuthUrl } from '../src/google';
 
 const ALL_TOOL_NAMES = [
   'sites.list',
+  'sites.get',
   'sites.add',
   'sites.delete',
   'analytics.query',
@@ -87,6 +88,7 @@ test('read-only mode excludes every mutation while readwrite preserves the full 
 
   assert.deepEqual(readonlyToolNames, [
     'sites.list',
+    'sites.get',
     'analytics.query',
     'urls.inspect',
     'urls.inspect_many',

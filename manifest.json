@@ -32,6 +32,10 @@
       "description": "List the Search Console properties the connected Google account can access."
     },
     {
+      "name": "sites.get",
+      "description": "Get one exact Search Console property and the connected account's permission level for it."
+    },
+    {
       "name": "analytics.query",
       "description": "Impressions, clicks, CTR, and average position over a date range — broken down by query, page, country, device, date, or search appearance."
     },

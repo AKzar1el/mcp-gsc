@@ -152,6 +152,27 @@ export async function listSites(accessToken: string): Promise<SiteEntry[]> {
   return data.siteEntry ?? [];
 }
 
+export async function getSite(
+  accessToken: string,
+  siteUrl: string,
+): Promise<SiteEntry> {
+  const encoded = encodeURIComponent(siteUrl);
+  const resp = await fetch(
+    `https://www.googleapis.com/webmasters/v3/sites/${encoded}`,
+    {
+      headers: { authorization: `Bearer ${accessToken}` },
+    },
+  );
+  if (resp.status === 401) {
+    throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
+  }
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`Get site failed: ${resp.status} ${text}`);
+  }
+  return (await resp.json()) as SiteEntry;
+}
+
 export type SearchDimension =
   | 'query'
   | 'page'
