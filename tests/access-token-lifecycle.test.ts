@@ -139,6 +139,10 @@ test('generateWeeklyDigest uses the shared access-token provider', async () => {
     );
 
     assert.match(digest, /weekly site report/);
+    assert.match(digest, /Search Analytics alone does not tell us whether Google crawled or indexed/);
+    assert.match(digest, /use this server's `urls\.inspect` tool/);
+    assert.doesNotMatch(digest, /Google has crawled your site/);
+    assert.doesNotMatch(digest, /your site is JavaScript-rendered/);
     assert.equal(fixture.refreshCalls, 1);
     assert.deepEqual(authHeaders, Array(5).fill('Bearer access-token-1'));
   } finally {
