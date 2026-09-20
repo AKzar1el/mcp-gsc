@@ -22,7 +22,7 @@ env:
 jobs:
   validate:
     name: Validate server.json
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -83,7 +83,7 @@ jobs:
     name: Publish to registry
     if: github.event_name == 'release' || github.event_name == 'push'
     needs: validate
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       id-token: write
       contents: read
