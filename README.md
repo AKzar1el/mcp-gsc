@@ -78,7 +78,7 @@ By default (`GSC_ACCESS_MODE=readwrite`), this server exposes 19 tools. Read-onl
 | **`urls.inspect_many`** | Read | Inspect up to 10 URLs sequentially in one call. Each URL still consumes one Google URL Inspection request and one unit of the server's shared inspection safety budget. |
 | **`sitemaps.list`** / **`sitemaps.get`** | Read | List submitted sitemaps or retrieve one sitemap's details. |
 | **`insights.quick_wins`** / **`insights.cannibalization`** / **`insights.content_decay`** | Read | Surface optimization opportunities, competing pages, and declining content. |
-| **`indexing.list_pages`** / **`analytics.compare`** | Read | Analyze pages receiving impressions and compare two periods. |
+| **`indexing.list_pages`** / **`analytics.compare`** | Read | Analyze pages receiving impressions and compare two periods, optionally using the same search type and query/page/country/device/search-appearance filters for both periods. |
 | **`reports.weekly_digest`** | Read | Generate a plain-language seven-day performance report with movers, top pages, and one recommended action. |
 | **`sites.add`** / **`sites.delete`** | Write | Add or remove a Search Console property. |
 | **`sitemaps.submit`** / **`sitemaps.delete`** | Write | Submit or remove a sitemap. |

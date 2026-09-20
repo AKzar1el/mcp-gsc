@@ -268,6 +268,98 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('applies the same Search Analytics segment to both comparison periods', async () => {
+    await saveUser(
+      workerEnv,
+      'compare-user',
+      'compare@example.test',
+      'compare-refresh-token',
+    );
+    const server = await createGscMcpServer(
+      workerEnv,
+      {
+        google_id: 'compare-user',
+        email: 'compare@example.test',
+      },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        { handler: (args: Record<string, unknown>) => Promise<unknown> }
+      >;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const analyticsRequests: Array<Record<string, unknown>> = [];
+    const filters = [
+      {
+        groupType: 'and',
+        filters: [
+          {
+            dimension: 'query',
+            operator: 'includingRegex',
+            expression: 'example|brand',
+          },
+        ],
+      },
+    ];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'compare-access-token', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          analyticsRequests.push(
+            JSON.parse(String(init?.body)) as Record<string, unknown>,
+          );
+          return response({
+            rows: [
+              {
+                keys: ['example query'],
+                clicks: 10,
+                impressions: 100,
+                ctr: 0.1,
+                position: 5,
+              },
+            ],
+          });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      await tools['analytics.compare'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01',
+        end_date_a: '2026-09-07',
+        start_date_b: '2026-08-25',
+        end_date_b: '2026-08-31',
+        dimension: 'query',
+        search_type: 'discover',
+        dimension_filter_groups: filters,
+      });
+
+      expect(analyticsRequests).toHaveLength(2);
+      expect(analyticsRequests.map((request) => request.type)).toEqual([
+        'discover',
+        'discover',
+      ]);
+      expect(
+        analyticsRequests.map((request) => request.dimensionFilterGroups),
+      ).toEqual([filters, filters]);
+      expect(analyticsRequests.map((request) => request.dimensions)).toEqual([
+        ['query'],
+        ['query'],
+      ]);
+      expect(analyticsRequests.map((request) => request.startDate)).toEqual([
+        '2026-09-01',
+        '2026-08-25',
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('uses the normal tool token cache and deletes a revoked stored credential', async () => {
     await saveUser(
       workerEnv,

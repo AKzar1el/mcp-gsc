@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import {
   getToolRateLimitPolicy,
   TOOL_RATE_LIMIT_POLICIES,
-  ToolRateLimiter,
+  ToolRateLimiterCore,
   type ToolRateLimitPolicy,
 } from '../src/tool-rate-limit';
 
@@ -41,7 +41,7 @@ function createLimiter(now: () => number) {
   const state = {
     storage: new InMemoryTransactionalStorage(),
   } as unknown as DurableObjectState;
-  return new ToolRateLimiter(state, undefined, now);
+  return new ToolRateLimiterCore(state, undefined, now);
 }
 
 const TEST_POLICY: ToolRateLimitPolicy = {

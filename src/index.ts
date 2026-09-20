@@ -37,7 +37,7 @@ import { GoogleAccessTokenLifecycle } from './access-token-lifecycle';
 import { consumePendingAuth, stashPendingAuth } from './pending-auth-state';
 export { PendingAuthState } from './pending-auth-state';
 import { enforceToolRateLimit, type RateLimitedToolName } from './tool-rate-limit';
-export { ToolRateLimiter } from './tool-rate-limit';
+export { ToolRateLimiter } from './tool-rate-limiter-do';
 import { generateWeeklyDigest } from './digest';
 import {
   CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
@@ -1198,7 +1198,7 @@ class GscMcpRuntime {
       'analytics.compare',
       {
         title: 'Compare Performance Between Periods',
-        description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device). Pagination metadata flags when either period reached the local 100,000-row safety ceiling; Search Console itself may still return only top data.',
+        description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device). Apply the same search type and optional dimension filters to both periods for segmented comparisons such as brand vs non-brand, country/device/page subsets, or Discover/News/Image traffic. Pagination metadata flags when either period reached the local 100,000-row safety ceiling; Search Console itself may still return only top data.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           start_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date of Period A (recent, YYYY-MM-DD)'),
@@ -1206,11 +1206,54 @@ class GscMcpRuntime {
           start_date_b: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date of Period B (previous, YYYY-MM-DD)'),
           end_date_b: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date of Period B (previous, YYYY-MM-DD)'),
           dimension: z.enum(['query', 'page', 'country', 'device']).default('query').describe('The dimension to compare performance for. Defaults to query.'),
+          search_type: z
+            .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
+            .default('web')
+            .describe('Which Search Console search index to compare. The same search type is used for both periods.'),
+          dimension_filter_groups: z
+            .array(
+              z.object({
+                groupType: z.literal('and').default('and'),
+                filters: z.array(
+                  z.object({
+                    dimension: z.enum([
+                      'query',
+                      'page',
+                      'country',
+                      'device',
+                      'searchAppearance',
+                    ]),
+                    operator: z.enum([
+                      'equals',
+                      'notEquals',
+                      'contains',
+                      'notContains',
+                      'includingRegex',
+                      'excludingRegex',
+                    ]),
+                    expression: z.string(),
+                  }),
+                ),
+              }),
+            )
+            .optional()
+            .describe(
+              "Optional Search Console filters applied identically to both periods. Use query regex filters for brand/non-brand comparisons; countries use ISO 3166-1 alpha-3 codes.",
+            ),
         },
         outputSchema: PERFORMANCE_COMPARISON_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, start_date_a, end_date_a, start_date_b, end_date_b, dimension }) => {
+      async ({
+        site_url,
+        start_date_a,
+        end_date_a,
+        start_date_b,
+        end_date_b,
+        dimension,
+        search_type,
+        dimension_filter_groups,
+      }) => {
         assertDateRange(start_date_a, end_date_a, 'start_date_a', 'end_date_a');
         assertDateRange(start_date_b, end_date_b, 'start_date_b', 'end_date_b');
         const googleId = this.requireGoogleId();
@@ -1222,12 +1265,20 @@ class GscMcpRuntime {
           startDate: start_date_a,
           endDate: end_date_a,
           dimensions: [dimension],
+          type: search_type,
+          ...(dimension_filter_groups !== undefined
+            ? { dimensionFilterGroups: dimension_filter_groups }
+            : {}),
         });
 
         const sourceB = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: start_date_b,
           endDate: end_date_b,
           dimensions: [dimension],
+          type: search_type,
+          ...(dimension_filter_groups !== undefined
+            ? { dimensionFilterGroups: dimension_filter_groups }
+            : {}),
         });
 
         const comparison = processPerformanceComparison(sourceA.rows, sourceB.rows);
