@@ -80,6 +80,16 @@ test('registry package identity remains aligned', () => {
     /'--port',\s*port/,
     'npm launcher must continue serving an HTTP port rather than pretending to be stdio',
   );
+  assert.match(
+    npmLauncherSource,
+    /'--ip',\s*'127\.0\.0\.1'/,
+    'npm launcher must bind its local HTTP endpoint to loopback only',
+  );
+  assert.doesNotMatch(
+    npmLauncherSource,
+    /'--ip',\s*'0\.0\.0\.0'/,
+    'npm launcher must not expose its local MCP endpoint on every network interface',
+  );
 });
 
 test('registry remotes are concrete monitorable endpoints', () => {
