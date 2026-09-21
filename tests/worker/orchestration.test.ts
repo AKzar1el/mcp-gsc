@@ -540,6 +540,85 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('marks average position unavailable for Discover Search Analytics results', async () => {
+    await saveUser(
+      workerEnv,
+      'discover-user',
+      'discover@example.test',
+      'discover-refresh-token',
+    );
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'discover-access-token', expires_in: 3600 });
+        }
+        if (
+          url ===
+          'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query'
+        ) {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          expect(body.type).toBe('discover');
+          return response({
+            rows: [
+              {
+                keys: ['https://example.com/discover-story/'],
+                clicks: 12,
+                impressions: 340,
+                ctr: 0.035,
+                position: 0,
+              },
+            ],
+          });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const result = await mcpApiHandler.fetch(
+        new Request('https://worker.example/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'MCP-Protocol-Version': '2025-06-18',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 29,
+            method: 'tools/call',
+            params: {
+              name: 'analytics.query',
+              arguments: {
+                site_url: 'sc-domain:example.com',
+                start_date: '2026-08-22',
+                end_date: '2026-09-18',
+                dimensions: ['page'],
+                search_type: 'discover',
+                row_limit: 10,
+              },
+            },
+          }),
+        }),
+        workerEnv,
+        {
+          props: {
+            google_id: 'discover-user',
+            email: 'discover@example.test',
+          },
+        } as unknown as ExecutionContext,
+      );
+
+      expect(result.status).toBe(200);
+      const serialized = JSON.stringify(await readMcpJsonRpc(result));
+      expect(serialized).toContain('\"position_supported\":false');
+      expect(serialized).toContain('Google Discover does not support average position');
+      expect(serialized).not.toContain('Output validation error');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('bounds structured output for comparison, impression-page proxy, and cannibalization', async () => {
     await saveUser(
       workerEnv,

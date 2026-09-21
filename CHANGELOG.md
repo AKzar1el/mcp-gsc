@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `sites.list` now marks whether each returned property identifier matches the URL-prefix / `sc-domain:` forms currently documented by the Search Console API, and the docs explicitly avoid guessing an undocumented API identifier for Search Console platform properties.
 
+### Fixed
+- `analytics.query` now exposes `position_supported: false` plus an explicit note for Google Discover responses so agents do not interpret the generic row `position` field as a supported Discover metric.
+
 ## [0.4.8] - 2026-09-21
 
 ### Fixed
