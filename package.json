@@ -1,6 +1,6 @@
 {
   "name": "@digestseo/mcp-gsc",
-  "version": "0.4.6",
+  "version": "0.4.7",
   "private": false,
   "main": "scripts/glama-start.mjs",
   "bin": {
