@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Package metadata and install guidance now advertise the actual Node.js ranges accepted by bundled runtime dependencies (`^22.18.0 || >=24.11.0`) instead of claiming all Node.js 22+ releases are supported.
 - Indexing API eligibility preflight now recognizes static JSON-LD, Microdata, and RDFa type markup, including schema.org URL type spellings, instead of rejecting otherwise eligible static pages solely because they do not use the narrow JSON-LD form previously detected.
 - URL Inspection now rejects malformed/non-HTTP(S) URLs and URLs outside the supplied Search Console property locally before consuming the server's inspection safety budget or calling Google.
 

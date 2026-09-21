@@ -10,7 +10,7 @@ By the end you'll have a Worker at `https://<your-worker>.workers.dev/mcp` that 
 
 - A [Cloudflare account](https://dash.cloudflare.com/sign-up) (the free Workers plan is enough to start).
 - A [Google account](https://accounts.google.com/) with access to the Search Console properties you want to query.
-- Node.js 22+ and npm. The bundled Wrangler 4 runtime requires Node 22 or newer.
+- Node.js 22.18+ within the 22.x line, or Node.js 24.11+ with npm. The bundled runtime dependency graph includes Babel 8 packages with this stricter Node support range.
 - The Wrangler CLI — installed for you by `npm install`; invoke it with `npx wrangler …`.
 
 Clone and install:
