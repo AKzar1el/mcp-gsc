@@ -181,7 +181,7 @@ function totalsFromRow(row: SearchAnalyticsRow | undefined): SiteTotals {
 
 function rowsToQueries(rows: SearchAnalyticsRow[]): QueryRow[] {
   return rows.map((r) => ({
-    query: r.keys[0] ?? '',
+    query: r.keys?.[0] ?? '',
     clicks: r.clicks,
     impressions: r.impressions,
     ctr: r.ctr,
@@ -191,7 +191,7 @@ function rowsToQueries(rows: SearchAnalyticsRow[]): QueryRow[] {
 
 function rowsToPages(rows: SearchAnalyticsRow[]): PageRow[] {
   return rows.map((r) => ({
-    page: r.keys[0] ?? '',
+    page: r.keys?.[0] ?? '',
     clicks: r.clicks,
     impressions: r.impressions,
   }));
@@ -323,8 +323,8 @@ function pickActionAndBuild(
       key: 'investigate_drop',
       item: {
         headline: 'Search traffic for one of your queries dropped this week',
-        why: `Last week, '${bigDrop.query}' brought you ${bigDrop.prevClicks} clicks. This week, only ${bigDrop.currentClicks}. A drop this size in one week usually means either: a competitor outranked you, the page itself changed, or Google changed how it shows your page.`,
-        how: `1. Search Google for '${bigDrop.query}' and find your page.\n2. Compare your result to the top 3 results above and below you. What do they have that you don't?\n3. Either update your page to be more useful, or accept the drop if the query isn't strategic.`,
+        why: `Search Console recorded ${bigDrop.prevClicks} clicks for '${bigDrop.query}' last week and ${bigDrop.currentClicks} this week. That is a measured decline, but Search Console alone does not establish whether the cause was ranking movement, demand, SERP features, a site change, or competition.`,
+        how: `1. In Search Console, filter to '${bigDrop.query}' for both weeks and compare Pages, impressions, CTR, average position, Devices, and Countries.\n2. Review site changes made before the decline and treat them as hypotheses, not proven causes.\n3. If the same page lost useful visibility across supporting metrics, investigate that page and its search intent before changing it.`,
       },
     };
   }
@@ -358,9 +358,9 @@ function pickActionAndBuild(
   return {
     key: 'publish_one_post',
     item: {
-      headline: 'Publish one new piece of content this week',
-      why: 'Your numbers are steady — nothing broken, nothing breakthrough. The single biggest predictor of organic search growth is consistent publishing of content people are searching for.',
-      how: "1. Open your GSC and look at the 'Queries' tab — find a query with at least 5 impressions but where you don't have a dedicated page.\n2. Write a 500-1000 word page directly answering that query.\n3. Publish it. Submit the URL via 'URL inspection' for faster indexing.",
+      headline: 'Review one evidence-backed search opportunity this week',
+      why: 'The available Search Console data does not show one large mover that clearly deserves priority. Use the query/page rows to choose the next action instead of assuming more publishing is automatically the answer.',
+      how: "1. Review Queries and Pages for impressions with few clicks or improving average position.\n2. Check whether an existing page already matches that search intent before creating anything new.\n3. Update an existing page or create a new one only when the query/page evidence supports that choice; use URL Inspection to verify index status when needed, not as a guarantee of faster indexing.",
     },
   };
 }
@@ -443,20 +443,19 @@ function renderMarkdown(data: {
   }
 
   if (!hasAnyMovers) {
-    const siteImpressionsChangePct =
-      prevTotals.impressions > 0
-        ? ((currentTotals.impressions - prevTotals.impressions) /
-            prevTotals.impressions) *
-          100
-        : 0;
-    const siteClicksChangePct =
-      prevTotals.clicks > 0
-        ? ((currentTotals.clicks - prevTotals.clicks) / prevTotals.clicks) *
-          100
-        : 0;
+    const siteImpressionsChangePct = percentageChangeOrNull(
+      currentTotals.impressions,
+      prevTotals.impressions,
+    );
+    const siteClicksChangePct = percentageChangeOrNull(
+      currentTotals.clicks,
+      prevTotals.clicks,
+    );
     const sitePositionDelta = currentTotals.position - prevTotals.position;
 
     const siteHadBigMove =
+      siteImpressionsChangePct === null ||
+      siteClicksChangePct === null ||
       Math.abs(siteImpressionsChangePct) >= 25 ||
       Math.abs(siteClicksChangePct) >= 25 ||
       Math.abs(sitePositionDelta) >= 3;
@@ -537,6 +536,11 @@ function formatPctChange(current: number, prev: number): string {
   return `${sign}${pct.toFixed(0)}% vs last week`;
 }
 
+function percentageChangeOrNull(current: number, baseline: number): number | null {
+  if (baseline === 0) return current === 0 ? 0 : null;
+  return ((current - baseline) / baseline) * 100;
+}
+
 function formatPositionChange(current: number, prev: number): string {
   if (prev === 0 || current === 0) return 'no comparison available';
   const diff = current - prev;
@@ -585,15 +589,20 @@ function isWithinLast3Days(endDate: string): boolean {
 }
 
 function describeSiteLevelMove(
-  impressionsChangePct: number,
-  clicksChangePct: number,
+  impressionsChangePct: number | null,
+  clicksChangePct: number | null,
   positionDelta: number,
 ): string {
   const candidates: Array<{
     metric: 'impressions' | 'position' | 'clicks';
     ratio: number;
   }> = [];
-  if (Math.abs(impressionsChangePct) >= 25) {
+  if (impressionsChangePct === null) {
+    candidates.push({
+      metric: 'impressions',
+      ratio: Number.POSITIVE_INFINITY,
+    });
+  } else if (Math.abs(impressionsChangePct) >= 25) {
     candidates.push({
       metric: 'impressions',
       ratio: Math.abs(impressionsChangePct) / 25,
@@ -602,7 +611,20 @@ function describeSiteLevelMove(
   if (Math.abs(positionDelta) >= 3) {
     candidates.push({ metric: 'position', ratio: Math.abs(positionDelta) / 3 });
   }
-  if (Math.abs(clicksChangePct) >= 25 && Math.abs(impressionsChangePct) < 25) {
+  if (
+    clicksChangePct === null &&
+    impressionsChangePct !== null
+  ) {
+    candidates.push({
+      metric: 'clicks',
+      ratio: Number.POSITIVE_INFINITY,
+    });
+  } else if (
+    clicksChangePct !== null &&
+    impressionsChangePct !== null &&
+    Math.abs(clicksChangePct) >= 25 &&
+    Math.abs(impressionsChangePct) < 25
+  ) {
     candidates.push({ metric: 'clicks', ratio: Math.abs(clicksChangePct) / 25 });
   }
 
@@ -613,6 +635,9 @@ function describeSiteLevelMove(
   }
 
   if (winner.metric === 'impressions') {
+    if (impressionsChangePct === null) {
+      return 'Your site recorded search impressions this week after the previous period recorded none. A percentage change is unavailable from a zero baseline; inspect Queries and Pages to see where the new visibility appeared.';
+    }
     if (impressionsChangePct >= 25) {
       return `Your site recorded many more search impressions this week (+${impressionsChangePct.toFixed(0)}%), but the increase was spread across lots of small queries rather than one big winner.`;
     }
@@ -626,7 +651,18 @@ function describeSiteLevelMove(
     return `Your average Search Console position improved by ${Math.abs(positionDelta).toFixed(1)} this week. Treat this as a trend signal rather than proof of a specific cause, and inspect the query/page rows that contributed most to the change.`;
   }
 
+  if (clicksChangePct === null) {
+    const impressionsContext =
+      impressionsChangePct === null
+        ? 'impressions also started from a zero baseline'
+        : `impressions moved ${impressionsChangePct >= 0 ? '+' : ''}${impressionsChangePct.toFixed(0)}%`;
+    return `Your site recorded clicks this week after the previous period recorded none; a click percentage change is unavailable from a zero baseline (${impressionsContext}). Review query/page CTR and average position before assigning a cause.`;
+  }
+  if (impressionsChangePct === null) {
+    return `Your clicks changed sharply this week (${clicksChangePct >= 0 ? '+' : ''}${clicksChangePct.toFixed(0)}%), while impressions started from a zero baseline so an impression percentage change is unavailable. Review query/page CTR and average position before assigning a cause.`;
+  }
   const clicksSign = clicksChangePct >= 0 ? '+' : '';
-  const impressionsSign = impressionsChangePct >= 0 ? '+' : '';
-  return `Your click rate changed sharply this week (clicks ${clicksSign}${clicksChangePct.toFixed(0)}%, but impressions only moved ${impressionsSign}${impressionsChangePct.toFixed(0)}%). Worth looking at whether something changed about how your titles or descriptions appear in search results.`;
+  const impressionsSign =
+    impressionsChangePct >= 0 ? '+' : '';
+  return `Your clicks changed sharply this week (clicks ${clicksSign}${clicksChangePct.toFixed(0)}%, while impressions moved ${impressionsSign}${impressionsChangePct.toFixed(0)}%). Review CTR and average position by query and page before forming hypotheses about snippets, ranking, search intent, demand, or SERP features.`;
 }

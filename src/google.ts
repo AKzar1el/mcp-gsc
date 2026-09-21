@@ -302,7 +302,11 @@ export type PaginatedSearchAnalyticsQuery = Omit<
 >;
 
 export interface SearchAnalyticsRow {
-  keys: string[];
+  /**
+   * Dimension values returned by Google. Aggregate queries with
+   * dimensions: [] legitimately omit this field.
+   */
+  keys?: string[];
   clicks: number;
   impressions: number;
   ctr: number;
@@ -681,16 +685,21 @@ export function processQuickWins(
   return rows
     .filter(
       (row) =>
-        row.keys.length >= 2 &&
+        (row.keys?.length ?? 0) >= 2 &&
         row.position >= minPosition &&
         row.position <= maxPosition &&
         row.impressions >= minImpressions
     )
-    .sort((a, b) => b.impressions - a.impressions)
-    .slice(0, 100)
+    .sort(
+      (a, b) =>
+        b.impressions - a.impressions ||
+        a.position - b.position ||
+        (a.keys?.[0] ?? '').localeCompare(b.keys?.[0] ?? '') ||
+        (a.keys?.[1] ?? '').localeCompare(b.keys?.[1] ?? ''),
+    )
     .map((row) => ({
-      query: row.keys[0],
-      page: row.keys[1],
+      query: row.keys![0],
+      page: row.keys![1],
       clicks: row.clicks,
       impressions: row.impressions,
       ctr: row.ctr,
@@ -721,9 +730,9 @@ export function processCannibalization(
 ): CannibalizationResult[] {
   const queryGroups = new Map<string, Array<{ page: string; clicks: number; impressions: number; ctr: number; position: number }>>();
   for (const row of rows) {
-    if (row.keys.length < 2) continue;
-    const query = row.keys[0];
-    const page = row.keys[1];
+    if ((row.keys?.length ?? 0) < 2) continue;
+    const query = row.keys![0];
+    const page = row.keys![1];
     if (!queryGroups.has(query)) {
       queryGroups.set(query, []);
     }
@@ -754,18 +763,30 @@ export function processCannibalization(
         query,
         total_clicks: totalClicks,
         total_impressions: totalImpressions,
-        pages: competingPages.sort((a, b) => b.impressions - a.impressions),
+        pages: competingPages.sort(
+          (a, b) => b.impressions - a.impressions || a.page.localeCompare(b.page),
+        ),
       });
     }
   }
 
   return cannibalizationCandidates
-    .sort((a, b) => b.total_impressions - a.total_impressions)
-    .slice(0, 100);
+    .sort(
+      (a, b) =>
+        b.total_impressions - a.total_impressions ||
+        a.query.localeCompare(b.query),
+    );
 }
+
+export type ContentDecayClassification =
+  | 'likely_decay'
+  | 'weak_insufficient_evidence'
+  | 'improving_visibility_with_click_volatility';
 
 export interface DecayPageResult {
   page: string;
+  classification: ContentDecayClassification;
+  evidence: string;
   previous_clicks: number;
   recent_clicks: number;
   click_difference: number;
@@ -773,8 +794,83 @@ export interface DecayPageResult {
   previous_impressions: number;
   recent_impressions: number;
   impression_difference: number;
+  impression_change_percentage: number | null;
   previous_position: number;
   recent_position: number;
+  position_change: number | null;
+}
+
+function percentageChange(current: number, baseline: number): number | null {
+  if (baseline === 0) return current === 0 ? 0 : null;
+  return Math.round(((current - baseline) / baseline) * 1000) / 10;
+}
+
+function classifyContentDecay(input: {
+  previousClicks: number;
+  recentClicks: number;
+  previousImpressions: number;
+  recentImpressions: number;
+  previousPosition: number;
+  recentPosition: number;
+}): { classification: ContentDecayClassification; evidence: string } {
+  const {
+    previousClicks,
+    recentClicks,
+    previousImpressions,
+    recentImpressions,
+    previousPosition,
+    recentPosition,
+  } = input;
+  const clickDrop = previousClicks - recentClicks;
+  const clickDropPercentage =
+    previousClicks > 0 ? (clickDrop / previousClicks) * 100 : 0;
+  const impressionGrowth =
+    previousImpressions > 0
+      ? ((recentImpressions - previousImpressions) / previousImpressions) * 100
+      : 0;
+  const impressionDrop =
+    previousImpressions > 0
+      ? ((previousImpressions - recentImpressions) / previousImpressions) * 100
+      : 0;
+  const positionImprovement =
+    previousPosition > 0 && recentPosition > 0
+      ? previousPosition - recentPosition
+      : 0;
+  const positionWorsening =
+    previousPosition > 0 && recentPosition > 0
+      ? recentPosition - previousPosition
+      : 0;
+
+  const lowClickSample = previousClicks < 10 && clickDrop < 5;
+  const improvingVisibility =
+    impressionGrowth >= 10 && positionImprovement >= 2;
+
+  if (lowClickSample && improvingVisibility) {
+    return {
+      classification: 'improving_visibility_with_click_volatility',
+      evidence:
+        'The click decline is small in absolute terms while impressions grew at least 10% and average position improved by at least 2 positions.',
+    };
+  }
+
+  const meaningfulClickDecline =
+    previousClicks >= 10 && clickDrop >= 5 && clickDropPercentage >= 20;
+  const corroboratingVisibilityDecline =
+    impressionDrop >= 10 || positionWorsening >= 2;
+
+  if (meaningfulClickDecline && corroboratingVisibilityDecline) {
+    return {
+      classification: 'likely_decay',
+      evidence:
+        'Clicks fell by at least 5 from a baseline of at least 10, the decline was at least 20%, and impressions or average position also deteriorated materially.',
+    };
+  }
+
+  return {
+    classification: 'weak_insufficient_evidence',
+    evidence:
+      'Clicks declined, but the absolute sample or supporting impression/position signals are not strong enough to label the page as likely content decay.',
+  };
 }
 
 export function processContentDecay(
@@ -783,8 +879,8 @@ export function processContentDecay(
 ): DecayPageResult[] {
   const recentMap = new Map<string, { clicks: number; impressions: number; ctr: number; position: number }>();
   for (const row of recentRows) {
-    if (row.keys.length < 1) continue;
-    recentMap.set(row.keys[0], {
+    if ((row.keys?.length ?? 0) < 1) continue;
+    recentMap.set(row.keys![0], {
       clicks: row.clicks,
       impressions: row.impressions,
       ctr: row.ctr,
@@ -795,8 +891,8 @@ export function processContentDecay(
   const decayCandidates: DecayPageResult[] = [];
 
   for (const row of previousRows) {
-    if (row.keys.length < 1) continue;
-    const page = row.keys[0];
+    if ((row.keys?.length ?? 0) < 1) continue;
+    const page = row.keys![0];
     const prevClicks = row.clicks;
     const prevImps = row.impressions;
     const prevPos = row.position;
@@ -810,8 +906,18 @@ export function processContentDecay(
     const impDiff = recImps - prevImps;
 
     if (clickDiff < 0) {
+      const { classification, evidence } = classifyContentDecay({
+        previousClicks: prevClicks,
+        recentClicks: recClicks,
+        previousImpressions: prevImps,
+        recentImpressions: recImps,
+        previousPosition: prevPos,
+        recentPosition: recPos,
+      });
       decayCandidates.push({
         page,
+        classification,
+        evidence,
         previous_clicks: prevClicks,
         recent_clicks: recClicks,
         click_difference: clickDiff,
@@ -819,15 +925,29 @@ export function processContentDecay(
         previous_impressions: prevImps,
         recent_impressions: recImps,
         impression_difference: impDiff,
+        impression_change_percentage: percentageChange(recImps, prevImps),
         previous_position: prevPos,
         recent_position: recPos,
+        position_change:
+          prevPos > 0 && recPos > 0
+            ? Math.round((recPos - prevPos) * 10) / 10
+            : null,
       });
     }
   }
 
-  return decayCandidates
-    .sort((a, b) => a.click_difference - b.click_difference)
-    .slice(0, 100);
+  const classificationOrder: Record<ContentDecayClassification, number> = {
+    likely_decay: 0,
+    weak_insufficient_evidence: 1,
+    improving_visibility_with_click_volatility: 2,
+  };
+  return decayCandidates.sort(
+    (a, b) =>
+      classificationOrder[a.classification] -
+        classificationOrder[b.classification] ||
+      a.click_difference - b.click_difference ||
+      a.page.localeCompare(b.page),
+  );
 }
 
 // Google's Indexing API is not a general-purpose submission API. It is
@@ -1129,8 +1249,8 @@ export function processPerformanceComparison(
 ): PerformanceComparisonRow[] {
   const mapB = new Map<string, { clicks: number; impressions: number; ctr: number; position: number }>();
   for (const row of rowsB) {
-    if (row.keys.length < 1) continue;
-    mapB.set(row.keys[0], {
+    if ((row.keys?.length ?? 0) < 1) continue;
+    mapB.set(row.keys![0], {
       clicks: row.clicks,
       impressions: row.impressions,
       ctr: row.ctr,
@@ -1141,8 +1261,8 @@ export function processPerformanceComparison(
   const comparison: PerformanceComparisonRow[] = [];
 
   for (const row of rowsA) {
-    if (row.keys.length < 1) continue;
-    const key = row.keys[0];
+    if ((row.keys?.length ?? 0) < 1) continue;
+    const key = row.keys![0];
     const clicksA = row.clicks;
     const impsA = row.impressions;
     const ctrA = row.ctr;
@@ -1172,10 +1292,14 @@ export function processPerformanceComparison(
     });
   }
 
-  const mapAKeys = new Set(rowsA.map((r) => r.keys[0]));
+  const mapAKeys = new Set(
+    rowsA
+      .map((r) => r.keys?.[0])
+      .filter((key): key is string => key !== undefined),
+  );
   for (const row of rowsB) {
-    if (row.keys.length < 1) continue;
-    const key = row.keys[0];
+    if ((row.keys?.length ?? 0) < 1) continue;
+    const key = row.keys![0];
     if (mapAKeys.has(key)) continue;
 
     const clicksB = row.clicks;
@@ -1198,7 +1322,12 @@ export function processPerformanceComparison(
     });
   }
 
-  return comparison.sort((a, b) => b.period_a.clicks - a.period_a.clicks);
+  return comparison.sort(
+    (a, b) =>
+      Math.abs(b.diff.clicks) - Math.abs(a.diff.clicks) ||
+      Math.abs(b.diff.impressions) - Math.abs(a.diff.impressions) ||
+      a.key.localeCompare(b.key),
+  );
 }
 
 

@@ -66,6 +66,13 @@ import {
   assertIndexingRequestUrl,
   assertIndexingUrlAuthorized,
 } from './indexing-property-authorization';
+import {
+  DEFAULT_ANALYSIS_RESULT_LIMIT,
+  MAX_ANALYSIS_RESULT_LIMIT,
+  MAX_DIRECT_SOURCE_ROWS,
+  resultPageMetadata,
+  takeBoundedItems,
+} from './result-bounds';
 
 export interface Env {
   OAUTH_KV: KVNamespace;
@@ -108,7 +115,12 @@ const METRIC_OUTPUT_SCHEMA = {
 };
 
 const SEARCH_ROW_OUTPUT_SCHEMA = {
-  keys: z.array(z.string()),
+  keys: z
+    .array(z.string())
+    .optional()
+    .describe(
+      'Dimension values returned by Google. Aggregate queries with dimensions: [] may legitimately omit this field.',
+    ),
   ...METRIC_OUTPUT_SCHEMA,
 };
 
@@ -186,6 +198,9 @@ const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
   start_row: z.number().int().nonnegative(),
   rows: z.array(z.object(SEARCH_ROW_OUTPUT_SCHEMA)),
   next_start_row: z.number().int().nonnegative().optional(),
+  has_more: z.boolean(),
+  truncated: z.boolean(),
+  byte_limit_reached: z.boolean(),
   response_aggregation_type: z
     .string()
     .optional()
@@ -214,6 +229,34 @@ const SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA = z.object({
   local_limit_reached: z.boolean(),
 });
 
+const RESULT_PAGE_OUTPUT_SCHEMA = z.object({
+  start_row: z.number().int().nonnegative(),
+  limit: z.number().int().positive(),
+  returned_count: z.number().int().nonnegative(),
+  total_count: z.number().int().nonnegative().optional(),
+  has_more: z.boolean(),
+  truncated: z.boolean(),
+  byte_limit_reached: z.boolean(),
+  next_start_row: z.number().int().nonnegative().optional(),
+});
+
+const ANALYSIS_RESULT_LIMIT_SCHEMA = z
+  .number()
+  .int()
+  .min(1)
+  .max(MAX_ANALYSIS_RESULT_LIMIT)
+  .default(DEFAULT_ANALYSIS_RESULT_LIMIT)
+  .describe(
+    `Maximum ranked results to return in this response (1-${MAX_ANALYSIS_RESULT_LIMIT}). Responses are also byte-bounded for MCP structured-content safety.`,
+  );
+
+const RESULT_START_ROW_SCHEMA = z
+  .number()
+  .int()
+  .min(0)
+  .default(0)
+  .describe('Zero-based offset into the deterministically ranked result list.');
+
 const QUICK_WIN_OUTPUT_SCHEMA = {
   quick_wins: z.array(
     z.object({
@@ -223,6 +266,7 @@ const QUICK_WIN_OUTPUT_SCHEMA = {
     }),
   ),
   pagination: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
+  result_page: RESULT_PAGE_OUTPUT_SCHEMA,
 };
 
 const PAGE_QUERIES_OUTPUT_SCHEMA = {
@@ -234,6 +278,7 @@ const PAGE_QUERIES_OUTPUT_SCHEMA = {
     }),
   ),
   pagination: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
+  result_page: RESULT_PAGE_OUTPUT_SCHEMA,
 };
 
 const QUERY_PAGES_OUTPUT_SCHEMA = {
@@ -245,6 +290,7 @@ const QUERY_PAGES_OUTPUT_SCHEMA = {
     }),
   ),
   pagination: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
+  result_page: RESULT_PAGE_OUTPUT_SCHEMA,
 };
 
 const CANNIBALIZATION_OUTPUT_SCHEMA = {
@@ -253,6 +299,8 @@ const CANNIBALIZATION_OUTPUT_SCHEMA = {
       query: z.string(),
       total_clicks: z.number(),
       total_impressions: z.number(),
+      page_count: z.number().int().nonnegative(),
+      pages_truncated: z.boolean(),
       pages: z.array(
         z.object({
           page: z.string(),
@@ -263,6 +311,7 @@ const CANNIBALIZATION_OUTPUT_SCHEMA = {
     }),
   ),
   pagination: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
+  result_page: RESULT_PAGE_OUTPUT_SCHEMA,
 };
 
 const CONTENT_DECAY_OUTPUT_SCHEMA = {
@@ -271,9 +320,16 @@ const CONTENT_DECAY_OUTPUT_SCHEMA = {
     previous: z.object({ start: z.string(), end: z.string() }),
   }),
   decay_count: z.number().int().nonnegative(),
+  assessment_count: z.number().int().nonnegative(),
   decay_results: z.array(
     z.object({
       page: z.string(),
+      classification: z.enum([
+        'likely_decay',
+        'weak_insufficient_evidence',
+        'improving_visibility_with_click_volatility',
+      ]),
+      evidence: z.string(),
       previous_clicks: z.number(),
       recent_clicks: z.number(),
       click_difference: z.number(),
@@ -281,14 +337,17 @@ const CONTENT_DECAY_OUTPUT_SCHEMA = {
       previous_impressions: z.number(),
       recent_impressions: z.number(),
       impression_difference: z.number(),
+      impression_change_percentage: z.number().nullable(),
       previous_position: z.number(),
       recent_position: z.number(),
+      position_change: z.number().nullable(),
     }),
   ),
   pagination: z.object({
     recent: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
     previous: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
   }),
+  result_page: RESULT_PAGE_OUTPUT_SCHEMA,
 };
 
 const INDEXING_OUTPUT_SCHEMA = {
@@ -299,6 +358,7 @@ const INDEXING_OUTPUT_SCHEMA = {
 const INDEXED_PAGES_OUTPUT_SCHEMA = {
   pages: z.array(z.object({ page: z.string(), ...METRIC_OUTPUT_SCHEMA })),
   note: z.string(),
+  result_page: RESULT_PAGE_OUTPUT_SCHEMA,
 };
 
 const SEARCH_VISIBLE_PAGES_DESCRIPTION =
@@ -333,6 +393,7 @@ const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
     period_a: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
     period_b: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
   }),
+  result_page: RESULT_PAGE_OUTPUT_SCHEMA,
 };
 
 const WEEKLY_DIGEST_OUTPUT_SCHEMA = {
@@ -354,6 +415,53 @@ function paginationMetadata(result: PaginatedSearchAnalyticsResult) {
     rows_fetched: result.rows.length,
     pages_fetched: result.pagesFetched,
     local_limit_reached: result.localLimitReached,
+  };
+}
+
+function windowKnownResults<T>(
+  items: readonly T[],
+  startRow: number,
+  limit: number,
+) {
+  const requested = items.slice(startRow, startRow + limit);
+  const bounded = takeBoundedItems(requested, limit);
+  const returnedCount = bounded.items.length;
+  const hasMore =
+    startRow + returnedCount < items.length || bounded.byteLimitReached;
+  return {
+    items: bounded.items,
+    resultPage: resultPageMetadata({
+      startRow,
+      limit,
+      returnedCount,
+      totalCount: items.length,
+      hasMore,
+      byteLimitReached: bounded.byteLimitReached,
+    }),
+  };
+}
+
+function windowSourceRows<T>(
+  items: readonly T[],
+  sourceStartRow: number,
+  requestedLimit: number,
+  sourceMayHaveMore: boolean,
+) {
+  const bounded = takeBoundedItems(items, requestedLimit);
+  const returnedCount = bounded.items.length;
+  const hasMore =
+    bounded.byteLimitReached ||
+    returnedCount < items.length ||
+    sourceMayHaveMore;
+  return {
+    items: bounded.items,
+    resultPage: resultPageMetadata({
+      startRow: sourceStartRow,
+      limit: requestedLimit,
+      returnedCount,
+      hasMore,
+      byteLimitReached: bounded.byteLimitReached,
+    }),
   };
 }
 
@@ -445,7 +553,7 @@ const TOOL_CATALOG = [
   {
     name: 'insights.content_decay',
     description:
-      'Identify content decay by comparing search clicks for your site pages between two contiguous periods and finding the pages with the largest traffic drops.',
+      'Assess page-level click declines across two contiguous periods and distinguish likely decay from weak evidence or improving visibility with click volatility.',
   },
   {
     name: 'indexing.request',
@@ -730,10 +838,14 @@ class GscMcpRuntime {
         title: 'Query search analytics',
         description: [
           'Query Google Search Console search analytics data. Returns',
-          '{ row_count, start_row, rows } where each row has keys (dimension',
-          'values), clicks, impressions, ctr, and position. When row_count',
-          'equals row_limit, the response includes next_start_row — pass it',
-          'back as start_row to fetch the next page. When Google provides',
+          '{ row_count, start_row, rows, has_more, truncated, byte_limit_reached }',
+          'where dimensioned rows have keys plus clicks, impressions, ctr, and',
+          'position. Aggregate rows from dimensions: [] may omit keys because',
+          'Google itself omits that field. When has_more is true, the response',
+          'includes next_start_row — pass it back as start_row to fetch the next',
+          'safe page. Large requested row_limit values are automatically split',
+          'into bounded MCP responses rather than failing structured output.',
+          'When Google provides',
           'them, response_aggregation_type and metadata are also included;',
           'metadata may identify the first incomplete date or hour.',
           '',
@@ -803,7 +915,7 @@ class GscMcpRuntime {
             .max(25000)
             .default(100)
             .describe(
-              'Maximum rows to return (1-25000). Defaults to 100, which is plenty for most questions; raise it only for bulk exports and page through with start_row.',
+              `Maximum rows requested for this logical page (1-25000). Defaults to 100. MCP responses are additionally capped to at most ${MAX_DIRECT_SOURCE_ROWS} source rows and a structured-content byte budget; use next_start_row while has_more is true for bulk exports.`,
             ),
           start_row: z
             .number()
@@ -880,11 +992,12 @@ class GscMcpRuntime {
         const rateLimitError = await this.rateLimitError(googleId, 'analytics.query');
         if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
+        const sourceRowLimit = Math.min(row_limit, MAX_DIRECT_SOURCE_ROWS);
         const response = await querySearchAnalytics(accessToken, site_url, {
           startDate: start_date,
           endDate: end_date,
           dimensions,
-          rowLimit: row_limit,
+          rowLimit: sourceRowLimit,
           startRow: start_row,
           dataState: data_state,
           type: search_type,
@@ -893,11 +1006,21 @@ class GscMcpRuntime {
             ? { dimensionFilterGroups: dimension_filter_groups }
             : {}),
         });
-        const { rows } = response;
-        const payload: Record<string, unknown> = {
-          row_count: rows.length,
+        const sourceMayHaveMore =
+          dimensions.length > 0 && response.rows.length === sourceRowLimit;
+        const bounded = windowSourceRows(
+          response.rows,
           start_row,
-          rows,
+          row_limit,
+          sourceMayHaveMore,
+        );
+        const payload: Record<string, unknown> = {
+          row_count: bounded.items.length,
+          start_row,
+          rows: bounded.items,
+          has_more: bounded.resultPage.has_more,
+          truncated: bounded.resultPage.truncated,
+          byte_limit_reached: bounded.resultPage.byte_limit_reached,
         };
         if (response.responseAggregationType !== undefined) {
           payload.response_aggregation_type = response.responseAggregationType;
@@ -905,8 +1028,8 @@ class GscMcpRuntime {
         if (response.metadata !== undefined) {
           payload.metadata = response.metadata;
         }
-        if (rows.length === row_limit) {
-          payload.next_start_row = start_row + row_limit;
+        if (bounded.resultPage.next_start_row !== undefined) {
+          payload.next_start_row = bounded.resultPage.next_start_row;
         }
         // Compact JSON on purpose: analytics responses are the largest this
         // server produces, and pretty-printing them costs ~3x the tokens.
@@ -918,7 +1041,7 @@ class GscMcpRuntime {
       'insights.page_queries',
       {
         title: 'Find queries for a page',
-        description: 'For one exact page URL, return the Search Console queries that produced impressions for it over a date range. This wraps an exact page dimension filter so agents do not need to construct analytics.query filter groups manually. Exact page matching is case-sensitive in Search Console. Pagination metadata flags when the local 100,000-row safety ceiling stopped fetching; Search Console can still omit anonymized queries.',
+        description: 'For one exact page URL, return the Search Console queries that produced impressions for it over a date range. This wraps an exact page dimension filter so agents do not need to construct analytics.query filter groups manually. Exact page matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results; Search Console can still omit anonymized queries.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           page_url: z.string().url().describe('Exact fully-qualified page URL to filter on, e.g. https://example.com/guides/seo/. Search Console exact page filters are case-sensitive.'),
@@ -928,20 +1051,35 @@ class GscMcpRuntime {
             .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
             .default('web')
             .describe('Which search index to query. Defaults to web.'),
+          row_limit: z
+            .number()
+            .int()
+            .min(1)
+            .max(25000)
+            .default(100)
+            .describe('Maximum query rows requested for this response. Continue with result_page.next_start_row while result_page.has_more is true.'),
+          start_row: z
+            .number()
+            .int()
+            .min(0)
+            .default(0)
+            .describe('Zero-based Search Analytics row offset for pagination.'),
         },
         outputSchema: PAGE_QUERIES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, page_url, start_date, end_date, search_type }) => {
+      async ({ site_url, page_url, start_date, end_date, search_type, row_limit = 100, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'insights.page_queries');
         if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
+        const sourceRowLimit = Math.min(row_limit, MAX_DIRECT_SOURCE_ROWS);
         const source = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: start_date,
           endDate: end_date,
           dimensions: ['query'],
+          startRow: start_row,
           type: search_type,
           dimensionFilterGroups: [
             {
@@ -951,21 +1089,29 @@ class GscMcpRuntime {
               ],
             },
           ],
-        });
+        }, { maxRows: sourceRowLimit });
+        const rows = source.rows
+          .filter((row) => (row.keys?.length ?? 0) > 0)
+          .map((row) => ({
+            query: row.keys![0],
+            clicks: row.clicks,
+            impressions: row.impressions,
+            ctr: row.ctr,
+            position: row.position,
+          }));
+        const bounded = windowSourceRows(
+          rows,
+          start_row,
+          row_limit,
+          source.localLimitReached,
+        );
         const payload = {
           page: page_url,
-          queries: source.rows
-            .filter((row) => row.keys.length > 0)
-            .map((row) => ({
-              query: row.keys[0],
-              clicks: row.clicks,
-              impressions: row.impressions,
-              ctr: row.ctr,
-              position: row.position,
-            })),
+          queries: bounded.items,
           pagination: paginationMetadata(source),
+          result_page: bounded.resultPage,
         };
-        return toolResponse(JSON.stringify(payload, null, 2), payload);
+        return toolResponse(JSON.stringify(payload), payload);
       },
     );
 
@@ -973,7 +1119,7 @@ class GscMcpRuntime {
       'insights.query_pages',
       {
         title: 'Find pages for a query',
-        description: 'For one exact search query, return the site pages that received impressions for it over a date range. This wraps an exact query dimension filter so agents do not need to construct analytics.query filter groups manually. Exact query matching is case-sensitive in Search Console. Use this to verify which URL Google is surfacing for a target query before diagnosing cannibalization or content targeting. Pagination metadata flags when the local 100,000-row safety ceiling stopped fetching.',
+        description: 'For one exact search query, return the site pages that received impressions for it over a date range. This wraps an exact query dimension filter so agents do not need to construct analytics.query filter groups manually. Exact query matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results and verify which URL Google is surfacing before diagnosing cannibalization or content targeting.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           query: z.string().min(1).describe('Exact Search Console query text to filter on. Exact query filters are case-sensitive.'),
@@ -983,20 +1129,35 @@ class GscMcpRuntime {
             .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
             .default('web')
             .describe('Which search index to query. Defaults to web.'),
+          row_limit: z
+            .number()
+            .int()
+            .min(1)
+            .max(25000)
+            .default(100)
+            .describe('Maximum page rows requested for this response. Continue with result_page.next_start_row while result_page.has_more is true.'),
+          start_row: z
+            .number()
+            .int()
+            .min(0)
+            .default(0)
+            .describe('Zero-based Search Analytics row offset for pagination.'),
         },
         outputSchema: QUERY_PAGES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, query, start_date, end_date, search_type }) => {
+      async ({ site_url, query, start_date, end_date, search_type, row_limit = 100, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'insights.query_pages');
         if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
+        const sourceRowLimit = Math.min(row_limit, MAX_DIRECT_SOURCE_ROWS);
         const source = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: start_date,
           endDate: end_date,
           dimensions: ['page'],
+          startRow: start_row,
           type: search_type,
           dimensionFilterGroups: [
             {
@@ -1006,21 +1167,29 @@ class GscMcpRuntime {
               ],
             },
           ],
-        });
+        }, { maxRows: sourceRowLimit });
+        const rows = source.rows
+          .filter((row) => (row.keys?.length ?? 0) > 0)
+          .map((row) => ({
+            page: row.keys![0],
+            clicks: row.clicks,
+            impressions: row.impressions,
+            ctr: row.ctr,
+            position: row.position,
+          }));
+        const bounded = windowSourceRows(
+          rows,
+          start_row,
+          row_limit,
+          source.localLimitReached,
+        );
         const payload = {
           query,
-          pages: source.rows
-            .filter((row) => row.keys.length > 0)
-            .map((row) => ({
-              page: row.keys[0],
-              clicks: row.clicks,
-              impressions: row.impressions,
-              ctr: row.ctr,
-              position: row.position,
-            })),
+          pages: bounded.items,
           pagination: paginationMetadata(source),
+          result_page: bounded.resultPage,
         };
-        return toolResponse(JSON.stringify(payload, null, 2), payload);
+        return toolResponse(JSON.stringify(payload), payload);
       },
     );
 
@@ -1140,12 +1309,12 @@ class GscMcpRuntime {
       'insights.quick_wins',
       {
         title: 'Identify SEO Quick Wins',
-        description: 'Find search queries with at least the requested impressions that rank in a configurable striking-distance position range (8-20 by default). Returns clicks, impressions, CTR, and average position; CTR is context, not an eligibility filter. Pagination metadata flags when the local 100,000-row safety ceiling stopped fetching; a false flag does not guarantee Search Console returned every underlying row.',
+        description: 'Find search queries with at least the requested impressions that rank in a configurable striking-distance position range (8-20 by default). Returns clicks, impressions, CTR, and average position; CTR is context, not an eligibility filter. Results are ranked deterministically by impressions, then bounded with limit/start_row and explicit result_page metadata. Source pagination separately flags the local 100,000-row safety ceiling.',
         inputSchema: createQuickWinsInputSchema(SITE_URL_DESCRIPTION),
         outputSchema: z.object(QUICK_WIN_OUTPUT_SCHEMA),
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, start_date, end_date, min_impressions, min_position, max_position }) => {
+      async ({ site_url, start_date, end_date, min_impressions, min_position, max_position, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'insights.quick_wins');
@@ -1158,11 +1327,13 @@ class GscMcpRuntime {
         });
 
         const quickWins = processQuickWins(source.rows, min_impressions, min_position, max_position);
+        const bounded = windowKnownResults(quickWins, start_row, limit);
         const payload = {
-          quick_wins: quickWins,
+          quick_wins: bounded.items,
           pagination: paginationMetadata(source),
+          result_page: bounded.resultPage,
         };
-        return toolResponse(JSON.stringify(payload, null, 2), payload);
+        return toolResponse(JSON.stringify(payload), payload);
       },
     );
 
@@ -1170,18 +1341,20 @@ class GscMcpRuntime {
       'insights.cannibalization',
       {
         title: 'Detect Keyword Cannibalization',
-        description: 'Analyze search analytics to detect instances of keyword cannibalization, where multiple pages on your site compete for the same query. Pagination metadata flags when the local 100,000-row safety ceiling stopped fetching; a false flag does not guarantee Search Console returned every underlying row.',
+        description: 'Analyze query/page Search Analytics to find queries split across multiple pages. Candidates are ranked deterministically by total impressions, each candidate bounds its page list, and limit/start_row plus result_page provide safe pagination. Multiple ranking URLs can also reflect legitimate locale or intent differences, so treat candidates as evidence to investigate rather than proof of harmful cannibalization.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
           min_impressions: CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
           min_page_percentage: CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
+          limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
+          start_row: RESULT_START_ROW_SCHEMA,
         },
         outputSchema: CANNIBALIZATION_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, start_date, end_date, min_impressions, min_page_percentage }) => {
+      async ({ site_url, start_date, end_date, min_impressions, min_page_percentage, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'insights.cannibalization');
@@ -1193,12 +1366,32 @@ class GscMcpRuntime {
           dimensions: ['query', 'page'],
         });
 
-        const cannibalizationCandidates = processCannibalization(source.rows, min_impressions, min_page_percentage);
+        const cannibalizationCandidates = processCannibalization(
+          source.rows,
+          min_impressions,
+          min_page_percentage,
+        ).map((candidate) => {
+          const boundedPages = takeBoundedItems(candidate.pages, 10, 12_000);
+          return {
+            ...candidate,
+            page_count: candidate.pages.length,
+            pages_truncated:
+              boundedPages.byteLimitReached ||
+              boundedPages.items.length < candidate.pages.length,
+            pages: boundedPages.items,
+          };
+        });
+        const bounded = windowKnownResults(
+          cannibalizationCandidates,
+          start_row,
+          limit,
+        );
         const payload = {
-          candidates: cannibalizationCandidates,
+          candidates: bounded.items,
           pagination: paginationMetadata(source),
+          result_page: bounded.resultPage,
         };
-        return toolResponse(JSON.stringify(payload, null, 2), payload);
+        return toolResponse(JSON.stringify(payload), payload);
       },
     );
 
@@ -1206,15 +1399,17 @@ class GscMcpRuntime {
       'insights.content_decay',
       {
         title: 'Detect Content Decay',
-        description: 'Identify content decay by comparing search clicks for your site pages between two contiguous periods and finding the pages with the largest traffic drops. Pagination metadata flags when either source period reached the local 100,000-row safety ceiling; Search Console itself may still return only top data.',
+        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           compare_days: CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
+          limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
+          start_row: RESULT_START_ROW_SCHEMA,
         },
         outputSchema: CONTENT_DECAY_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, compare_days }) => {
+      async ({ site_url, compare_days, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'insights.content_decay');
         if (rateLimitError) return rateLimitError;
@@ -1247,21 +1442,29 @@ class GscMcpRuntime {
           dimensions: ['page'],
         });
 
-        const decayResults = processContentDecay(recentSource.rows, previousSource.rows);
+        const decayResults = processContentDecay(
+          recentSource.rows,
+          previousSource.rows,
+        );
+        const bounded = windowKnownResults(decayResults, start_row, limit);
 
         const payload = {
           comparison_periods: {
             recent: { start: recentStart, end: recentEnd },
             previous: { start: previousStart, end: previousEnd },
           },
-          decay_count: decayResults.length,
-          decay_results: decayResults,
+          decay_count: decayResults.filter(
+            (result) => result.classification === 'likely_decay',
+          ).length,
+          assessment_count: decayResults.length,
+          decay_results: bounded.items,
           pagination: {
             recent: paginationMetadata(recentSource),
             previous: paginationMetadata(previousSource),
           },
+          result_page: bounded.resultPage,
         };
-        return toolResponse(JSON.stringify(payload, null, 2), payload);
+        return toolResponse(JSON.stringify(payload), payload);
       },
     );
 
@@ -1308,17 +1511,18 @@ class GscMcpRuntime {
       'indexing.list_pages',
       {
         title: 'List Search-Visible Pages',
-        description: `${SEARCH_VISIBLE_PAGES_DESCRIPTION} When one date boundary is omitted, the server derives the other to target an inclusive 30-day range; generated end dates are capped at the latest complete date.`,
+        description: `${SEARCH_VISIBLE_PAGES_DESCRIPTION} When one date boundary is omitted, the server derives the other to target an inclusive 30-day range; generated end dates are capped at the latest complete date. Responses are bounded and pageable with row_limit/start_row.`,
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('Start date (inclusive) in YYYY-MM-DD format. If end_date is omitted, the generated end date is 29 days later, capped at the latest complete date.'),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('End date (inclusive) in YYYY-MM-DD format. If start_date is omitted, the generated start date is 29 days earlier. Defaults to 3 days ago. Note the 2-3 day data lag.'),
-          row_limit: z.number().int().min(1).max(25000).default(1000).describe('Maximum pages to retrieve (1-25000). Default is 1000.'),
+          row_limit: z.number().int().min(1).max(25000).default(1000).describe(`Maximum pages requested for this logical response (1-25000). Output is safely bounded; continue with result_page.next_start_row while result_page.has_more is true.`),
+          start_row: z.number().int().min(0).default(0).describe('Zero-based page-row offset for pagination.'),
         },
         outputSchema: INDEXED_PAGES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, start_date, end_date, row_limit }) => {
+      async ({ site_url, start_date, end_date, row_limit, start_row = 0 }) => {
         const { startDate, endDate } = resolveIndexedPagesDateRange(
           start_date,
           end_date,
@@ -1329,25 +1533,37 @@ class GscMcpRuntime {
         if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
 
+        const sourceRowLimit = Math.min(row_limit, MAX_DIRECT_SOURCE_ROWS);
         const response = await querySearchAnalytics(accessToken, site_url, {
           startDate,
           endDate,
           dimensions: ['page'],
-          rowLimit: row_limit,
+          rowLimit: sourceRowLimit,
+          startRow: start_row,
         });
 
-        const pages = response.rows.map((row) => ({
-          page: row.keys[0],
-          clicks: row.clicks,
-          impressions: row.impressions,
-          ctr: row.ctr,
-          position: row.position,
-        }));
-
-        return toolResponse(JSON.stringify(pages, null, 2), {
+        const pages = response.rows
+          .filter((row) => (row.keys?.length ?? 0) > 0)
+          .map((row) => ({
+            page: row.keys![0],
+            clicks: row.clicks,
+            impressions: row.impressions,
+            ctr: row.ctr,
+            position: row.position,
+          }));
+        const bounded = windowSourceRows(
           pages,
+          start_row,
+          row_limit,
+          response.rows.length === sourceRowLimit,
+        );
+
+        const payload = {
+          pages: bounded.items,
+          result_page: bounded.resultPage,
           note: SEARCH_VISIBLE_PAGES_NOTE,
-        });
+        };
+        return toolResponse(JSON.stringify(payload), payload);
       },
     );
 
@@ -1355,7 +1571,7 @@ class GscMcpRuntime {
       'analytics.compare',
       {
         title: 'Compare Performance Between Periods',
-        description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device). Apply the same search type and optional dimension filters to both periods for segmented comparisons such as brand vs non-brand, country/device/page subsets, or Discover/News/Image traffic. Pagination metadata flags when either period reached the local 100,000-row safety ceiling; Search Console itself may still return only top data.',
+        description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device). Apply the same search type and optional dimension filters to both periods. Results are ranked by largest absolute click change, then impression change, and safely paged with limit/start_row. Percentage change is null when the baseline is zero and the comparison value differs.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           start_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date of Period A (recent, YYYY-MM-DD)'),
@@ -1397,6 +1613,8 @@ class GscMcpRuntime {
             .describe(
               "Optional Search Console filters applied identically to both periods. Use query regex filters for brand/non-brand comparisons; countries use ISO 3166-1 alpha-3 codes.",
             ),
+          limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
+          start_row: RESULT_START_ROW_SCHEMA,
         },
         outputSchema: PERFORMANCE_COMPARISON_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
@@ -1410,6 +1628,8 @@ class GscMcpRuntime {
         dimension,
         search_type,
         dimension_filter_groups,
+        limit = DEFAULT_ANALYSIS_RESULT_LIMIT,
+        start_row = 0,
       }) => {
         assertDateRange(start_date_a, end_date_a, 'start_date_a', 'end_date_a');
         assertDateRange(start_date_b, end_date_b, 'start_date_b', 'end_date_b');
@@ -1439,14 +1659,16 @@ class GscMcpRuntime {
         });
 
         const comparison = processPerformanceComparison(sourceA.rows, sourceB.rows);
+        const bounded = windowKnownResults(comparison, start_row, limit);
         const payload = {
-          comparisons: comparison,
+          comparisons: bounded.items,
           pagination: {
             period_a: paginationMetadata(sourceA),
             period_b: paginationMetadata(sourceB),
           },
+          result_page: bounded.resultPage,
         };
-        return toolResponse(JSON.stringify(payload, null, 2), payload);
+        return toolResponse(JSON.stringify(payload), payload);
       },
     );
 

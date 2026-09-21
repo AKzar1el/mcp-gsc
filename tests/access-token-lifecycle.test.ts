@@ -87,7 +87,7 @@ function installDigestAnalyticsMock(
     const dimension = body.dimensions?.[0];
 
     let rows: Array<{
-      keys: string[];
+      keys?: string[];
       clicks: number;
       impressions: number;
       ctr: number;
@@ -97,7 +97,6 @@ function installDigestAnalyticsMock(
       rows = [
         currentPeriod
           ? {
-              keys: [],
               clicks: 0,
               impressions: 40,
               ctr: 0,
@@ -105,7 +104,6 @@ function installDigestAnalyticsMock(
               ...options.currentTotals,
             }
           : {
-              keys: [],
               clicks: 0,
               impressions: 10,
               ctr: 0,
@@ -392,6 +390,150 @@ test('weekly digest does not assign a cause from sitewide average-position movem
     assert.doesNotMatch(digest, /Google noticed something positive/i);
     assert.doesNotMatch(digest, /Whatever you did, do more of it/i);
     assert.doesNotMatch(digest, /Something you did is working/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest treats a query click drop as an observation, not a proven cause', async () => {
+  const fixture = createLifecycle();
+  const restoreFetch = installDigestAnalyticsMock(
+    [
+      {
+        keys: ['example query'],
+        clicks: 2,
+        impressions: 120,
+        ctr: 0.0167,
+        position: 12,
+      },
+    ],
+    {
+      currentTotals: {
+        clicks: 20,
+        impressions: 500,
+        ctr: 0.04,
+        position: 12,
+      },
+      previousTotals: {
+        clicks: 35,
+        impressions: 520,
+        ctr: 0.067,
+        position: 12,
+      },
+      previousQueryRows: [
+        {
+          keys: ['example query'],
+          clicks: 15,
+          impressions: 150,
+          ctr: 0.1,
+          position: 10,
+        },
+      ],
+    },
+  );
+
+  try {
+    const digest = await generateWeeklyDigest(
+      fixture.lifecycle,
+      'user-a',
+      'https://example.com/',
+      '2026-08-10',
+    );
+
+    assert.match(digest, /Search Console recorded 15 clicks.*2 this week/i);
+    assert.match(digest, /does not establish whether the cause/i);
+    assert.match(digest, /treat them as hypotheses, not proven causes/i);
+    assert.doesNotMatch(digest, /usually means either/i);
+    assert.doesNotMatch(digest, /competitor outranked you/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest avoids unsupported publishing and indexing-speed prescriptions', async () => {
+  const fixture = createLifecycle();
+  const restoreFetch = installDigestAnalyticsMock(
+    [
+      {
+        keys: ['steady query'],
+        clicks: 1,
+        impressions: 20,
+        ctr: 0.05,
+        position: 10,
+      },
+    ],
+    {
+      currentTotals: {
+        clicks: 13,
+        impressions: 210,
+        ctr: 0.0619,
+        position: 10,
+      },
+      previousTotals: {
+        clicks: 10,
+        impressions: 200,
+        ctr: 0.05,
+        position: 10,
+      },
+      previousQueryRows: [
+        {
+          keys: ['steady query'],
+          clicks: 1,
+          impressions: 20,
+          ctr: 0.05,
+          position: 10,
+        },
+      ],
+    },
+  );
+
+  try {
+    const digest = await generateWeeklyDigest(
+      fixture.lifecycle,
+      'user-a',
+      'https://example.com/',
+      '2026-08-10',
+    );
+
+    assert.match(digest, /Review one evidence-backed search opportunity/i);
+    assert.match(digest, /Your clicks changed sharply/i);
+    assert.match(digest, /not as a guarantee of faster indexing/i);
+    assert.doesNotMatch(digest, /single biggest predictor/i);
+    assert.doesNotMatch(digest, /click rate changed sharply/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest does not turn a zero site-level baseline into 0% growth', async () => {
+  const fixture = createLifecycle();
+  const restoreFetch = installDigestAnalyticsMock([], {
+    currentTotals: {
+      clicks: 5,
+      impressions: 100,
+      ctr: 0.05,
+      position: 12,
+    },
+    previousTotals: {
+      clicks: 0,
+      impressions: 0,
+      ctr: 0,
+      position: 0,
+    },
+  });
+
+  try {
+    const digest = await generateWeeklyDigest(
+      fixture.lifecycle,
+      'user-a',
+      'https://example.com/',
+      '2026-08-10',
+    );
+
+    assert.match(digest, /new — no data last week/i);
+    assert.match(digest, /percentage change is unavailable from a zero baseline/i);
+    assert.doesNotMatch(digest, /impressions.*\+0%/i);
+    assert.doesNotMatch(digest, /clicks.*\+0%/i);
   } finally {
     restoreFetch();
   }

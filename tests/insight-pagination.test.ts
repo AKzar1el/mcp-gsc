@@ -8,6 +8,10 @@ import {
   type PaginatedSearchAnalyticsQuery,
   type SearchAnalyticsRow,
 } from '../src/google';
+import {
+  resultPageMetadata,
+  takeBoundedItems,
+} from '../src/result-bounds';
 
 async function withMockAnalyticsPages<T>(
   pages: Map<number, SearchAnalyticsRow[]>,
@@ -156,4 +160,46 @@ test('existing insight transformations receive the combined paginated rows uncha
       },
     ]);
   });
+});
+
+test('structured result bounding stops oversized row sets deterministically', () => {
+  const rows = Array.from({ length: 200 }, (_, index) => ({
+    key: `result-${index}-${'x'.repeat(200)}`,
+    impressions: 1000 - index,
+  }));
+
+  const bounded = takeBoundedItems(rows, 200, 4_000);
+  assert.equal(bounded.byteLimitReached, true);
+  assert.ok(bounded.items.length > 0);
+  assert.ok(bounded.items.length < rows.length);
+  assert.deepEqual(
+    bounded.items.map((row) => row.key),
+    rows.slice(0, bounded.items.length).map((row) => row.key),
+  );
+  assert.ok(
+    new TextEncoder().encode(JSON.stringify(bounded.items)).byteLength <= 4_000,
+  );
+});
+
+test('result page metadata exposes truncation and a usable next offset', () => {
+  assert.deepEqual(
+    resultPageMetadata({
+      startRow: 25,
+      limit: 50,
+      returnedCount: 17,
+      totalCount: 200,
+      hasMore: true,
+      byteLimitReached: true,
+    }),
+    {
+      start_row: 25,
+      limit: 50,
+      returned_count: 17,
+      total_count: 200,
+      has_more: true,
+      truncated: true,
+      byte_limit_reached: true,
+      next_start_row: 42,
+    },
+  );
 });

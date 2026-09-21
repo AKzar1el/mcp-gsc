@@ -359,6 +359,313 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('accepts a true site-total Search Analytics row when Google omits keys', async () => {
+    await saveUser(
+      workerEnv,
+      'aggregate-user',
+      'aggregate@example.test',
+      'aggregate-refresh-token',
+    );
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'aggregate-access-token', expires_in: 3600 });
+        }
+        if (
+          url ===
+          'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query'
+        ) {
+          return response({
+            rows: [
+              {
+                clicks: 73,
+                impressions: 121404,
+                ctr: 0.000601,
+                position: 58.36,
+              },
+            ],
+          });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const result = await mcpApiHandler.fetch(
+        new Request('https://worker.example/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'MCP-Protocol-Version': '2025-06-18',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 2,
+            method: 'tools/call',
+            params: {
+              name: 'analytics.query',
+              arguments: {
+                site_url: 'sc-domain:example.com',
+                start_date: '2026-08-22',
+                end_date: '2026-09-18',
+                dimensions: [],
+                row_limit: 1,
+              },
+            },
+          }),
+        }),
+        workerEnv,
+        {
+          props: {
+            google_id: 'aggregate-user',
+            email: 'aggregate@example.test',
+          },
+        } as unknown as ExecutionContext,
+      );
+
+      expect(result.status).toBe(200);
+      const envelope = await readMcpJsonRpc(result);
+      const serialized = JSON.stringify(envelope);
+      expect(serialized).toContain('121404');
+      expect(serialized).not.toContain('Output validation error');
+      expect(serialized).not.toContain('\"keys\"');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('keeps query/page dimension keys and exposes usable analytics pagination metadata', async () => {
+    await saveUser(
+      workerEnv,
+      'dimension-user',
+      'dimension@example.test',
+      'dimension-refresh-token',
+    );
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'dimension-access-token', expires_in: 3600 });
+        }
+        if (
+          url ===
+          'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query'
+        ) {
+          const body = JSON.parse(String(init?.body)) as {
+            dimensions: string[];
+          };
+          const key =
+            body.dimensions[0] === 'query'
+              ? 'gsc mcp'
+              : 'https://example.com/gsc-mcp/';
+          return response({
+            rows: [
+              {
+                keys: [key],
+                clicks: 2,
+                impressions: 100,
+                ctr: 0.02,
+                position: 9,
+              },
+            ],
+          });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const callAnalytics = async (
+        dimensions: ['query'] | ['page'],
+        startRow: number,
+      ) =>
+        mcpApiHandler.fetch(
+          new Request('https://worker.example/mcp', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json, text/event-stream',
+              'MCP-Protocol-Version': '2025-06-18',
+            },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: startRow + 10,
+              method: 'tools/call',
+              params: {
+                name: 'analytics.query',
+                arguments: {
+                  site_url: 'sc-domain:example.com',
+                  start_date: '2026-08-22',
+                  end_date: '2026-09-18',
+                  dimensions,
+                  row_limit: 1,
+                  start_row: startRow,
+                },
+              },
+            }),
+          }),
+          workerEnv,
+          {
+            props: {
+              google_id: 'dimension-user',
+              email: 'dimension@example.test',
+            },
+          } as unknown as ExecutionContext,
+        );
+
+      const queryResponse = await callAnalytics(['query'], 0);
+      expect(queryResponse.status).toBe(200);
+      const querySerialized = JSON.stringify(
+        await readMcpJsonRpc(queryResponse),
+      );
+      expect(querySerialized).toContain('gsc mcp');
+      expect(querySerialized).toContain('\"has_more\":true');
+      expect(querySerialized).toContain('\"next_start_row\":1');
+      expect(querySerialized).not.toContain('Output validation error');
+
+      const pageResponse = await callAnalytics(['page'], 10);
+      expect(pageResponse.status).toBe(200);
+      const pageSerialized = JSON.stringify(await readMcpJsonRpc(pageResponse));
+      expect(pageSerialized).toContain('https://example.com/gsc-mcp/');
+      expect(pageSerialized).toContain('\"has_more\":true');
+      expect(pageSerialized).toContain('\"next_start_row\":11');
+      expect(pageSerialized).not.toContain('Output validation error');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('bounds structured output for comparison, impression-page proxy, and cannibalization', async () => {
+    await saveUser(
+      workerEnv,
+      'bounded-user',
+      'bounded@example.test',
+      'bounded-refresh-token',
+    );
+    const server = await createGscMcpServer(
+      workerEnv,
+      {
+        google_id: 'bounded-user',
+        email: 'bounded@example.test',
+      },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        { handler: (args: Record<string, unknown>) => Promise<unknown> }
+      >;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const longSuffix = 'x'.repeat(220);
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'bounded-access-token', expires_in: 3600 });
+        }
+        if (
+          url ===
+          'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query'
+        ) {
+          const body = JSON.parse(String(init?.body)) as {
+            startDate: string;
+            dimensions: string[];
+          };
+          if (body.dimensions.length === 2) {
+            return response({
+              rows: Array.from({ length: 800 }, (_, index) => {
+                const queryIndex = Math.floor(index / 2);
+                return {
+                  keys: [
+                    `query-${queryIndex}-${longSuffix}`,
+                    `https://example.com/candidate-${index}-${longSuffix}`,
+                  ],
+                  clicks: 1,
+                  impressions: 1000 - queryIndex,
+                  ctr: 0.001,
+                  position: 20 + (index % 2),
+                };
+              }),
+            });
+          }
+          const isListPageCall = body.startDate === '2026-06-01';
+          const rowCount = isListPageCall ? 500 : 700;
+          const multiplier = body.startDate === '2026-09-01' ? 2 : 1;
+          return response({
+            rows: Array.from({ length: rowCount }, (_, index) => ({
+              keys: [`https://example.com/page-${index}-${longSuffix}`],
+              clicks: (index % 20) * multiplier,
+              impressions: 2000 - index,
+              ctr: 0.01,
+              position: 10 + (index % 40),
+            })),
+          });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const indexed = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        row_limit: 1000,
+        start_row: 0,
+      })) as {
+        structuredContent: {
+          result_page: { has_more: boolean; next_start_row?: number };
+        };
+      };
+      expect(indexed.structuredContent.result_page.has_more).toBe(true);
+      expect(indexed.structuredContent.result_page.next_start_row).toBeGreaterThan(0);
+      expect(
+        new TextEncoder().encode(JSON.stringify(indexed.structuredContent)).byteLength,
+      ).toBeLessThan(55_000);
+
+      const comparison = (await registered['analytics.compare'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01',
+        end_date_a: '2026-09-30',
+        start_date_b: '2026-08-01',
+        end_date_b: '2026-08-31',
+        dimension: 'page',
+        search_type: 'web',
+        limit: 100,
+        start_row: 0,
+      })) as {
+        structuredContent: {
+          result_page: { has_more: boolean; next_start_row?: number };
+        };
+      };
+      expect(comparison.structuredContent.result_page.has_more).toBe(true);
+      expect(comparison.structuredContent.result_page.next_start_row).toBeGreaterThan(0);
+      expect(
+        new TextEncoder().encode(JSON.stringify(comparison.structuredContent)).byteLength,
+      ).toBeLessThan(55_000);
+
+      const cannibalization = (await registered['insights.cannibalization'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-07-01',
+        end_date: '2026-07-31',
+        min_impressions: 1,
+        min_page_percentage: 1,
+        limit: 100,
+        start_row: 0,
+      })) as {
+        structuredContent: {
+          result_page: { has_more: boolean; next_start_row?: number };
+        };
+      };
+      expect(cannibalization.structuredContent.result_page.has_more).toBe(true);
+      expect(cannibalization.structuredContent.result_page.next_start_row).toBeGreaterThan(0);
+      expect(
+        new TextEncoder().encode(JSON.stringify(cannibalization.structuredContent)).byteLength,
+      ).toBeLessThan(55_000);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('applies the same Search Analytics segment to both comparison periods', async () => {
     await saveUser(
       workerEnv,

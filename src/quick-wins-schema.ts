@@ -1,5 +1,9 @@
 import { z } from 'zod';
 import { SEARCH_CONSOLE_DATE_SCHEMA } from './date-validation';
+import {
+  DEFAULT_ANALYSIS_RESULT_LIMIT,
+  MAX_ANALYSIS_RESULT_LIMIT,
+} from './result-bounds';
 
 const POSITION_RANGE_ERROR = {
   message: 'min_position must be less than or equal to max_position.',
@@ -19,6 +23,19 @@ export function createQuickWinsInputSchema(siteUrlDescription: string) {
       start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
       end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
       ...QUICK_WINS_THRESHOLDS_SHAPE,
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(MAX_ANALYSIS_RESULT_LIMIT)
+        .default(DEFAULT_ANALYSIS_RESULT_LIMIT)
+        .describe('Maximum ranked quick-win results to return in this response.'),
+      start_row: z
+        .number()
+        .int()
+        .min(0)
+        .default(0)
+        .describe('Zero-based offset into the ranked quick-win result list.'),
     })
     .refine(
       ({ min_position, max_position }) => min_position <= max_position,
