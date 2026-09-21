@@ -122,6 +122,16 @@ test('registry package identity remains aligned', () => {
   );
   assert.match(
     npmLauncherSource,
+    /fileURLToPath\(\s*new URL\('\.\.\/wrangler\.example\.jsonc', import\.meta\.url\),\s*\)/,
+    'npm launcher must resolve its bundled Wrangler config from the installed package, not the caller cwd',
+  );
+  assert.doesNotMatch(
+    npmLauncherSource,
+    /'--config',\s*'wrangler\.example\.jsonc'/,
+    'npm launcher must not pass a caller-cwd-relative Wrangler config path',
+  );
+  assert.match(
+    npmLauncherSource,
     /'--ip',\s*'127\.0\.0\.1'/,
     'npm launcher must bind its local HTTP endpoint to loopback only',
   );

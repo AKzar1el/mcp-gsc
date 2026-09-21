@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The published `npx` launcher now resolves `wrangler.example.jsonc` from the installed package instead of the caller's working directory, so `npx -y @digestseo/mcp-gsc` works outside a cloned repository.
+
 ## [0.4.9] - 2026-09-21
 
 ### Changed
