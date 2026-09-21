@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.6] - 2026-09-21
 
 ### Fixed
 - Package metadata and install guidance now advertise the actual Node.js ranges accepted by bundled runtime dependencies (`^22.18.0 || >=24.11.0`) instead of claiming all Node.js 22+ releases are supported.
