@@ -297,15 +297,24 @@ const CANNIBALIZATION_OUTPUT_SCHEMA = {
   candidates: z.array(
     z.object({
       query: z.string(),
-      total_clicks: z.number(),
-      total_impressions: z.number(),
+      total_clicks: z.number().describe(
+        'Sum of clicks across the observed query/page Search Analytics rows for this query. This is not a separately queried query-level aggregate.',
+      ),
+      total_impressions: z.number().describe(
+        'Sum of impressions across the observed query/page Search Analytics rows for this query. This can exceed the query-level property aggregate when multiple pages appear for the same search, and it can be incomplete when source pagination is truncated.',
+      ),
+      aggregation_scope: z.literal('observed_query_page_rows').describe(
+        'Makes explicit that total_clicks, total_impressions, and impression_share are calculated from observed query/page rows rather than true query-level Search Console totals.',
+      ),
       page_count: z.number().int().nonnegative(),
       pages_truncated: z.boolean(),
       pages: z.array(
         z.object({
           page: z.string(),
           ...METRIC_OUTPUT_SCHEMA,
-          impression_share: z.number(),
+          impression_share: z.number().describe(
+            'Percentage of the observed query/page impression sum represented by this page; not a share of unique searches or the true query-level property aggregate.',
+          ),
         }),
       ),
     }),
@@ -548,7 +557,7 @@ const TOOL_CATALOG = [
   {
     name: 'insights.cannibalization',
     description:
-      'Analyze search analytics to detect instances of keyword cannibalization, where multiple pages on your site compete for the same query.',
+      'Analyze query/page Search Analytics for queries surfaced by multiple pages. Candidate totals and impression shares are explicitly scoped to observed query/page rows, not true query-level property totals.',
   },
   {
     name: 'insights.content_decay',
@@ -1341,7 +1350,7 @@ class GscMcpRuntime {
       'insights.cannibalization',
       {
         title: 'Detect Keyword Cannibalization',
-        description: 'Analyze query/page Search Analytics to find queries split across multiple pages. Candidates are ranked deterministically by total impressions, each candidate bounds its page list, and limit/start_row plus result_page provide safe pagination. Multiple ranking URLs can also reflect legitimate locale or intent differences, so treat candidates as evidence to investigate rather than proof of harmful cannibalization.',
+        description: 'Analyze query/page Search Analytics to find queries split across multiple pages. Candidates are ranked deterministically by the observed query/page impression sum, each candidate bounds its page list, and limit/start_row plus result_page provide safe pagination. total_clicks, total_impressions, and impression_share are calculated from observed query/page rows and are not true query-level property aggregates; multiple pages can make that row sum exceed the query-level Search Console total. Multiple ranking URLs can also reflect legitimate locale or intent differences, so treat candidates as evidence to investigate rather than proof of harmful cannibalization.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
