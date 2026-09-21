@@ -174,6 +174,44 @@ test('published tool catalogs remain aligned', () => {
   );
 });
 
+test('Search Analytics metadata preserves provider-level non-exhaustiveness', () => {
+  for (const [label, metadata] of [
+    ['server.json', serverJson],
+    ['manifest.json', manifestJson],
+  ] as const) {
+    const tool = metadata.tools.find(
+      (entry: { name: string }) => entry.name === 'analytics.query',
+    );
+    assert.ok(tool, `${label} must describe analytics.query`);
+    assert.match(
+      tool.description,
+      /top rows/i,
+      `${label} must state Google's top-row limitation`,
+    );
+    assert.match(
+      tool.description,
+      /does not guarantee every data row/i,
+      `${label} must reject exhaustive-result semantics`,
+    );
+  }
+
+  assert.match(
+    indexSource,
+    /provider_exhaustiveness_guaranteed/,
+    'runtime structured output must expose provider-level exhaustiveness semantics',
+  );
+  assert.match(
+    indexSource,
+    /Local pagination fields describe what this server fetched or bounded; they do not prove provider-level exhaustiveness/,
+    'runtime pagination metadata must distinguish local completeness from provider completeness',
+  );
+  assert.match(
+    readmeSource,
+    /exhausting local pagination is not proof that the provider dataset is exhaustive/i,
+    'README must preserve the provider-level limitation for users',
+  );
+});
+
 test('Search Analytics page discovery is not presented as index coverage', () => {
   for (const [label, metadata] of [
     ['server.json', serverJson],

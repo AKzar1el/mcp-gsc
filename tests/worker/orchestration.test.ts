@@ -428,6 +428,9 @@ describe('Worker orchestration', () => {
       const envelope = await readMcpJsonRpc(result);
       const serialized = JSON.stringify(envelope);
       expect(serialized).toContain('121404');
+      expect(serialized).toContain('"provider_exhaustiveness_guaranteed":false');
+      expect(serialized).toContain('Google Search Analytics does not guarantee all data rows');
+      expect(serialized).toContain('do not prove provider-level exhaustiveness');
       expect(serialized).not.toContain('Output validation error');
       expect(serialized).not.toContain('\"keys\"');
     } finally {
