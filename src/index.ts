@@ -143,21 +143,38 @@ const LISTED_SITE_OUTPUT_SCHEMA = {
 const PLATFORM_PROPERTY_API_NOTE =
   "Google Search Console now has platform properties for social/video accounts in its UI, but the current Search Console API documentation still defines siteUrl using URL-prefix and sc-domain website-property forms. mcp-gsc preserves any other identifier returned by sites.list but will not pass an undocumented property identifier to API tools until Google publishes that contract.";
 
+const SITEMAP_PROVIDER_NOTE =
+  "Google's lastSubmitted is the time the sitemap was submitted to Search Console; it is not the sitemap file's generation, deployment, or last-modified time. lastDownloaded is the time Google last downloaded the sitemap; it is not a page crawl or indexing timestamp.";
+
 const SITEMAP_OUTPUT_SCHEMA = z
   .object({
     path: z.string(),
-    lastSubmitted: z.string().nullable().optional(),
+    lastSubmitted: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        'Provider-reported time the sitemap was submitted to Search Console; not the sitemap file generation, deployment, or modification time.',
+      ),
     isPending: z.boolean().nullable().optional(),
     isSitemapsIndex: z.boolean().nullable().optional(),
     type: z.string().nullable().optional(),
-    lastDownloaded: z.string().nullable().optional(),
+    lastDownloaded: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        'Provider-reported time Google last downloaded the sitemap; not a page crawl or page indexing timestamp.',
+      ),
     warnings: z.string().nullable().optional(),
     errors: z.string().nullable().optional(),
     contents: z
       .array(
         z.object({
           type: z.string(),
-          submitted: z.string(),
+          submitted: z
+            .string()
+            .describe('Provider-reported submitted URL count for this sitemap content type.'),
         }),
       )
       .nullable()
@@ -210,6 +227,7 @@ const INSPECTION_BATCH_OUTPUT_SCHEMA = {
 
 const SITEMAPS_OUTPUT_SCHEMA = {
   sitemaps: z.array(SITEMAP_OUTPUT_SCHEMA),
+  provider_note: z.string(),
 };
 
 const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
@@ -888,7 +906,7 @@ class GscMcpRuntime {
       {
         title: 'List submitted sitemaps',
         description:
-          'List sitemaps submitted for a Search Console property. Optionally filter to entries included by one sitemap index. Returns sitemap URLs, last submitted/downloaded dates, submitted URL counts, warning and error counts, and sitemap status. Google\'s deprecated sitemap indexed count is intentionally omitted. Use this when the user asks about sitemap health, submission status, wants to audit which sitemaps are working, or needs the child sitemaps belonging to a specific sitemap index.',
+          'List sitemaps submitted for a Search Console property. Optionally filter to entries included by one sitemap index. Returns sitemap URLs, provider-reported submission/download timestamps, submitted URL counts, warning and error counts, and sitemap status. lastSubmitted is when the sitemap was submitted to Search Console; lastDownloaded is when Google last downloaded the sitemap. Neither timestamp is a sitemap-file modification time or a page crawl/indexing time. Google\'s deprecated sitemap indexed count is intentionally omitted. Use this when the user asks about sitemap health, submission status, wants to audit which sitemaps are working, or needs the child sitemaps belonging to a specific sitemap index.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           sitemap_index: SITEMAP_URL_SCHEMA
@@ -904,7 +922,8 @@ class GscMcpRuntime {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         const sitemaps = await listSitemaps(accessToken, site_url, sitemap_index);
-        return toolResponse(JSON.stringify(sitemaps, null, 2), { sitemaps });
+        const payload = { sitemaps, provider_note: SITEMAP_PROVIDER_NOTE };
+        return toolResponse(JSON.stringify(payload, null, 2), payload);
       },
     );
 
@@ -1385,19 +1404,20 @@ class GscMcpRuntime {
       'sitemaps.get',
       {
         title: 'Get sitemap details',
-        description: 'Get status and details of a single sitemap submitted to Google Search Console.',
+        description: 'Get status and details of a single sitemap submitted to Google Search Console. lastSubmitted is when the sitemap was submitted to Search Console; lastDownloaded is when Google last downloaded the sitemap. Neither timestamp is a sitemap-file modification time or a page crawl/indexing time.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           feedpath: SITEMAP_URL_SCHEMA.describe('The full HTTP/HTTPS URL of the sitemap file, e.g. https://example.com/sitemap.xml'),
         },
-        outputSchema: { sitemap: SITEMAP_OUTPUT_SCHEMA },
+        outputSchema: { sitemap: SITEMAP_OUTPUT_SCHEMA, provider_note: z.string() },
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url, feedpath }) => {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         const details = await getSitemap(accessToken, site_url, feedpath);
-        return toolResponse(JSON.stringify(details, null, 2), { sitemap: details });
+        const payload = { sitemap: details, provider_note: SITEMAP_PROVIDER_NOTE };
+        return toolResponse(JSON.stringify(payload, null, 2), payload);
       },
     );
 

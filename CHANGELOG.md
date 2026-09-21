@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Sitemap read tools now explain Google's `lastSubmitted` and `lastDownloaded` timestamp semantics so agents do not mistake Search Console submission/download times for sitemap-file modification, page-crawl, or indexing timestamps.
+
 ## [0.4.10] - 2026-09-21
 
 ### Fixed

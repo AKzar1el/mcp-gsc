@@ -215,6 +215,102 @@ describe('Worker orchestration', () => {
     });
   });
 
+  it('explains sitemap provider timestamps without rewriting provider values', async () => {
+    await saveUser(
+      workerEnv,
+      'sitemap-user',
+      'sitemap@example.test',
+      'sitemap-refresh-token',
+    );
+    const server = await createGscMcpServer(
+      workerEnv,
+      {
+        google_id: 'sitemap-user',
+        email: 'sitemap@example.test',
+      },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        { handler: (args: Record<string, unknown>) => Promise<unknown> }
+      >;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const sitemap = {
+      path: 'https://example.com/sitemap.xml',
+      lastSubmitted: '2026-08-03T10:00:00Z',
+      lastDownloaded: '2026-09-14T08:30:00Z',
+      isPending: false,
+      warnings: '0',
+      errors: '0',
+      contents: [{ type: 'web', submitted: '321' }],
+    };
+
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'sitemap-access-token', expires_in: 3600 });
+        }
+        if (
+          url ===
+          'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/sitemaps'
+        ) {
+          return response({ sitemap: [sitemap] });
+        }
+        if (
+          url ===
+          'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/sitemaps/https%3A%2F%2Fexample.com%2Fsitemap.xml'
+        ) {
+          return response(sitemap);
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const listResult = await tools['sitemaps.list'].handler({
+        site_url: 'sc-domain:example.com',
+      }) as {
+        structuredContent: {
+          sitemaps: Array<typeof sitemap>;
+          provider_note: string;
+        };
+      };
+      const getResult = await tools['sitemaps.get'].handler({
+        site_url: 'sc-domain:example.com',
+        feedpath: sitemap.path,
+      }) as {
+        structuredContent: {
+          sitemap: typeof sitemap;
+          provider_note: string;
+        };
+      };
+
+      expect(listResult.structuredContent.sitemaps[0].lastSubmitted).toBe(
+        '2026-08-03T10:00:00Z',
+      );
+      expect(listResult.structuredContent.sitemaps[0].lastDownloaded).toBe(
+        '2026-09-14T08:30:00Z',
+      );
+      expect(getResult.structuredContent.sitemap.lastSubmitted).toBe(
+        '2026-08-03T10:00:00Z',
+      );
+      expect(getResult.structuredContent.sitemap.lastDownloaded).toBe(
+        '2026-09-14T08:30:00Z',
+      );
+      for (const note of [
+        listResult.structuredContent.provider_note,
+        getResult.structuredContent.provider_note,
+      ]) {
+        expect(note).toContain('submitted to Search Console');
+        expect(note).toContain('last downloaded the sitemap');
+        expect(note).toContain('not a page crawl or indexing timestamp');
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('routes exact page/query drilldowns through Search Analytics filters', async () => {
     await saveUser(
       workerEnv,
