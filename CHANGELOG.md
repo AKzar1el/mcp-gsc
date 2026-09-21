@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.11] - 2026-09-22
+
 ### Fixed
 - Sitemap read tools now explain Google's `lastSubmitted` and `lastDownloaded` timestamp semantics so agents do not mistake Search Console submission/download times for sitemap-file modification, page-crawl, or indexing timestamps.
 - Google News Search Analytics now rejects unsupported query grouping/filtering, marks average position unavailable, and removes Google News from query-centric and average-position comparison helpers while preserving supported page/country/date/device/appearance and News Showcase reporting.
