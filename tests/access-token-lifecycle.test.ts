@@ -55,6 +55,27 @@ function installDigestAnalyticsMock(
     ctr: number;
     position: number;
   }>,
+  options: {
+    currentTotals?: {
+      clicks: number;
+      impressions: number;
+      ctr: number;
+      position: number;
+    };
+    previousTotals?: {
+      clicks: number;
+      impressions: number;
+      ctr: number;
+      position: number;
+    };
+    previousQueryRows?: Array<{
+      keys: string[];
+      clicks: number;
+      impressions: number;
+      ctr: number;
+      position: number;
+    }>;
+  } = {},
 ): () => void {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (_input, init) => {
@@ -74,16 +95,28 @@ function installDigestAnalyticsMock(
     }> = [];
     if (!dimension) {
       rows = [
-        {
-          keys: [],
-          clicks: 0,
-          impressions: currentPeriod ? 40 : 10,
-          ctr: 0,
-          position: currentPeriod ? 8 : 9,
-        },
+        currentPeriod
+          ? {
+              keys: [],
+              clicks: 0,
+              impressions: 40,
+              ctr: 0,
+              position: 8,
+              ...options.currentTotals,
+            }
+          : {
+              keys: [],
+              clicks: 0,
+              impressions: 10,
+              ctr: 0,
+              position: 9,
+              ...options.previousTotals,
+            },
       ];
     } else if (dimension === 'query' && currentPeriod) {
       rows = currentQueryRows;
+    } else if (dimension === 'query') {
+      rows = options.previousQueryRows ?? [];
     } else if (dimension === 'page' && currentPeriod) {
       rows = [
         {
@@ -267,6 +300,98 @@ test('weekly digest grounds zero-click guidance in Search Console evidence', asy
     assert.match(digest, /manual Google search can differ by location, device, and personalization/i);
     assert.doesNotMatch(digest, /The most common reason/i);
     assert.doesNotMatch(digest, /Go to https:\/\/google\.com/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest does not turn average position into a literal rank or results page', async () => {
+  const fixture = createLifecycle();
+  const restoreFetch = installDigestAnalyticsMock(
+    [
+      {
+        keys: ['trail running shoes'],
+        clicks: 8,
+        impressions: 100,
+        ctr: 0.08,
+        position: 12.4,
+      },
+    ],
+    {
+      currentTotals: {
+        clicks: 8,
+        impressions: 100,
+        ctr: 0.08,
+        position: 12.4,
+      },
+      previousTotals: {
+        clicks: 2,
+        impressions: 60,
+        ctr: 0.033,
+        position: 14,
+      },
+      previousQueryRows: [
+        {
+          keys: ['trail running shoes'],
+          clicks: 2,
+          impressions: 60,
+          ctr: 0.033,
+          position: 14,
+        },
+      ],
+    },
+  );
+
+  try {
+    const digest = await generateWeeklyDigest(
+      fixture.lifecycle,
+      'user-a',
+      'https://example.com/',
+      '2026-08-10',
+    );
+
+    assert.match(digest, /average Search Console position of 12\.4/i);
+    assert.match(digest, /not a literal current rank or page number/i);
+    assert.match(digest, /Average Search Console position:/);
+    assert.doesNotMatch(digest, /ranking on page 2/i);
+    assert.doesNotMatch(digest, /page 1 get ~10x more clicks/i);
+    assert.doesNotMatch(digest, /Currently ranking #/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest does not assign a cause from sitewide average-position movement alone', async () => {
+  const fixture = createLifecycle();
+  const restoreFetch = installDigestAnalyticsMock([], {
+    currentTotals: {
+      clicks: 20,
+      impressions: 200,
+      ctr: 0.1,
+      position: 6,
+    },
+    previousTotals: {
+      clicks: 20,
+      impressions: 200,
+      ctr: 0.1,
+      position: 10,
+    },
+  });
+
+  try {
+    const digest = await generateWeeklyDigest(
+      fixture.lifecycle,
+      'user-a',
+      'https://example.com/',
+      '2026-08-10',
+    );
+
+    assert.match(digest, /average Search Console position improved by 4\.0/i);
+    assert.match(digest, /does not by itself prove/i);
+    assert.match(digest, /Compare Queries and Pages/i);
+    assert.doesNotMatch(digest, /Google noticed something positive/i);
+    assert.doesNotMatch(digest, /Whatever you did, do more of it/i);
+    assert.doesNotMatch(digest, /Something you did is working/i);
   } finally {
     restoreFetch();
   }

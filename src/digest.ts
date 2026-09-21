@@ -329,14 +329,16 @@ function pickActionAndBuild(
     };
   }
 
-  const risingOnPage2 = movers.rising.find((m) => m.currentPosition > 10);
-  if (risingOnPage2) {
+  const risingWithWeakerAveragePosition = movers.rising.find(
+    (m) => m.currentPosition > 10,
+  );
+  if (risingWithWeakerAveragePosition) {
     return {
       key: 'promote_rising',
       item: {
-        headline: "One of your pages is climbing — give it a push",
-        why: `'${risingOnPage2.query}' is bringing more clicks each week, but you're still ranking on page 2 of search results (position ${Math.round(risingOnPage2.currentPosition)}). Pages on page 1 get ~10x more clicks than pages on page 2.`,
-        how: `1. Find your page that ranks for this query.\n2. Add 2-3 paragraphs answering related questions someone searching for '${risingOnPage2.query}' would also want to know.\n3. Get 1 other page on your site to link to it with the text '${risingOnPage2.query}' as the link.`,
+        headline: 'One of your queries is gaining clicks — inspect the opportunity',
+        why: `'${risingWithWeakerAveragePosition.query}' is bringing more clicks than last week and has an average Search Console position of ${risingWithWeakerAveragePosition.currentPosition.toFixed(1)}. Average position is not a literal current rank or page number; it averages the topmost result position across recorded impressions.`,
+        how: `1. In Search Console, filter to '${risingWithWeakerAveragePosition.query}' for the same date range.\n2. Review the Pages, Devices, and Countries dimensions to see where the extra clicks and impressions came from.\n3. If one page is clearly gaining useful visibility, improve that page based on the query intent and evidence you see rather than assuming an average position maps to a specific results page.`,
       },
     };
   }
@@ -346,9 +348,9 @@ function pickActionAndBuild(
     return {
       key: 'celebrate_and_double_down',
       item: {
-        headline: "Your rankings improved — here's how to compound it",
-        why: `Your average position improved by ${positionImprovement.toFixed(1)} spots this week. Google noticed something positive (better content, faster page, more links). Whatever you did, do more of it.`,
-        how: "1. Look at what you published or changed in the last 2-4 weeks. Was it new content, technical fixes, or external links?\n2. Repeat that exact pattern on your next 2-3 pages.\n3. Skip this week's celebration and ship the next thing.",
+        headline: 'Your average Search Console position improved',
+        why: `Average position improved by ${positionImprovement.toFixed(1)} this week. That is a useful trend signal, but it does not by itself prove that a specific content, technical, link, competitor, or algorithm change caused the movement.`,
+        how: "1. Compare Queries and Pages for the two periods and identify which rows contributed most to the change.\n2. Check whether clicks and impressions improved for those same rows.\n3. Only connect the movement to a site change after the query/page evidence supports that explanation.",
       },
     };
   }
@@ -395,7 +397,7 @@ function renderMarkdown(data: {
     `- **Clicks from Google Search:** ${formatNumber(currentTotals.clicks)} (${formatPctChange(currentTotals.clicks, prevTotals.clicks)})`,
   );
   lines.push(
-    `- **Average rank when your site appeared:** ${formatPosition(currentTotals.position)} (${formatPositionChange(currentTotals.position, prevTotals.position)})`,
+    `- **Average Search Console position:** ${formatPosition(currentTotals.position)} (${formatPositionChange(currentTotals.position, prevTotals.position)})`,
   );
   lines.push('');
 
@@ -412,7 +414,7 @@ function renderMarkdown(data: {
     lines.push('');
     for (const m of movers.rising) {
       lines.push(
-        `- **"${m.query}"** — ${m.currentClicks} clicks this week (was ${m.prevClicks} last week). Currently ranking #${Math.round(m.currentPosition)}.`,
+        `- **"${m.query}"** — ${m.currentClicks} clicks this week (was ${m.prevClicks} last week). Average position ${m.currentPosition.toFixed(1)}.`,
       );
     }
     lines.push('');
@@ -423,7 +425,7 @@ function renderMarkdown(data: {
     lines.push('');
     for (const m of movers.falling) {
       lines.push(
-        `- **"${m.query}"** — ${m.currentClicks} clicks this week (was ${m.prevClicks} last week). Currently ranking #${Math.round(m.currentPosition)}.`,
+        `- **"${m.query}"** — ${m.currentClicks} clicks this week (was ${m.prevClicks} last week). Average position ${m.currentPosition.toFixed(1)}.`,
       );
     }
     lines.push('');
@@ -510,7 +512,7 @@ function renderMarkdown(data: {
   );
   lines.push('- **Clicks:** Your link was clicked from Google Search results.');
   lines.push(
-    '- **Average rank:** Where your site appeared in search results on average. Lower is better. #1 is the top result.',
+    '- **Average position:** Search Console averages the topmost position of your result across recorded impressions. Lower values mean a higher average position, but this is not a literal current rank or results-page number.',
   );
   lines.push('');
   lines.push('</details>');
@@ -619,9 +621,9 @@ function describeSiteLevelMove(
 
   if (winner.metric === 'position') {
     if (positionDelta >= 3) {
-      return `Your average rank slipped by ${positionDelta.toFixed(1)} positions this week. Many queries moved slightly lower at the same time. Likely an algorithm update or a competitor improving.`;
+      return `Your average Search Console position worsened by ${positionDelta.toFixed(1)} this week. This aggregate can move because of changes in the mix of queries, pages, devices, countries, or result types, so inspect those dimensions before assigning a cause.`;
     }
-    return `Your average rank improved by ${Math.abs(positionDelta).toFixed(1)} positions this week — many queries moved up at the same time. Something you did is working.`;
+    return `Your average Search Console position improved by ${Math.abs(positionDelta).toFixed(1)} this week. Treat this as a trend signal rather than proof of a specific cause, and inspect the query/page rows that contributed most to the change.`;
   }
 
   const clicksSign = clicksChangePct >= 0 ? '+' : '';
