@@ -464,13 +464,82 @@ test('refreshAccessToken: success returns the new access token', async () => {
 // google.ts — Search Console API calls
 
 test('listSites: 401 maps to the access-revoked message', async () => {
-  await assert.rejects(
-    withMockFetch(
-      () => new Response('', { status: 401 }),
-      () => listSites('expired-token'),
-    ),
-    new RegExp(GSC_ACCESS_REVOKED_MESSAGE.slice(0, 22)),
+  const original = globalThis.fetch;
+  const calls: CapturedRequest[] = [];
+  globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
+    calls.push({ url: String(input), init });
+    return new Response('', { status: 401 });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(
+      listSites('expired-token'),
+      new RegExp(GSC_ACCESS_REVOKED_MESSAGE.slice(0, 22)),
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+  assert.equal(calls.length, 1);
+});
+
+test('listSites: retries transient Google read failures and then succeeds', async () => {
+  let attempts = 0;
+  const { result, calls } = await withMockFetch(
+    () => {
+      attempts += 1;
+      if (attempts < 3) {
+        return new Response('temporarily unavailable', {
+          status: 503,
+          headers: { 'retry-after': '0' },
+        });
+      }
+      return json(200, { siteEntry: [{ siteUrl: 'sc-domain:example.com', permissionLevel: 'siteOwner' }] });
+    },
+    () => listSites('at'),
   );
+
+  assert.equal(calls.length, 3);
+  assert.deepEqual(result, [
+    { siteUrl: 'sc-domain:example.com', permissionLevel: 'siteOwner' },
+  ]);
+});
+
+test('listSites: does not retry when Retry-After exceeds the MCP retry budget', async () => {
+  const original = globalThis.fetch;
+  const calls: CapturedRequest[] = [];
+  globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
+    calls.push({ url: String(input), init });
+    return new Response('quota wait', {
+      status: 429,
+      headers: { 'retry-after': '60' },
+    });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(
+      listSites('at'),
+      /List sites failed: 429 quota wait/,
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+  assert.equal(calls.length, 1);
+});
+
+test('addSite: transient write failures are not retried automatically', async () => {
+  const original = globalThis.fetch;
+  const calls: CapturedRequest[] = [];
+  globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
+    calls.push({ url: String(input), init });
+    return new Response('temporary failure', { status: 503 });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(
+      addSite('at', 'https://example.com/'),
+      /Add site failed: 503 temporary failure/,
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+  assert.equal(calls.length, 1);
 });
 
 test('listSites: empty account returns [] (not undefined)', async () => {
@@ -503,7 +572,7 @@ test('inspectUrlsSequentially: preserves input order and returns per-URL failure
     (_url, init) => {
       const body = JSON.parse(String(init?.body));
       if (body.inspectionUrl.endsWith('/bad')) {
-        return new Response('temporary failure', { status: 503 });
+        return new Response('invalid request', { status: 400 });
       }
       return json(200, {
         inspectionResult: { indexStatusResult: { verdict: 'PASS' } },
@@ -526,9 +595,39 @@ test('inspectUrlsSequentially: preserves input order and returns per-URL failure
     },
     {
       inspectionUrl: 'https://example.com/bad',
-      error: 'URL inspection failed: 503 temporary failure',
+      error: 'URL inspection failed: 400 invalid request',
     },
   ]);
+});
+
+test('querySearchAnalytics: retries a transient 429 and preserves the POST body', async () => {
+  let attempts = 0;
+  const { result, calls } = await withMockFetch(
+    (_url, init) => {
+      attempts += 1;
+      if (attempts === 1) {
+        return new Response('rate limited', {
+          status: 429,
+          headers: { 'retry-after': '0' },
+        });
+      }
+      return json(200, {
+        rows: [{ keys: ['retry-safe'], clicks: 1, impressions: 10, ctr: 0.1, position: 3 }],
+      });
+    },
+    () =>
+      querySearchAnalytics('at', 'https://example.com/', {
+        startDate: '2026-09-01',
+        endDate: '2026-09-07',
+        dimensions: ['query'],
+        rowLimit: 100,
+      }),
+  );
+
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].init?.method, 'POST');
+  assert.equal(calls[1].init?.body, calls[0].init?.body);
+  assert.deepEqual(result.rows[0]?.keys, ['retry-safe']);
 });
 
 test('inspectUrlsSequentially: stops immediately when Google access is revoked', async () => {
