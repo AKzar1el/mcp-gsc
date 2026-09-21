@@ -38,24 +38,36 @@ test('package release versions remain aligned across machine-readable metadata',
   assert.equal(cursorPlugin.version, expectedVersion, 'Cursor plugin version must match package.json');
 });
 
-test('published Node requirement matches the bundled Wrangler runtime', () => {
+test('published Node requirement covers the strictest bundled runtime dependency', () => {
   const wranglerPackage = packageLockJson.packages['node_modules/wrangler'];
+  const agentsPackage = packageLockJson.packages['node_modules/agents'];
+  const babelDecoratorsPackage = packageLockJson.packages['node_modules/@babel/plugin-proposal-decorators'];
 
   assert.ok(wranglerPackage, 'package-lock.json must include the direct Wrangler runtime dependency');
+  assert.ok(agentsPackage, 'package-lock.json must include the direct Agents runtime dependency');
+  assert.ok(
+    agentsPackage.dependencies?.['@babel/plugin-proposal-decorators'],
+    'Agents runtime must keep its Babel decorators dependency represented in the lockfile',
+  );
+  assert.ok(
+    babelDecoratorsPackage,
+    'package-lock.json must include the Babel decorators runtime dependency',
+  );
   assert.equal(
     packageJson.engines?.node,
-    wranglerPackage.engines?.node,
-    'package engines.node must not advertise support below the bundled Wrangler runtime',
+    babelDecoratorsPackage.engines?.node,
+    'package engines.node must not advertise versions rejected by bundled runtime dependencies',
   );
+  assert.equal(wranglerPackage.engines?.node, '>=22.0.0');
   assert.match(
     setupSource,
-    /Node\.js 22\+ and npm/,
-    'SETUP must document the supported Node floor',
+    /Node\.js 22\.18\+ within the 22\.x line, or Node\.js 24\.11\+ with npm/,
+    'SETUP must document the supported Node ranges',
   );
   assert.match(
     llmsInstallSource,
-    /Node\.js 22\+ and npm/,
-    'llms-install.md must document the supported Node floor',
+    /Node\.js 22\.18\+ within the 22\.x line, or Node\.js 24\.11\+ with npm/,
+    'llms-install.md must document the supported Node ranges',
   );
 });
 
