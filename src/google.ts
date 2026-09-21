@@ -51,6 +51,63 @@ export class GoogleRefreshTokenRevokedError extends Error {
   }
 }
 
+const GOOGLE_READ_RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+const GOOGLE_READ_MAX_ATTEMPTS = 3;
+const GOOGLE_READ_BASE_DELAY_MS = 1_000;
+const GOOGLE_READ_MAX_DELAY_MS = 5_000;
+
+function googleReadRetryDelayMs(response: Response, retryNumber: number): number | null {
+  const retryAfter = response.headers.get('retry-after')?.trim();
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    const requestedDelay = Number.isFinite(seconds)
+      ? Math.max(0, seconds * 1_000)
+      : Math.max(0, Date.parse(retryAfter) - Date.now());
+    if (Number.isFinite(requestedDelay)) {
+      return requestedDelay <= GOOGLE_READ_MAX_DELAY_MS ? requestedDelay : null;
+    }
+  }
+
+  const exponentialDelay = GOOGLE_READ_BASE_DELAY_MS * 2 ** (retryNumber - 1);
+  const jitterMs = Math.floor(Math.random() * 250);
+  return Math.min(exponentialDelay + jitterMs, GOOGLE_READ_MAX_DELAY_MS);
+}
+
+async function fetchGoogleRead(url: string, init?: RequestInit): Promise<Response> {
+  let lastNetworkError: unknown;
+
+  for (let attempt = 1; attempt <= GOOGLE_READ_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetch(url, init);
+      if (
+        !GOOGLE_READ_RETRYABLE_STATUSES.has(response.status) ||
+        attempt === GOOGLE_READ_MAX_ATTEMPTS
+      ) {
+        return response;
+      }
+
+      const delayMs = googleReadRetryDelayMs(response, attempt);
+      if (delayMs === null) return response;
+      try {
+        await response.body?.cancel();
+      } catch {
+        // Best-effort cleanup before retrying a transient provider response.
+      }
+      if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
+    } catch (error) {
+      lastNetworkError = error;
+      if (attempt === GOOGLE_READ_MAX_ATTEMPTS) throw error;
+      const delayMs = Math.min(
+        GOOGLE_READ_BASE_DELAY_MS * 2 ** (attempt - 1) + Math.floor(Math.random() * 250),
+        GOOGLE_READ_MAX_DELAY_MS,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  throw lastNetworkError;
+}
+
 export async function exchangeCodeForTokens(
   code: string,
   clientId: string,
@@ -89,7 +146,7 @@ export interface GoogleUserInfo {
 export async function fetchGoogleUserInfo(
   accessToken: string,
 ): Promise<GoogleUserInfo> {
-  const resp = await fetch(GOOGLE_USERINFO_URL, {
+  const resp = await fetchGoogleRead(GOOGLE_USERINFO_URL, {
     headers: { authorization: `Bearer ${accessToken}` },
   });
   if (!resp.ok) {
@@ -141,7 +198,7 @@ export interface SiteEntry {
 }
 
 export async function listSites(accessToken: string): Promise<SiteEntry[]> {
-  const resp = await fetch('https://www.googleapis.com/webmasters/v3/sites', {
+  const resp = await fetchGoogleRead('https://www.googleapis.com/webmasters/v3/sites', {
     headers: { authorization: `Bearer ${accessToken}` },
   });
   if (resp.status === 401) {
@@ -160,7 +217,7 @@ export async function getSite(
   siteUrl: string,
 ): Promise<SiteEntry> {
   const encoded = encodeURIComponent(siteUrl);
-  const resp = await fetch(
+  const resp = await fetchGoogleRead(
     `https://www.googleapis.com/webmasters/v3/sites/${encoded}`,
     {
       headers: { authorization: `Bearer ${accessToken}` },
@@ -381,7 +438,7 @@ export async function inspectUrl(
     siteUrl,
   };
   if (languageCode) body.languageCode = languageCode;
-  const resp = await fetch(
+  const resp = await fetchGoogleRead(
     'https://searchconsole.googleapis.com/v1/urlInspection/index:inspect',
     {
       method: 'POST',
@@ -477,7 +534,7 @@ export async function listSitemaps(
   const query = sitemapIndex
     ? `?sitemapIndex=${encodeURIComponent(sitemapIndex)}`
     : '';
-  const resp = await fetch(
+  const resp = await fetchGoogleRead(
     `https://www.googleapis.com/webmasters/v3/sites/${encoded}/sitemaps${query}`,
     {
       headers: { authorization: `Bearer ${accessToken}` },
@@ -501,7 +558,7 @@ export async function querySearchAnalytics(
 ): Promise<SearchAnalyticsResponse> {
   assertSearchAnalyticsQueryCompatible(body);
   const encoded = encodeURIComponent(siteUrl);
-  const resp = await fetch(
+  const resp = await fetchGoogleRead(
     `https://www.googleapis.com/webmasters/v3/sites/${encoded}/searchAnalytics/query`,
     {
       method: 'POST',
@@ -676,7 +733,7 @@ export async function getSitemap(
 ): Promise<SitemapEntry> {
   const encodedSite = encodeURIComponent(siteUrl);
   const encodedFeed = encodeURIComponent(feedpath);
-  const resp = await fetch(
+  const resp = await fetchGoogleRead(
     `https://www.googleapis.com/webmasters/v3/sites/${encodedSite}/sitemaps/${encodedFeed}`,
     {
       headers: { authorization: `Bearer ${accessToken}` },
