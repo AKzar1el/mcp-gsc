@@ -174,6 +174,34 @@ test('published tool catalogs remain aligned', () => {
   );
 });
 
+test('Indexing API discovery metadata preserves its restricted eligibility scope', () => {
+  for (const [label, metadata] of [
+    ['server.json', serverJson],
+    ['manifest.json', manifestJson],
+  ] as const) {
+    const tool = metadata.tools.find(
+      (entry: { name: string }) => entry.name === 'indexing.request',
+    );
+    assert.ok(tool, `${label} must describe indexing.request`);
+    assert.match(
+      tool.description,
+      /JobPosting or livestream/i,
+      `${label} must identify the eligible content classes`,
+    );
+    assert.match(
+      tool.description,
+      /not a general webpage submission tool/i,
+      `${label} must reject general-purpose indexing semantics`,
+    );
+  }
+
+  assert.match(
+    indexSource,
+    /Request an eligible JobPosting or livestream URL update through Google\\'s restricted Indexing API; this is not a general webpage submission tool/,
+    'server.capabilities must preserve the restricted Indexing API scope',
+  );
+});
+
 test('Search Analytics metadata preserves provider-level non-exhaustiveness', () => {
   for (const [label, metadata] of [
     ['server.json', serverJson],

@@ -985,6 +985,15 @@ const INDEXING_SCOPE_MESSAGE =
   'and livestream pages (BroadcastEvent structured data inside VideoObject). ' +
   'It is not available for general webpage submission.';
 
+function normalizeSchemaType(value: string): string {
+  const trimmed = value.trim().replace(/[\/#]+$/, '');
+  const schemaUrl = trimmed.match(
+    /^https?:\/\/(?:www\.)?schema\.org\/([^/?#\s]+)$/i,
+  );
+  if (schemaUrl) return schemaUrl[1];
+  return trimmed;
+}
+
 function collectSchemaTypes(node: unknown, types: Set<string>): void {
   if (Array.isArray(node)) {
     for (const item of node) collectSchemaTypes(item, types);
@@ -993,9 +1002,11 @@ function collectSchemaTypes(node: unknown, types: Set<string>): void {
   if (!node || typeof node !== 'object') return;
   const obj = node as Record<string, unknown>;
   const type = obj['@type'];
-  if (typeof type === 'string') types.add(type);
+  if (typeof type === 'string') types.add(normalizeSchemaType(type));
   else if (Array.isArray(type)) {
-    for (const t of type) if (typeof t === 'string') types.add(t);
+    for (const t of type) {
+      if (typeof t === 'string') types.add(normalizeSchemaType(t));
+    }
   }
   for (const [key, value] of Object.entries(obj)) {
     if (key === '@type') continue;
@@ -1010,9 +1021,11 @@ function containsBroadcastEvent(node: unknown): boolean {
   const obj = node as Record<string, unknown>;
   const types = new Set<string>();
   const type = obj['@type'];
-  if (typeof type === 'string') types.add(type);
+  if (typeof type === 'string') types.add(normalizeSchemaType(type));
   else if (Array.isArray(type)) {
-    for (const t of type) if (typeof t === 'string') types.add(t);
+    for (const t of type) {
+      if (typeof t === 'string') types.add(normalizeSchemaType(t));
+    }
   }
   if (types.has('BroadcastEvent')) return true;
   return Object.values(obj).some(containsBroadcastEvent);
@@ -1025,12 +1038,132 @@ function hasEligibleVideoBroadcast(node: unknown): boolean {
   const obj = node as Record<string, unknown>;
   const types = new Set<string>();
   const type = obj['@type'];
-  if (typeof type === 'string') types.add(type);
+  if (typeof type === 'string') types.add(normalizeSchemaType(type));
   else if (Array.isArray(type)) {
-    for (const t of type) if (typeof t === 'string') types.add(t);
+    for (const t of type) {
+      if (typeof t === 'string') types.add(normalizeSchemaType(t));
+    }
   }
   if (types.has('VideoObject') && containsBroadcastEvent(obj)) return true;
   return Object.values(obj).some(hasEligibleVideoBroadcast);
+}
+
+const VOID_HTML_TAGS = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
+]);
+
+function htmlAttribute(attributes: string, name: string): string | undefined {
+  const pattern = new RegExp(
+    `\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>]+))`,
+    'i',
+  );
+  const match = pattern.exec(attributes);
+  return match?.[1] ?? match?.[2] ?? match?.[3];
+}
+
+function isSchemaVocabulary(value: string | undefined): boolean {
+  return Boolean(value && /^https?:\/\/(?:www\.)?schema\.org\/?$/i.test(value.trim()));
+}
+
+function explicitSchemaType(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (/^https?:\/\/(?:www\.)?schema\.org\//i.test(trimmed)) {
+    return normalizeSchemaType(trimmed);
+  }
+  return undefined;
+}
+
+function htmlStructuredTypes(
+  attributes: string,
+  schemaVocabularyInScope: boolean,
+): Set<string> {
+  const types = new Set<string>();
+
+  const itemType = htmlAttribute(attributes, 'itemtype');
+  if (itemType) {
+    for (const token of itemType.split(/\s+/)) {
+      const normalized = explicitSchemaType(token);
+      if (normalized) types.add(normalized);
+    }
+  }
+
+  const rdfaType = htmlAttribute(attributes, 'typeof');
+  if (rdfaType) {
+    for (const token of rdfaType.split(/\s+/)) {
+      const explicit = explicitSchemaType(token);
+      if (explicit) types.add(explicit);
+      else if (schemaVocabularyInScope && token.trim()) {
+        types.add(normalizeSchemaType(token));
+      }
+    }
+  }
+
+  return types;
+}
+
+/**
+ * Recognize static Microdata/RDFa eligibility without turning this preflight
+ * into a general-purpose HTML validator. The stack is only used to enforce
+ * Google's VideoObject -> BroadcastEvent nesting requirement.
+ */
+function hasEligibleHtmlStructuredData(html: string): boolean {
+  const staticMarkup = html
+    .replace(/<!--(?:[\s\S]*?)-->/g, '')
+    .replace(/<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '');
+  const stack: Array<{
+    tag: string;
+    schemaVocabulary: boolean;
+    videoObjectInScope: boolean;
+  }> = [];
+  const tagPattern = /<\s*(\/?)\s*([a-zA-Z][\w:-]*)([^>]*)>/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = tagPattern.exec(staticMarkup)) !== null) {
+    const closing = match[1] === '/';
+    const tag = match[2].toLowerCase();
+    const attributes = match[3];
+
+    if (closing) {
+      for (let index = stack.length - 1; index >= 0; index -= 1) {
+        if (stack[index].tag === tag) {
+          stack.length = index;
+          break;
+        }
+      }
+      continue;
+    }
+
+    const parent = stack.at(-1);
+    const schemaVocabulary =
+      isSchemaVocabulary(htmlAttribute(attributes, 'vocab')) ||
+      parent?.schemaVocabulary === true;
+    const types = htmlStructuredTypes(attributes, schemaVocabulary);
+    if (types.has('JobPosting')) return true;
+
+    const videoObjectInScope =
+      types.has('VideoObject') || parent?.videoObjectInScope === true;
+    if (types.has('BroadcastEvent') && videoObjectInScope) return true;
+
+    const selfClosing = /\/\s*$/.test(attributes);
+    if (!selfClosing && !VOID_HTML_TAGS.has(tag)) {
+      stack.push({ tag, schemaVocabulary, videoObjectInScope });
+    }
+  }
+
+  return false;
 }
 
 export interface IndexingEligibility {
@@ -1112,9 +1245,9 @@ async function readBoundedResponseText(response: Response): Promise<string> {
 /**
  * Checks whether `url` carries the structured data Google's Indexing API
  * currently supports (JobPosting, or BroadcastEvent nested in VideoObject),
- * by inspecting its JSON-LD. Best-effort: if the page can't be fetched or
- * parsed, eligibility can't be confirmed and the URL is treated as
- * ineligible rather than silently submitted.
+ * by inspecting static JSON-LD, Microdata, and RDFa markup. Best-effort: if
+ * the page can't be fetched or parsed, eligibility can't be confirmed and the
+ * URL is treated as ineligible rather than silently submitted.
  */
 export async function checkIndexingEligibility(
   url: string,
@@ -1193,7 +1326,8 @@ export async function checkIndexingEligibility(
 
   const types = new Set<string>();
   let hasVideoBroadcast = false;
-  const scriptPattern = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  const scriptPattern =
+    /<script\b[^>]*\btype\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([\s\S]*?)<\/script>/gi;
   let match: RegExpExecArray | null;
   while ((match = scriptPattern.exec(html)) !== null) {
     try {
@@ -1205,7 +1339,11 @@ export async function checkIndexingEligibility(
     }
   }
 
-  if (types.has('JobPosting') || hasVideoBroadcast) {
+  if (
+    types.has('JobPosting') ||
+    hasVideoBroadcast ||
+    hasEligibleHtmlStructuredData(html)
+  ) {
     return { eligible: true };
   }
 

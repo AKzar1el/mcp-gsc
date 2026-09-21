@@ -588,7 +588,7 @@ const TOOL_CATALOG = [
   {
     name: 'indexing.request',
     description:
-      'Request Google to index or update a URL using the Google Indexing API.',
+      'Request an eligible JobPosting or livestream URL update through Google\'s restricted Indexing API; this is not a general webpage submission tool.',
   },
   {
     name: 'indexing.list_pages',
