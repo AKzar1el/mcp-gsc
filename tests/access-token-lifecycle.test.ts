@@ -450,6 +450,62 @@ test('weekly digest treats a query click drop as an observation, not a proven ca
   }
 });
 
+test('weekly digest does not treat a query missing from one bounded response as zero', async () => {
+  const fixture = createLifecycle();
+  const restoreFetch = installDigestAnalyticsMock(
+    [
+      {
+        keys: ['current-only query'],
+        clicks: 20,
+        impressions: 200,
+        ctr: 0.1,
+        position: 8,
+      },
+    ],
+    {
+      currentTotals: {
+        clicks: 20,
+        impressions: 200,
+        ctr: 0.1,
+        position: 8,
+      },
+      previousTotals: {
+        clicks: 20,
+        impressions: 200,
+        ctr: 0.1,
+        position: 8,
+      },
+      previousQueryRows: [
+        {
+          keys: ['previous-only query'],
+          clicks: 20,
+          impressions: 200,
+          ctr: 0.1,
+          position: 8,
+        },
+      ],
+    },
+  );
+
+  try {
+    const digest = await generateWeeklyDigest(
+      fixture.lifecycle,
+      'user-a',
+      'https://example.com/',
+      '2026-08-10',
+    );
+
+    assert.match(digest, /missing from one bounded response is not treated as zero/i);
+    assert.doesNotMatch(digest, /Searches gaining traction/i);
+    assert.doesNotMatch(digest, /Searches losing traction/i);
+    assert.doesNotMatch(digest, /New searches showing your site/i);
+    assert.doesNotMatch(digest, /current-only query.*was 0/i);
+    assert.doesNotMatch(digest, /previous-only query.*0 clicks this week/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test('weekly digest avoids unsupported publishing and indexing-speed prescriptions', async () => {
   const fixture = createLifecycle();
   const restoreFetch = installDigestAnalyticsMock(
