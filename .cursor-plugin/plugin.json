@@ -1,7 +1,7 @@
 {
   "name": "mcp-gsc",
   "displayName": "Google Search Console MCP",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "Connect Cursor to Google Search Console for organic-search analytics, URL inspection, sitemap management, indexing, and SEO insights.",
   "author": {
     "name": "DigestSEO"
