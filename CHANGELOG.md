@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- Large Search Analytics, comparison, cannibalization, quick-win, content-decay, page/query drilldown, and impression-page proxy responses now use deterministic bounded output with explicit pagination/truncation metadata instead of risking oversized MCP structured content.
+- Content-decay assessment now requires meaningful click evidence plus supporting impression or average-position deterioration for a `likely_decay` classification, while separately identifying weak evidence and improving visibility with click volatility.
+- Weekly-digest recommendations now keep measured Search Console observations separate from causal hypotheses and avoid unsupported publishing or indexing-speed prescriptions.
+
+### Fixed
+- True site-total `analytics.query` calls with `dimensions: []` now accept Google's valid aggregate rows when the `keys` field is omitted.
+- Query/page drilldowns now expose usable paging inputs instead of reporting pagination metadata that callers could not advance.
+- `indexing.list_pages` now makes its impressions-based proxy semantics explicit and safely pages large result sets.
+
 ## [0.4.0] - 2026-09-21
 
 ### Added

@@ -759,6 +759,26 @@ test('querySearchAnalytics: missing rows field returns an empty rows array (no d
   assert.deepEqual(result, { rows: [] });
 });
 
+test('querySearchAnalytics: aggregate rows may omit dimension keys', async () => {
+  const aggregateRow = {
+    clicks: 73,
+    impressions: 121404,
+    ctr: 0.000601,
+    position: 58.36,
+  };
+  const { result } = await withMockFetch(
+    () => json(200, { rows: [aggregateRow] }),
+    () =>
+      querySearchAnalytics('at', 'sc-domain:example.com', {
+        startDate: '2026-08-22',
+        endDate: '2026-09-18',
+        dimensions: [],
+        rowLimit: 1,
+      }),
+  );
+  assert.deepEqual(result, { rows: [aggregateRow] });
+});
+
 // ---------------------------------------------------------------------------
 // New GSC Suite API methods
 
@@ -892,12 +912,46 @@ test('processContentDecay: identifies page traffic drop and calculates click dro
   assert.equal(decay.length, 2);
   // Sorted by click drop descending (most negative: page1 has -50, page3 has -10)
   assert.equal(decay[0].page, 'page1');
+  assert.equal(decay[0].classification, 'likely_decay');
   assert.equal(decay[0].click_difference, -50);
   assert.equal(decay[0].click_decay_percentage, 50); // (50 drop / 100 prev) * 100
   
   assert.equal(decay[1].page, 'page3');
+  assert.equal(decay[1].classification, 'weak_insufficient_evidence');
   assert.equal(decay[1].click_difference, -10);
   assert.equal(decay[1].click_decay_percentage, 11.1); // (10 drop / 90 prev) * 100
+});
+
+test('processContentDecay: improving visibility prevents a tiny low-volume click drop from becoming decay', () => {
+  const recentRows = [
+    {
+      keys: ['https://digestseo.com/top-websites/'],
+      clicks: 1,
+      impressions: 52339,
+      ctr: 0.000019106211429335678,
+      position: 56.00534973920021,
+    },
+  ];
+  const previousRows = [
+    {
+      keys: ['https://digestseo.com/top-websites/'],
+      clicks: 3,
+      impressions: 44978,
+      ctr: 0.00006669927520120948,
+      position: 64.86513406554315,
+    },
+  ];
+
+  const [assessment] = processContentDecay(recentRows, previousRows);
+  assert.equal(
+    assessment.classification,
+    'improving_visibility_with_click_volatility',
+  );
+  assert.equal(assessment.click_difference, -2);
+  assert.equal(assessment.impression_difference, 7361);
+  assert.equal(assessment.impression_change_percentage, 16.4);
+  assert.equal(assessment.position_change, -8.9);
+  assert.match(assessment.evidence, /small in absolute terms/i);
 });
 
 test('requestIndexing: sends POST request to the correct indexing endpoint for an eligible JobPosting URL', async () => {
@@ -988,31 +1042,32 @@ test('processPerformanceComparison: correctly aligns period A and period B metri
   ];
 
   const comparison = processPerformanceComparison(rowsA, rowsB);
-  
-  // Sorted by Period A clicks descending (query1 has 120, query2 has 50, query3 has 0)
   assert.equal(comparison.length, 3);
-  
+  // Ranked by largest absolute click change, then impression change.
+  assert.deepEqual(
+    comparison.map((row) => row.key),
+    ['query3', 'query2', 'query1'],
+  );
+  const byKey = new Map(comparison.map((row) => [row.key, row]));
+
   // query1: clicks A=120, B=100. diff = +20 (+20%)
-  assert.equal(comparison[0].key, 'query1');
-  assert.equal(comparison[0].period_a.clicks, 120);
-  assert.equal(comparison[0].period_b.clicks, 100);
-  assert.equal(comparison[0].diff.clicks, 20);
-  assert.equal(comparison[0].diff.clicks_percentage, 20);
-  assert.equal(comparison[0].diff.position, -1); // (2 - 3)
+  assert.equal(byKey.get('query1')!.period_a.clicks, 120);
+  assert.equal(byKey.get('query1')!.period_b.clicks, 100);
+  assert.equal(byKey.get('query1')!.diff.clicks, 20);
+  assert.equal(byKey.get('query1')!.diff.clicks_percentage, 20);
+  assert.equal(byKey.get('query1')!.diff.position, -1); // (2 - 3)
 
   // query2: clicks A=50, B=0 (not in B). Percentage change is undefined.
-  assert.equal(comparison[1].key, 'query2');
-  assert.equal(comparison[1].period_a.clicks, 50);
-  assert.equal(comparison[1].period_b.clicks, 0);
-  assert.equal(comparison[1].diff.clicks, 50);
-  assert.equal(comparison[1].diff.clicks_percentage, null);
+  assert.equal(byKey.get('query2')!.period_a.clicks, 50);
+  assert.equal(byKey.get('query2')!.period_b.clicks, 0);
+  assert.equal(byKey.get('query2')!.diff.clicks, 50);
+  assert.equal(byKey.get('query2')!.diff.clicks_percentage, null);
 
   // query3: clicks A=0, B=80 (only in B). diff = -80 (-100%)
-  assert.equal(comparison[2].key, 'query3');
-  assert.equal(comparison[2].period_a.clicks, 0);
-  assert.equal(comparison[2].period_b.clicks, 80);
-  assert.equal(comparison[2].diff.clicks, -80);
-  assert.equal(comparison[2].diff.clicks_percentage, -100);
+  assert.equal(byKey.get('query3')!.period_a.clicks, 0);
+  assert.equal(byKey.get('query3')!.period_b.clicks, 80);
+  assert.equal(byKey.get('query3')!.diff.clicks, -80);
+  assert.equal(byKey.get('query3')!.diff.clicks_percentage, -100);
 });
 
 

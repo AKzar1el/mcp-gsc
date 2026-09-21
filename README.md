@@ -73,12 +73,12 @@ By default (`GSC_ACCESS_MODE=readwrite`), this server exposes 21 tools. Read-onl
 | **`server.capabilities`** | Read | List every tool this server exposes and report whether your Google connection is currently authenticated (`connected` / `not_connected`). Takes no arguments — a good first call for discovery. |
 | **`sites.list`** | Read | List the Search Console properties the connected Google account can access (`siteUrl`, `permissionLevel`). |
 | **`sites.get`** | Read | Retrieve one exact Search Console property and the connected account's permission level for it. |
-| **`analytics.query`** | Read | Impressions, clicks, CTR, and average position over a date range, with dimensions, filters, pagination, and selectable search type. |
-| **`insights.page_queries`** / **`insights.query_pages`** | Read | Drill from one exact page to its Search Console queries, or from one exact query to the pages Google surfaced for it. |
+| **`analytics.query`** | Read | Impressions, clicks, CTR, and average position over a date range, with dimensions, filters, safe pagination, and selectable search type. Pass `dimensions: []` for true site totals; Google's aggregate row may omit `keys`. |
+| **`insights.page_queries`** / **`insights.query_pages`** | Read | Drill from one exact page to its Search Console queries, or from one exact query to the pages Google surfaced for it, with `row_limit` / `start_row` pagination. |
 | **`urls.inspect`** | Read | Google's URL Inspection report for a single page. |
 | **`urls.inspect_many`** | Read | Inspect up to 10 URLs sequentially in one call. Each URL still consumes one Google URL Inspection request and one unit of the server's shared inspection safety budget. |
 | **`sitemaps.list`** / **`sitemaps.get`** | Read | List submitted sitemaps or retrieve one sitemap's details. |
-| **`insights.quick_wins`** / **`insights.cannibalization`** / **`insights.content_decay`** | Read | Surface optimization opportunities, competing pages, and declining content. |
+| **`insights.quick_wins`** / **`insights.cannibalization`** / **`insights.content_decay`** | Read | Surface striking-distance opportunities, query/page overlap, and evidence-ranked click declines. Content-decay results distinguish likely decay from weak evidence and improving visibility with click volatility. |
 | **`indexing.list_pages`** / **`analytics.compare`** | Read | Analyze pages receiving Search Console impressions and compare two periods, optionally using the same search type and query/page/country/device/search-appearance filters for both periods. `indexing.list_pages` is performance data, not index coverage: a missing URL may still be indexed; use `urls.inspect` / `urls.inspect_many` for URL-level index status. |
 | **`reports.weekly_digest`** | Read | Generate a plain-language seven-day performance report with movers, top pages, and one recommended action. |
 | **`sites.add`** / **`sites.delete`** | Write | Add or remove a Search Console property. |
@@ -86,6 +86,8 @@ By default (`GSC_ACCESS_MODE=readwrite`), this server exposes 21 tools. Read-onl
 | **`indexing.request`** | Write | Requests indexing through Google's Indexing API. Google currently restricts this API to pages containing `JobPosting` structured data or livestream pages containing `BroadcastEvent` inside `VideoObject`. It is not available for general webpage submission. |
 
 Read-write mode requests the Google Search Console read-write and Indexing API scopes. Read-only mode requests only `https://www.googleapis.com/auth/webmasters.readonly` (plus `openid` and `email`) and does not register the five write tools. Read-write remains the default so existing deployments retain their current behavior; see [SETUP.md](SETUP.md) to select a mode before connecting users.
+
+Large analytics responses are bounded at the MCP boundary instead of being generated and then discarded by clients with structured-content limits. List-style tools expose `start_row` / `next_start_row` where applicable; ranked analytical tools expose `limit`, `start_row`, and `result_page` metadata including `has_more`, `truncated`, and `byte_limit_reached`. Continue paging while `has_more` is true rather than assuming one response is complete.
 
 > **`indexing.request` eligibility.** Google's Indexing API is not a general-purpose page submission tool — as of this writing, Google's own documentation limits it to two content types: pages with `JobPosting` structured data, and livestream pages with `BroadcastEvent` structured data nested inside `VideoObject`. Before submitting, the server fetches the target URL and checks its JSON-LD for one of those two types; if neither is present (or the page can't be fetched), it returns an error explaining why the URL is ineligible instead of calling the Indexing API. A successful submission is only an acknowledgment that Google received the notification — it does not guarantee the URL will be indexed.
 
