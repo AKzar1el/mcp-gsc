@@ -733,14 +733,14 @@ describe('Worker orchestration', () => {
         start_date_b: '2026-08-25',
         end_date_b: '2026-08-31',
         dimension: 'query',
-        search_type: 'discover',
+        search_type: 'web',
         dimension_filter_groups: filters,
       });
 
       expect(analyticsRequests).toHaveLength(2);
       expect(analyticsRequests.map((request) => request.type)).toEqual([
-        'discover',
-        'discover',
+        'web',
+        'web',
       ]);
       expect(
         analyticsRequests.map((request) => request.dimensionFilterGroups),
