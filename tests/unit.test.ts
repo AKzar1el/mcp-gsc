@@ -22,7 +22,10 @@ import { resolveWeeklyDigestEndDate } from '../src/digest';
 import { resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
 import { createQuickWinsInputSchema } from '../src/quick-wins-schema';
 import { SITEMAP_URL_SCHEMA } from '../src/sitemap-url-schema';
-import { SEARCH_CONSOLE_PROPERTY_SCHEMA } from '../src/search-console-property-schema';
+import {
+  classifySearchConsolePropertyIdentifier,
+  SEARCH_CONSOLE_PROPERTY_SCHEMA,
+} from '../src/search-console-property-schema';
 import {
   CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
   CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
@@ -122,6 +125,22 @@ test('Search Console property schema rejects malformed and unsupported identifie
   ]) {
     assert.equal(SEARCH_CONSOLE_PROPERTY_SCHEMA.safeParse(property).success, false, property);
   }
+});
+
+test('Search Console property classifier distinguishes documented API forms without guessing platform-property identifiers', () => {
+  assert.equal(classifySearchConsolePropertyIdentifier('sc-domain:example.com'), 'domain');
+  assert.equal(
+    classifySearchConsolePropertyIdentifier('https://www.example.com/blog/'),
+    'url_prefix',
+  );
+  assert.equal(
+    classifySearchConsolePropertyIdentifier('instagram.com/example_creator'),
+    'undocumented',
+  );
+  assert.equal(
+    SEARCH_CONSOLE_PROPERTY_SCHEMA.safeParse('instagram.com/example_creator').success,
+    false,
+  );
 });
 
 test('Search Console calendar dates use Pacific Time instead of UTC', () => {
