@@ -239,9 +239,26 @@ export interface SearchAnalyticsQuery {
   dimensionFilterGroups?: DimensionFilterGroup[];
 }
 
+function inclusiveCalendarDayCount(startDate: string, endDate: string): number {
+  const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
+  const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
+  const startUtc = Date.UTC(startYear, startMonth - 1, startDay);
+  const endUtc = Date.UTC(endYear, endMonth - 1, endDay);
+  return Math.floor((endUtc - startUtc) / 86_400_000) + 1;
+}
+
 export function assertSearchAnalyticsQueryCompatible(body: SearchAnalyticsQuery): void {
   if (new Set(body.dimensions).size !== body.dimensions.length) {
     throw new Error('Search Analytics dimensions must not contain duplicates.');
+  }
+
+  const hasHourDimension = body.dimensions.includes('hour');
+  const usesHourlyData = body.dataState === 'hourly_all';
+  if (hasHourDimension && !usesHourlyData) {
+    throw new Error('Search Analytics hour dimension requires dataState hourly_all.');
+  }
+  if (hasHourDimension && inclusiveCalendarDayCount(body.startDate, body.endDate) > 10) {
+    throw new Error('Search Analytics hourly queries support at most 10 inclusive calendar days.');
   }
 
   const filters = body.dimensionFilterGroups?.flatMap((group) => group.filters) ?? [];

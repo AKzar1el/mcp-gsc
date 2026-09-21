@@ -898,7 +898,9 @@ class GscMcpRuntime {
           '  "NEWS_SHOWCASE" filter. Do not group/filter by page or add',
           '  another searchAppearance filter for that aggregation mode.',
           '- For hourly breakdowns, include "hour" in dimensions and set',
-          '  data_state to "hourly_all". Hourly data is preliminary.',
+          '  data_state to "hourly_all". The hourly date range can span at',
+          '  most 10 inclusive days, and hourly data',
+          '  is preliminary.',
           '- Use dimension_filter_groups to filter by country, device, query',
           '  content, page URL, or search feature. includingRegex and',
           '  excludingRegex use RE2 syntax. For brand vs non-brand splits,',
@@ -927,7 +929,7 @@ class GscMcpRuntime {
             )
             .default(['query'])
             .describe(
-              'Dimensions to group rows by. Pass [] (empty array) to get a single row of true site-level totals. Google Discover does not support the query dimension.',
+              "Dimensions to group rows by. Pass [] (empty array) to get a single row of true site-level totals. The 'hour' dimension requires data_state 'hourly_all' and an inclusive date range of at most 10 days. Google Discover does not support the query dimension.",
             ),
           row_limit: z
             .number()
@@ -950,7 +952,7 @@ class GscMcpRuntime {
             .enum(['all', 'final', 'hourly_all'])
             .default('all')
             .describe(
-              "'all' includes fresh (preliminary) data and matches the GSC dashboard; 'final' returns only finalized data; 'hourly_all' returns hourly preliminary data and should be paired with the 'hour' dimension.",
+              "'all' includes fresh (preliminary) data and matches the GSC dashboard; 'final' returns only finalized data; 'hourly_all' includes hourly preliminary data and must be used when grouping by the 'hour' dimension. Hour-grouped requests can span at most 10 inclusive days.",
             ),
           search_type: z
             .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])

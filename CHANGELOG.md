@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Search Analytics requests grouped by `hour` now require the documented `hourly_all` data state and reject hourly windows longer than Google's documented 10-day limit before calling the provider.
+
 ## [0.4.3] - 2026-09-21
 
 ### Changed
