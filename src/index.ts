@@ -345,6 +345,8 @@ const CONTENT_DECAY_OUTPUT_SCHEMA = {
     recent: z.object({ start: z.string(), end: z.string() }),
     previous: z.object({ start: z.string(), end: z.string() }),
   }),
+  comparison_scope: z.literal('common_returned_rows_only'),
+  comparison_note: z.string(),
   decay_count: z.number().int().nonnegative(),
   assessment_count: z.number().int().nonnegative(),
   decay_results: z.array(
@@ -393,7 +395,12 @@ const SEARCH_VISIBLE_PAGES_DESCRIPTION =
 const SEARCH_VISIBLE_PAGES_NOTE =
   'These are Search Analytics performance rows for pages with recorded impressions in the requested period, not a complete list of indexed URLs. Absence does not mean a URL is unindexed. Use urls.inspect or urls.inspect_many for URL-level index status.';
 
+const COMMON_RETURNED_ROWS_COMPARISON_NOTE =
+  'Comparisons use only dimension keys returned in both period responses. A key missing from one Search Analytics response is not treated as zero because Google does not guarantee every data row.';
+
 const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
+  comparison_scope: z.literal('common_returned_rows_only'),
+  comparison_note: z.string(),
   comparisons: z.array(
     z.object({
       key: z.string(),
@@ -584,7 +591,7 @@ const TOOL_CATALOG = [
   {
     name: 'insights.content_decay',
     description:
-      'Assess page-level click declines across two contiguous periods and distinguish likely decay from weak evidence or improving visibility with click volatility.',
+      'Assess page-level click declines across two contiguous periods for pages returned in both Search Analytics responses, without treating one-sided row absence as zero traffic.',
   },
   {
     name: 'indexing.request',
@@ -598,7 +605,7 @@ const TOOL_CATALOG = [
   {
     name: 'analytics.compare',
     description:
-      'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension.',
+      'Compare Search Console performance metrics between two date ranges for dimension keys returned in both Search Analytics responses; one-sided row absence is not treated as zero.',
   },
   {
     name: 'reports.weekly_digest',
@@ -1456,7 +1463,7 @@ class GscMcpRuntime {
       'insights.content_decay',
       {
         title: 'Detect Content Decay',
-        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
+        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Only pages returned in both Search Analytics period responses are compared; a page missing from one response is not treated as zero because Google does not guarantee every data row. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           compare_days: CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
@@ -1510,6 +1517,8 @@ class GscMcpRuntime {
             recent: { start: recentStart, end: recentEnd },
             previous: { start: previousStart, end: previousEnd },
           },
+          comparison_scope: 'common_returned_rows_only' as const,
+          comparison_note: COMMON_RETURNED_ROWS_COMPARISON_NOTE,
           decay_count: decayResults.filter(
             (result) => result.classification === 'likely_decay',
           ).length,
@@ -1628,7 +1637,7 @@ class GscMcpRuntime {
       'analytics.compare',
       {
         title: 'Compare Performance Between Periods',
-        description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device). Apply the same search type and optional dimension filters to both periods. Results are ranked by largest absolute click change, then impression change, and safely paged with limit/start_row. Percentage change is null when the baseline is zero and the comparison value differs. Discover is intentionally unavailable because this comparison contract includes average position, which the Discover report does not support.',
+        description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device). Only dimension keys returned in both Search Analytics period responses are compared; a key missing from one response is not treated as zero because Google does not guarantee every data row. Apply the same search type and optional dimension filters to both periods. Results are ranked by largest absolute click change, then impression change, and safely paged with limit/start_row. Percentage change is null when an explicitly returned baseline row has zero and the comparison value differs. Discover is intentionally unavailable because this comparison contract includes average position, which the Discover report does not support.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date of Period A (recent, YYYY-MM-DD)'),
@@ -1718,6 +1727,8 @@ class GscMcpRuntime {
         const comparison = processPerformanceComparison(sourceA.rows, sourceB.rows);
         const bounded = windowKnownResults(comparison, start_row, limit);
         const payload = {
+          comparison_scope: 'common_returned_rows_only' as const,
+          comparison_note: COMMON_RETURNED_ROWS_COMPARISON_NOTE,
           comparisons: bounded.items,
           pagination: {
             period_a: paginationMetadata(sourceA),

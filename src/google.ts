@@ -925,9 +925,10 @@ export function processContentDecay(
     const prevPos = row.position;
 
     const recent = recentMap.get(page);
-    const recClicks = recent ? recent.clicks : 0;
-    const recImps = recent ? recent.impressions : 0;
-    const recPos = recent ? recent.position : 0;
+    if (!recent) continue;
+    const recClicks = recent.clicks;
+    const recImps = recent.impressions;
+    const recPos = recent.position;
 
     const clickDiff = recClicks - prevClicks;
     const impDiff = recImps - prevImps;
@@ -1433,7 +1434,8 @@ export function processPerformanceComparison(
     const ctrA = row.ctr;
     const posA = row.position;
 
-    const b = mapB.get(key) || { clicks: 0, impressions: 0, ctr: 0, position: 0 };
+    const b = mapB.get(key);
+    if (!b) continue;
     const clicksB = b.clicks;
     const impsB = b.impressions;
     const ctrB = b.ctr;
@@ -1453,36 +1455,6 @@ export function processPerformanceComparison(
         impressions_percentage: calculatePercentageChange(impsA, impsB),
         ctr: Math.round((ctrA - ctrB) * 1000) / 1000,
         position: Math.round((posA - posB) * 10) / 10,
-      },
-    });
-  }
-
-  const mapAKeys = new Set(
-    rowsA
-      .map((r) => r.keys?.[0])
-      .filter((key): key is string => key !== undefined),
-  );
-  for (const row of rowsB) {
-    if ((row.keys?.length ?? 0) < 1) continue;
-    const key = row.keys![0];
-    if (mapAKeys.has(key)) continue;
-
-    const clicksB = row.clicks;
-    const impsB = row.impressions;
-    const ctrB = row.ctr;
-    const posB = row.position;
-
-    comparison.push({
-      key,
-      period_a: { clicks: 0, impressions: 0, ctr: 0, position: 0 },
-      period_b: { clicks: clicksB, impressions: impsB, ctr: ctrB, position: posB },
-      diff: {
-        clicks: -clicksB,
-        clicks_percentage: calculatePercentageChange(0, clicksB),
-        impressions: -impsB,
-        impressions_percentage: calculatePercentageChange(0, impsB),
-        ctr: -ctrB,
-        position: -posB,
       },
     });
   }

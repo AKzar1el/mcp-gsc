@@ -1099,6 +1099,23 @@ test('processContentDecay: improving visibility prevents a tiny low-volume click
   assert.match(assessment.evidence, /small in absolute terms/i);
 });
 
+test('processContentDecay: ignores pages missing from one Search Analytics period instead of fabricating zero traffic', () => {
+  const decay = processContentDecay(
+    [],
+    [
+      {
+        keys: ['https://example.com/previous-only/'],
+        clicks: 100,
+        impressions: 2000,
+        ctr: 0.05,
+        position: 5,
+      },
+    ],
+  );
+
+  assert.deepEqual(decay, []);
+});
+
 test('requestIndexing: sends POST request to the correct indexing endpoint for an eligible JobPosting URL', async () => {
   const mockResult = {
     urlNotificationMetadata: {
@@ -1187,12 +1204,8 @@ test('processPerformanceComparison: correctly aligns period A and period B metri
   ];
 
   const comparison = processPerformanceComparison(rowsA, rowsB);
-  assert.equal(comparison.length, 3);
-  // Ranked by largest absolute click change, then impression change.
-  assert.deepEqual(
-    comparison.map((row) => row.key),
-    ['query3', 'query2', 'query1'],
-  );
+  assert.equal(comparison.length, 1);
+  assert.deepEqual(comparison.map((row) => row.key), ['query1']);
   const byKey = new Map(comparison.map((row) => [row.key, row]));
 
   // query1: clicks A=120, B=100. diff = +20 (+20%)
@@ -1201,18 +1214,8 @@ test('processPerformanceComparison: correctly aligns period A and period B metri
   assert.equal(byKey.get('query1')!.diff.clicks, 20);
   assert.equal(byKey.get('query1')!.diff.clicks_percentage, 20);
   assert.equal(byKey.get('query1')!.diff.position, -1); // (2 - 3)
-
-  // query2: clicks A=50, B=0 (not in B). Percentage change is undefined.
-  assert.equal(byKey.get('query2')!.period_a.clicks, 50);
-  assert.equal(byKey.get('query2')!.period_b.clicks, 0);
-  assert.equal(byKey.get('query2')!.diff.clicks, 50);
-  assert.equal(byKey.get('query2')!.diff.clicks_percentage, null);
-
-  // query3: clicks A=0, B=80 (only in B). diff = -80 (-100%)
-  assert.equal(byKey.get('query3')!.period_a.clicks, 0);
-  assert.equal(byKey.get('query3')!.period_b.clicks, 80);
-  assert.equal(byKey.get('query3')!.diff.clicks, -80);
-  assert.equal(byKey.get('query3')!.diff.clicks_percentage, -100);
+  assert.equal(byKey.has('query2'), false);
+  assert.equal(byKey.has('query3'), false);
 });
 
 

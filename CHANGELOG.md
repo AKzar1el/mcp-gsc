@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Weekly-digest query movers no longer treat a query missing from one bounded top-query response as zero traffic; comparisons now require the query to be present in both weekly result sets and explain that Search Analytics does not guarantee every data row.
+- Period comparison and content-decay analysis no longer fabricate zero metrics for dimension keys or pages missing from one non-exhaustive Search Analytics response; they now compare only rows returned in both periods and expose that scope explicitly.
 
 ## [0.4.6] - 2026-09-21
 
