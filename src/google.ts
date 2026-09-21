@@ -247,6 +247,8 @@ export function assertSearchAnalyticsQueryCompatible(body: SearchAnalyticsQuery)
   const filters = body.dimensionFilterGroups?.flatMap((group) => group.filters) ?? [];
   const hasPageGroupingOrFilter =
     body.dimensions.includes('page') || filters.some((filter) => filter.dimension === 'page');
+  const hasQueryGroupingOrFilter =
+    body.dimensions.includes('query') || filters.some((filter) => filter.dimension === 'query');
 
   for (const filter of filters) {
     if (filter.expression.length > 4096) {
@@ -265,6 +267,12 @@ export function assertSearchAnalyticsQueryCompatible(body: SearchAnalyticsQuery)
         'Search Analytics aggregationType byProperty is not supported for discover or googleNews.',
       );
     }
+  }
+
+  if (body.type === 'discover' && hasQueryGroupingOrFilter) {
+    throw new Error(
+      'Google Discover does not support the query dimension or query filters in Search Analytics.',
+    );
   }
 
   if (body.aggregationType === 'byNewsShowcasePanel') {

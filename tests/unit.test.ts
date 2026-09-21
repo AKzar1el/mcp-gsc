@@ -673,6 +673,35 @@ test('Search Analytics request validation rejects documented invalid cross-field
     () =>
       assertSearchAnalyticsQueryCompatible({
         ...base,
+        type: 'discover',
+      }),
+    /Discover does not support the query dimension or query filters/,
+  );
+  assert.throws(
+    () =>
+      assertSearchAnalyticsQueryCompatible({
+        ...base,
+        dimensions: ['page'],
+        type: 'discover',
+        dimensionFilterGroups: [
+          {
+            groupType: 'and',
+            filters: [
+              {
+                dimension: 'query',
+                operator: 'contains',
+                expression: 'seo',
+              },
+            ],
+          },
+        ],
+      }),
+    /Discover does not support the query dimension or query filters/,
+  );
+  assert.throws(
+    () =>
+      assertSearchAnalyticsQueryCompatible({
+        ...base,
         type: 'web',
         aggregationType: 'byNewsShowcasePanel',
       }),
@@ -717,6 +746,19 @@ test('Search Analytics request validation rejects documented invalid cross-field
         ],
       }),
     /filter expressions must be at most 4096 characters/,
+  );
+});
+
+test('Search Analytics request validation permits non-query Discover dimensions', () => {
+  assert.doesNotThrow(() =>
+    assertSearchAnalyticsQueryCompatible({
+      startDate: '2026-05-01',
+      endDate: '2026-05-31',
+      dimensions: ['page', 'country'],
+      rowLimit: 100,
+      type: 'discover',
+      aggregationType: 'auto',
+    }),
   );
 });
 
