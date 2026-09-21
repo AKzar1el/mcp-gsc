@@ -56,6 +56,7 @@ import {
 import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from './content-decay-schema';
 import { resolveIndexedPagesDateRange } from './indexed-pages-range';
 import { createQuickWinsInputSchema } from './quick-wins-schema';
+import { SITEMAP_URL_SCHEMA } from './sitemap-url-schema';
 import { WRITE_TOOL_ANNOTATIONS } from './write-tool-annotations';
 import {
   getToolCatalogForAccessMode,
@@ -843,9 +844,7 @@ class GscMcpRuntime {
           'List sitemaps submitted for a Search Console property. Optionally filter to entries included by one sitemap index. Returns sitemap URLs, last submitted/downloaded dates, submitted URL counts, warning and error counts, and sitemap status. Google\'s deprecated sitemap indexed count is intentionally omitted. Use this when the user asks about sitemap health, submission status, wants to audit which sitemaps are working, or needs the child sitemaps belonging to a specific sitemap index.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
-          sitemap_index: z
-            .string()
-            .url()
+          sitemap_index: SITEMAP_URL_SCHEMA
             .optional()
             .describe(
               'Optional sitemap index URL. When supplied, Google returns sitemap entries included in that index.',
@@ -1288,7 +1287,7 @@ class GscMcpRuntime {
         description: 'Submit a new sitemap to your Google Search Console account.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
-          feedpath: z.string().describe('The full URL of the sitemap file to submit, e.g. https://example.com/sitemap.xml'),
+          feedpath: SITEMAP_URL_SCHEMA.describe('The full HTTP/HTTPS URL of the sitemap file to submit, e.g. https://example.com/sitemap.xml'),
         },
         outputSchema: MESSAGE_OUTPUT_SCHEMA,
         annotations: WRITE_TOOL_ANNOTATIONS['sitemaps.submit'],
@@ -1311,7 +1310,7 @@ class GscMcpRuntime {
         description: 'Remove/delete a submitted sitemap from your Google Search Console account.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
-          feedpath: z.string().describe('The full URL of the sitemap file to delete, e.g. https://example.com/sitemap.xml'),
+          feedpath: SITEMAP_URL_SCHEMA.describe('The full HTTP/HTTPS URL of the sitemap file to delete, e.g. https://example.com/sitemap.xml'),
         },
         outputSchema: MESSAGE_OUTPUT_SCHEMA,
         annotations: WRITE_TOOL_ANNOTATIONS['sitemaps.delete'],
@@ -1335,7 +1334,7 @@ class GscMcpRuntime {
         description: 'Get status and details of a single sitemap submitted to Google Search Console.',
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
-          feedpath: z.string().describe('The full URL of the sitemap file, e.g. https://example.com/sitemap.xml'),
+          feedpath: SITEMAP_URL_SCHEMA.describe('The full HTTP/HTTPS URL of the sitemap file, e.g. https://example.com/sitemap.xml'),
         },
         outputSchema: { sitemap: SITEMAP_OUTPUT_SCHEMA },
         annotations: READ_ONLY_ANNOTATIONS,

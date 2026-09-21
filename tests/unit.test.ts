@@ -21,6 +21,7 @@ import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from '../src/content-decay-schema';
 import { resolveWeeklyDigestEndDate } from '../src/digest';
 import { resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
 import { createQuickWinsInputSchema } from '../src/quick-wins-schema';
+import { SITEMAP_URL_SCHEMA } from '../src/sitemap-url-schema';
 import {
   CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
   CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
@@ -71,6 +72,26 @@ test('Search Console date ranges allow same-day queries and reject reversed rang
     () => assertDateRange('2026-08-19', '2026-08-18'),
     /start_date must be on or before end_date/,
   );
+});
+
+test('sitemap URL schema accepts absolute HTTP and HTTPS URLs', () => {
+  for (const url of [
+    'http://example.com/sitemap.xml',
+    'https://example.com/sitemaps/news.xml?part=1',
+  ]) {
+    assert.equal(SITEMAP_URL_SCHEMA.safeParse(url).success, true, url);
+  }
+});
+
+test('sitemap URL schema rejects malformed, relative, and non-web URLs', () => {
+  for (const url of [
+    'sitemap.xml',
+    'not a url',
+    'ftp://example.com/sitemap.xml',
+    'sc-domain:example.com',
+  ]) {
+    assert.equal(SITEMAP_URL_SCHEMA.safeParse(url).success, false, url);
+  }
 });
 
 test('Search Console calendar dates use Pacific Time instead of UTC', () => {
