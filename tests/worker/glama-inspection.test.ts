@@ -9,6 +9,7 @@ type InspectionEnv = Env & {
 
 const workerEnv = env as unknown as InspectionEnv;
 const protocolVersion = '2025-06-18';
+const modernProtocolVersion = '2026-07-28';
 
 function request(body: Record<string, unknown>) {
   const headers = new Headers({
@@ -22,6 +23,34 @@ function request(body: Record<string, unknown>) {
     headers,
     body: JSON.stringify(body),
   });
+}
+
+function modernRequest(method: string, body: Record<string, unknown>) {
+  const headers = new Headers({
+    'Content-Type': 'application/json',
+    Accept: 'application/json, text/event-stream',
+    'MCP-Protocol-Version': modernProtocolVersion,
+    'Mcp-Method': method,
+  });
+
+  return new Request('https://worker.example/mcp', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+}
+
+function modernParams() {
+  return {
+    _meta: {
+      'io.modelcontextprotocol/protocolVersion': modernProtocolVersion,
+      'io.modelcontextprotocol/clientCapabilities': {},
+      'io.modelcontextprotocol/clientInfo': {
+        name: 'mcp-gsc-modern-regression',
+        version: '1.0.0',
+      },
+    },
+  };
 }
 
 async function callWorker(req: Request, runtimeEnv: InspectionEnv) {
@@ -105,5 +134,57 @@ describe('Glama inspection mode', () => {
     expect(dataText).toContain('Not authenticated');
     expect(dataText).toContain("connector or app settings");
     expect(dataText).not.toContain('Settings → Connectors');
+  });
+
+  it('serves the MCP 2026-07-28 stateless lifecycle without initialize', async () => {
+    const inspectionEnv: InspectionEnv = {
+      ...workerEnv,
+      GLAMA_INSPECTION_MODE: 'true',
+    };
+
+    const discovered = await callWorker(
+      modernRequest('server/discover', {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'server/discover',
+        params: modernParams(),
+      }),
+      inspectionEnv,
+    );
+    expect(discovered.status).toBe(200);
+    expect(discovered.headers.get('mcp-session-id')).toBeNull();
+    const discoverEnvelope = await readJsonRpc(discovered);
+    expect(discoverEnvelope).toHaveProperty('result');
+    const discoverResult = discoverEnvelope.result as {
+      _meta?: Record<string, unknown>;
+      supportedVersions?: string[];
+    };
+    expect(discoverResult.supportedVersions).toContain(modernProtocolVersion);
+    expect(discoverResult._meta?.['io.modelcontextprotocol/serverInfo']).toMatchObject({
+      name: 'mcp-gsc',
+    });
+
+    const listed = await callWorker(
+      modernRequest('tools/list', {
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'tools/list',
+        params: modernParams(),
+      }),
+      inspectionEnv,
+    );
+    expect(listed.status).toBe(200);
+    expect(listed.headers.get('mcp-session-id')).toBeNull();
+    const listEnvelope = await readJsonRpc(listed);
+    const result = listEnvelope.result as {
+      _meta?: Record<string, unknown>;
+      resultType?: string;
+      tools: Array<{ name: string }>;
+    };
+    expect(result.resultType).toBe('complete');
+    expect(result._meta?.['io.modelcontextprotocol/serverInfo']).toMatchObject({
+      name: 'mcp-gsc',
+    });
+    expect(result.tools.map((tool) => tool.name)).toContain('analytics.query');
   });
 });
