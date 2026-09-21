@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Cannibalization totals and impression shares now expose their query/page-row aggregation scope explicitly so clients do not mistake summed page impressions for a true query-level Search Console total.
+
 ## [0.4.1] - 2026-09-21
 
 ### Changed

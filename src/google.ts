@@ -720,6 +720,7 @@ export interface CannibalizationResult {
   query: string;
   total_clicks: number;
   total_impressions: number;
+  aggregation_scope: 'observed_query_page_rows';
   pages: CannibalizationPage[];
 }
 
@@ -763,6 +764,7 @@ export function processCannibalization(
         query,
         total_clicks: totalClicks,
         total_impressions: totalImpressions,
+        aggregation_scope: 'observed_query_page_rows',
         pages: competingPages.sort(
           (a, b) => b.impressions - a.impressions || a.page.localeCompare(b.page),
         ),

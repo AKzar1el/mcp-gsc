@@ -893,6 +893,10 @@ test('processCannibalization: groups by query and finds multiple pages with min 
   const candidates = processCannibalization(rows, 50, 10);
   assert.equal(candidates.length, 1);
   assert.equal(candidates[0].query, 'query1');
+  assert.equal(candidates[0].aggregation_scope, 'observed_query_page_rows');
+  assert.equal(candidates[0].total_clicks, 15);
+  assert.equal(candidates[0].total_impressions, 200);
+  assert.equal(candidates[0].pages[0].impression_share, 50);
   assert.equal(candidates[0].pages.length, 2);
 });
 
