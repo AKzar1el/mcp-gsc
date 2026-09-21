@@ -770,7 +770,7 @@ test('querySearchAnalytics: forwards News Showcase panel aggregation parameters'
       querySearchAnalytics('at', 'https://example.com/', {
         startDate: '2026-05-01',
         endDate: '2026-05-31',
-        dimensions: ['query'],
+        dimensions: ['country'],
         rowLimit: 100,
         type: 'googleNews',
         aggregationType: 'byNewsShowcasePanel',
@@ -850,6 +850,35 @@ test('Search Analytics request validation rejects documented invalid cross-field
     () =>
       assertSearchAnalyticsQueryCompatible({
         ...base,
+        type: 'googleNews',
+      }),
+    /Google News does not support the query dimension or query filters/,
+  );
+  assert.throws(
+    () =>
+      assertSearchAnalyticsQueryCompatible({
+        ...base,
+        dimensions: ['page'],
+        type: 'googleNews',
+        dimensionFilterGroups: [
+          {
+            groupType: 'and',
+            filters: [
+              {
+                dimension: 'query',
+                operator: 'contains',
+                expression: 'seo',
+              },
+            ],
+          },
+        ],
+      }),
+    /Google News does not support the query dimension or query filters/,
+  );
+  assert.throws(
+    () =>
+      assertSearchAnalyticsQueryCompatible({
+        ...base,
         dimensions: ['page'],
         type: 'discover',
         dimensionFilterGroups: [
@@ -880,6 +909,7 @@ test('Search Analytics request validation rejects documented invalid cross-field
     () =>
       assertSearchAnalyticsQueryCompatible({
         ...base,
+        dimensions: ['country'],
         type: 'googleNews',
         aggregationType: 'byNewsShowcasePanel',
         dimensionFilterGroups: [
@@ -979,12 +1009,25 @@ test('Search Analytics request validation permits non-query Discover dimensions'
   );
 });
 
-test('Search Analytics request validation accepts a valid News Showcase panel query', () => {
+test('Search Analytics request validation permits supported Google News dimensions', () => {
   assert.doesNotThrow(() =>
     assertSearchAnalyticsQueryCompatible({
       startDate: '2026-05-01',
       endDate: '2026-05-31',
-      dimensions: ['query'],
+      dimensions: ['page', 'country', 'device'],
+      rowLimit: 100,
+      type: 'googleNews',
+      aggregationType: 'auto',
+    }),
+  );
+});
+
+test('Search Analytics request validation accepts a valid News Showcase panel request', () => {
+  assert.doesNotThrow(() =>
+    assertSearchAnalyticsQueryCompatible({
+      startDate: '2026-05-01',
+      endDate: '2026-05-31',
+      dimensions: ['country'],
       rowLimit: 100,
       type: 'googleNews',
       aggregationType: 'byNewsShowcasePanel',

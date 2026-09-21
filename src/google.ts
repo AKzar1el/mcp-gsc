@@ -343,9 +343,10 @@ export function assertSearchAnalyticsQueryCompatible(body: SearchAnalyticsQuery)
     }
   }
 
-  if (body.type === 'discover' && hasQueryGroupingOrFilter) {
+  if ((body.type === 'discover' || body.type === 'googleNews') && hasQueryGroupingOrFilter) {
+    const surfaceName = body.type === 'discover' ? 'Google Discover' : 'Google News';
     throw new Error(
-      'Google Discover does not support the query dimension or query filters in Search Analytics.',
+      `${surfaceName} does not support the query dimension or query filters in Search Analytics.`,
     );
   }
 
