@@ -202,6 +202,10 @@ const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
   row_count: z.number().int().nonnegative(),
   start_row: z.number().int().nonnegative(),
   rows: z.array(z.object(SEARCH_ROW_OUTPUT_SCHEMA)),
+  provider_exhaustiveness_guaranteed: z.literal(false).describe(
+    'False because the Search Analytics API does not guarantee every data row; Google can return only top rows even after local pagination is exhausted.',
+  ),
+  provider_note: z.string(),
   next_start_row: z.number().int().nonnegative().optional(),
   has_more: z.boolean(),
   truncated: z.boolean(),
@@ -232,6 +236,10 @@ const SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA = z.object({
   rows_fetched: z.number().int().nonnegative(),
   pages_fetched: z.number().int().positive(),
   local_limit_reached: z.boolean(),
+  provider_exhaustiveness_guaranteed: z.literal(false).describe(
+    'False because Google does not guarantee that Search Analytics exposes every data row.',
+  ),
+  provider_note: z.string(),
 });
 
 const RESULT_PAGE_OUTPUT_SCHEMA = z.object({
@@ -425,11 +433,16 @@ function toolResponse<T extends Record<string, unknown>>(
   };
 }
 
+const SEARCH_ANALYTICS_PROVIDER_NOTE =
+  'Google Search Analytics does not guarantee all data rows and can return only top rows. Local pagination fields describe what this server fetched or bounded; they do not prove provider-level exhaustiveness.';
+
 function paginationMetadata(result: PaginatedSearchAnalyticsResult) {
   return {
     rows_fetched: result.rows.length,
     pages_fetched: result.pagesFetched,
     local_limit_reached: result.localLimitReached,
+    provider_exhaustiveness_guaranteed: false as const,
+    provider_note: SEARCH_ANALYTICS_PROVIDER_NOTE,
   };
 }
 
@@ -513,7 +526,7 @@ const TOOL_CATALOG = [
   {
     name: 'analytics.query',
     description:
-      'Query Search Console search analytics (impressions, clicks, CTR, average position) over a date range, broken down by query, page, country, device, date, or search appearance. Supports filters and pagination.',
+      'Query Search Console search analytics (impressions, clicks, CTR, average position) over a date range, broken down by query, page, country, device, date, or search appearance. Supports filters and pagination. Google does not guarantee every data row and can return only top rows.',
   },
   {
     name: 'insights.page_queries',
@@ -855,13 +868,18 @@ class GscMcpRuntime {
         title: 'Query search analytics',
         description: [
           'Query Google Search Console search analytics data. Returns',
-          '{ row_count, start_row, rows, has_more, truncated, byte_limit_reached }',
+          '{ row_count, start_row, rows, provider_exhaustiveness_guaranteed,',
+          '  provider_note, has_more, truncated, byte_limit_reached }',
           'where dimensioned rows have keys plus clicks, impressions, ctr, and',
           'position. Aggregate rows from dimensions: [] may omit keys because',
           'Google itself omits that field. When has_more is true, the response',
           'includes next_start_row — pass it back as start_row to fetch the next',
           'safe page. Large requested row_limit values are automatically split',
           'into bounded MCP responses rather than failing structured output.',
+          'Google does not guarantee that Search Analytics exposes every data',
+          'row; it can return only top rows. Local has_more/pagination fields',
+          'therefore describe this server\'s fetch window, not provider-level',
+          'exhaustiveness.',
           'When Google provides',
           'them, response_aggregation_type and metadata are also included;',
           'metadata may identify the first incomplete date or hour.',
@@ -1041,6 +1059,8 @@ class GscMcpRuntime {
           row_count: bounded.items.length,
           start_row,
           rows: bounded.items,
+          provider_exhaustiveness_guaranteed: false,
+          provider_note: SEARCH_ANALYTICS_PROVIDER_NOTE,
           has_more: bounded.resultPage.has_more,
           truncated: bounded.resultPage.truncated,
           byte_limit_reached: bounded.resultPage.byte_limit_reached,

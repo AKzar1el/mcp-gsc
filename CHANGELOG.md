@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Search Analytics requests grouped by `hour` now require the documented `hourly_all` data state and reject hourly windows longer than Google's documented 10-day limit before calling the provider.
+- Search Analytics outputs now distinguish local pagination completeness from Google's provider-level limitation that only top rows are guaranteed, preventing agents from treating a fully fetched local window as an exhaustive dataset.
 
 ## [0.4.3] - 2026-09-21
 
