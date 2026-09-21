@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.9] - 2026-09-21
+
 ### Changed
 - `sites.list` now marks whether each returned property identifier matches the URL-prefix / `sc-domain:` forms currently documented by the Search Console API, and the docs explicitly avoid guessing an undocumented API identifier for Search Console platform properties.
 
