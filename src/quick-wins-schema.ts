@@ -11,9 +11,9 @@ const POSITION_RANGE_ERROR = {
 };
 
 const QUICK_WINS_THRESHOLDS_SHAPE = {
-  min_impressions: z.number().int().min(0).default(100).describe('Minimum impressions required to consider a query. Must be at least 0. Default is 100.'),
-  min_position: z.number().positive().default(8).describe('Minimum average position to target (inclusive). Must be greater than 0. Default is 8.'),
-  max_position: z.number().positive().default(20).describe('Maximum average position to target (inclusive). Must be greater than 0. Default is 20.'),
+  min_impressions: z.number().int().min(0).default(100).describe('Minimum impressions required to consider an observed query/page row. Must be at least 0. Default is 100.'),
+  min_position: z.number().positive().default(8).describe('Minimum Search Console average position for the opportunity range (inclusive). This is an aggregate metric, not a literal current rank. Must be greater than 0. Default is 8.'),
+  max_position: z.number().positive().default(20).describe('Maximum Search Console average position for the opportunity range (inclusive). This is an aggregate metric, not a literal current rank. Must be greater than 0. Default is 20.'),
 };
 
 export function createQuickWinsInputSchema(siteUrlDescription: string) {
@@ -29,13 +29,13 @@ export function createQuickWinsInputSchema(siteUrlDescription: string) {
         .min(1)
         .max(MAX_ANALYSIS_RESULT_LIMIT)
         .default(DEFAULT_ANALYSIS_RESULT_LIMIT)
-        .describe('Maximum ranked quick-win results to return in this response.'),
+        .describe('Maximum ordered quick-win results to return in this response.'),
       start_row: z
         .number()
         .int()
         .min(0)
         .default(0)
-        .describe('Zero-based offset into the ranked quick-win result list.'),
+        .describe('Zero-based offset into the ordered quick-win result list.'),
     })
     .refine(
       ({ min_position, max_position }) => min_position <= max_position,

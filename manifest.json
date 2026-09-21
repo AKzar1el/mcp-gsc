@@ -81,7 +81,7 @@
     },
     {
       "name": "insights.quick_wins",
-      "description": "Find high-impression queries ranking in positions 8 through 20."
+      "description": "Find high-impression query/page rows whose Search Console average position falls in the configured opportunity range; average position is not a literal current rank."
     },
     {
       "name": "insights.cannibalization",
