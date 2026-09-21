@@ -1,10 +1,14 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
 const port = process.env.PORT || '8080';
 const localBaseUrl = `http://127.0.0.1:${port}`;
 const mcpUrl = `${localBaseUrl}/mcp`;
 const googleRedirectUri = `${localBaseUrl}/google/callback`;
+const wranglerConfig = fileURLToPath(
+  new URL('../wrangler.example.jsonc', import.meta.url),
+);
 const forwardedVariables = [
   'GOOGLE_CLIENT_ID',
   'GOOGLE_CLIENT_SECRET',
@@ -15,7 +19,7 @@ const forwardedVariables = [
 const args = [
   'dev',
   '--config',
-  'wrangler.example.jsonc',
+  wranglerConfig,
   '--local',
   '--ip',
   '127.0.0.1',
