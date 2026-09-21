@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- Weekly-digest query movers no longer treat a query missing from one bounded top-query response as zero traffic; comparisons now require the query to be present in both weekly result sets and explain that Search Analytics does not guarantee every data row.
+
 ## [0.4.6] - 2026-09-21
 
 ### Fixed

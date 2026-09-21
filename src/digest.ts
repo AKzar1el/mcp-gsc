@@ -199,25 +199,22 @@ function rowsToPages(rows: SearchAnalyticsRow[]): PageRow[] {
 
 function computeMovers(current: QueryRow[], prev: QueryRow[]): Movers {
   const prevByQuery = new Map(prev.map((q) => [q.query, q]));
-  const currentByQuery = new Map(current.map((q) => [q.query, q]));
-  const allQueries = new Set<string>([
-    ...current.map((q) => q.query),
-    ...prev.map((q) => q.query),
-  ]);
 
   const rising: Mover[] = [];
   const falling: Mover[] = [];
   const newImpressions: Mover[] = [];
 
-  for (const query of allQueries) {
-    const c = currentByQuery.get(query);
+  for (const c of current) {
+    const query = c.query;
     const p = prevByQuery.get(query);
-    const cClicks = c?.clicks ?? 0;
-    const pClicks = p?.clicks ?? 0;
-    const cImpr = c?.impressions ?? 0;
-    const pImpr = p?.impressions ?? 0;
-    const cPos = c?.position ?? 0;
-    const pPos = p?.position ?? 0;
+    if (!p) continue;
+
+    const cClicks = c.clicks;
+    const pClicks = p.clicks;
+    const cImpr = c.impressions;
+    const pImpr = p.impressions;
+    const cPos = c.position;
+    const pPos = p.position;
 
     if (cClicks - pClicks >= 5 && cClicks >= 2 * Math.max(pClicks, 1)) {
       rising.push({
@@ -402,6 +399,10 @@ function renderMarkdown(data: {
   lines.push('');
 
   lines.push('## What changed this week');
+  lines.push('');
+  lines.push(
+    '> Query movers compare only query rows returned in both weekly Search Console result sets. A query missing from one bounded response is not treated as zero because Search Analytics returns top rows and does not guarantee every data row.',
+  );
   lines.push('');
 
   const hasAnyMovers =
