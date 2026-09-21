@@ -297,6 +297,29 @@ test('period comparison guidance does not turn one-sided Search Analytics absenc
   );
 });
 
+test('manual brand regex guidance does not impersonate Search Console branded classification', () => {
+  assert.match(
+    indexSource,
+    /query regex can provide a manual[\s\S]*brand\/non-brand approximation/i,
+    'analytics.query must describe query-regex segmentation as a manual approximation',
+  );
+  assert.match(
+    indexSource,
+    /AI-assisted[\s\S]*Search Analytics API does not expose/i,
+    'runtime metadata must distinguish manual regexes from the native branded classifier',
+  );
+  assert.match(
+    indexSource,
+    /caller-supplied query regex can approximate a manual brand\/non-brand split/i,
+    'analytics.compare must preserve the same distinction',
+  );
+  assert.match(
+    readmeSource,
+    /Query regexes are a manual approximation only/i,
+    'README must not present regex segmentation as Search Console native branded classification',
+  );
+});
+
 test('Search Analytics page discovery is not presented as index coverage', () => {
   for (const [label, metadata] of [
     ['server.json', serverJson],

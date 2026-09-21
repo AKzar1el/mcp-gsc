@@ -987,8 +987,13 @@ class GscMcpRuntime {
           '  is preliminary.',
           '- Use dimension_filter_groups to filter by country, device, query',
           '  content, page URL, or search feature. includingRegex and',
-          '  excludingRegex use RE2 syntax. For brand vs non-brand splits,',
-          "  pass a single regex filter on the 'query' dimension.",
+          '  excludingRegex use RE2 syntax. A query regex can provide a manual',
+          '  brand/non-brand approximation when the caller supplies the brand',
+          "  pattern. It is not equivalent to Search Console's native Branded/",
+          '  Non-branded filter: Google describes that classification as',
+          '  AI-assisted (including language variants, typos, and associated',
+          '  products/services), and the Search Analytics API does not expose',
+          '  that native classifier as a filter.',
           "- data_state defaults to 'all' which matches the GSC dashboard.",
           "  Pass 'final' only when the user explicitly asks for stable,",
           '  non-preliminary data.',
@@ -1732,7 +1737,7 @@ class GscMcpRuntime {
             )
             .optional()
             .describe(
-              "Optional Search Console filters applied identically to both periods. Use query regex filters for brand/non-brand comparisons; countries use ISO 3166-1 alpha-3 codes.",
+              "Optional Search Console filters applied identically to both periods. A caller-supplied query regex can approximate a manual brand/non-brand split, but it is not equivalent to Search Console's AI-assisted native Branded/Non-branded filter, which the Search Analytics API does not expose. Countries use ISO 3166-1 alpha-3 codes.",
             ),
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,

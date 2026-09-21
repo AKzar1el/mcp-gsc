@@ -105,8 +105,10 @@ Once connected, ask your assistant things like:
 - *"Which high-impression query/page rows have an average position between 5 and 15? Show me those optimization opportunities."*
 - *"Give me a weekly digest for `sc-domain:example.com` ending today."*
 - *"Do any of my sitemaps have errors or warnings?"*
-- *"Split my clicks into brand vs non-brand using a regex on the query."*
+- *"Using this brand regex I provide, approximate my clicks as brand vs non-brand."*
 - *"How is my site doing in Google Discover vs regular web search?"*
+
+Query regexes are a manual approximation only. Search Console's native Branded/Non-branded filter uses Google's own AI-assisted classification (including language variants, typos, and associated products/services), and that native classifier is not exposed as a Search Analytics API filter.
 
 ## Connect in your AI client
 
