@@ -38,6 +38,70 @@ test('eligibility fetch accepts eligible HTML within the configured byte ceiling
   assert.deepEqual(result, { eligible: true });
 });
 
+test('eligibility fetch accepts schema.org URL types and flexible JSON-LD script attributes', async () => {
+  const html =
+    '<script type = "application/ld+json">' +
+    '{"@context":"https://schema.org","@type":"https://schema.org/JobPosting"}' +
+    '</script>';
+  const result = await withMockFetch(
+    async () => htmlResponse(html),
+    () => checkIndexingEligibility('https://example.com/jobs/engineer'),
+  );
+  assert.deepEqual(result, { eligible: true });
+});
+
+test('eligibility fetch accepts JobPosting Microdata and RDFa', async () => {
+  for (const html of [
+    '<main itemscope itemtype="https://schema.org/JobPosting"><h1>Engineer</h1></main>',
+    '<main vocab="https://schema.org/" typeof="JobPosting"><h1>Engineer</h1></main>',
+  ]) {
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingEligibility('https://example.com/jobs/engineer'),
+    );
+    assert.deepEqual(result, { eligible: true });
+  }
+});
+
+test('eligibility fetch accepts nested livestream Microdata and RDFa', async () => {
+  for (const html of [
+    '<div itemscope itemtype="https://schema.org/VideoObject"><div itemprop="publication" itemscope itemtype="https://schema.org/BroadcastEvent"></div></div>',
+    '<div vocab="https://schema.org/" typeof="VideoObject"><div property="publication" typeof="BroadcastEvent"></div></div>',
+  ]) {
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingEligibility('https://example.com/live/event'),
+    );
+    assert.deepEqual(result, { eligible: true });
+  }
+});
+
+test('eligibility fetch keeps BroadcastEvent nesting fail-closed for HTML attribute markup', async () => {
+  const html = [
+    '<div itemscope itemtype="https://schema.org/VideoObject"></div>',
+    '<div itemscope itemtype="https://schema.org/BroadcastEvent"></div>',
+  ].join('');
+  const result = await withMockFetch(
+    async () => htmlResponse(html),
+    () => checkIndexingEligibility('https://example.com/live/event'),
+  );
+  assert.equal(result.eligible, false);
+  assert.match(result.reason ?? '', /BroadcastEvent inside VideoObject/);
+});
+
+test('eligibility fetch ignores structured-data-looking markup inside inert text containers', async () => {
+  const html = [
+    '<!-- <div itemscope itemtype="https://schema.org/JobPosting"></div> -->',
+    '<script>const example = `<div itemscope itemtype="https://schema.org/JobPosting"></div>`;</script>',
+    '<template><div itemscope itemtype="https://schema.org/JobPosting"></div></template>',
+  ].join('');
+  const result = await withMockFetch(
+    async () => htmlResponse(html),
+    () => checkIndexingEligibility('https://example.com/docs/example'),
+  );
+  assert.equal(result.eligible, false);
+});
+
 test('eligibility fetch rejects oversized streamed HTML', async () => {
   let cancelled = false;
   const oversizedBody = new ReadableStream<Uint8Array>({
