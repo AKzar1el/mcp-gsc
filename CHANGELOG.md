@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-21
+
 ### Changed
 - Large Search Analytics, comparison, cannibalization, quick-win, content-decay, page/query drilldown, and impression-page proxy responses now use deterministic bounded output with explicit pagination/truncation metadata instead of risking oversized MCP structured content.
 - Content-decay assessment now requires meaningful click evidence plus supporting impression or average-position deterioration for a `likely_decay` classification, while separately identifying weak evidence and improving visibility with click volatility.
