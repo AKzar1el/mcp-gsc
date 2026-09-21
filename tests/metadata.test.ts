@@ -200,6 +200,49 @@ test('Search Analytics page discovery is not presented as index coverage', () =>
   );
 });
 
+test('quick-win metadata preserves average-position semantics and actual eligibility rules', () => {
+  for (const [label, metadata] of [
+    ['server.json', serverJson],
+    ['manifest.json', manifestJson],
+  ] as const) {
+    const tool = metadata.tools.find(
+      (entry: { name: string }) => entry.name === 'insights.quick_wins',
+    );
+    assert.ok(tool, `${label} must describe insights.quick_wins`);
+    assert.match(
+      tool.description,
+      /average position/i,
+      `${label} must identify the Search Console metric as average position`,
+    );
+    assert.doesNotMatch(
+      tool.description,
+      /queries? ranking in positions?/i,
+      `${label} must not present average position as a literal query rank`,
+    );
+    assert.doesNotMatch(
+      tool.description,
+      /low click-through rate/i,
+      `${label} must not claim CTR is an eligibility filter`,
+    );
+  }
+
+  assert.match(
+    indexSource,
+    /Average position is an aggregate Search Console metric, not a literal current rank/,
+    'runtime tool description must preserve average-position semantics',
+  );
+  assert.match(
+    indexSource,
+    /CTR is reported for context and does not affect eligibility/,
+    'runtime result must preserve the actual quick-win eligibility rule',
+  );
+  assert.doesNotMatch(
+    readmeSource,
+    /Which queries does my blog rank position 5.?15 for/i,
+    'README example must not turn Search Console average position into a literal rank claim',
+  );
+});
+
 test('agent installation guide preserves the least-privilege readonly path', () => {
   assert.match(
     llmsInstallSource,

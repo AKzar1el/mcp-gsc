@@ -258,6 +258,7 @@ const RESULT_START_ROW_SCHEMA = z
   .describe('Zero-based offset into the deterministically ranked result list.');
 
 const QUICK_WIN_OUTPUT_SCHEMA = {
+  note: z.string(),
   quick_wins: z.array(
     z.object({
       query: z.string(),
@@ -552,7 +553,7 @@ const TOOL_CATALOG = [
   {
     name: 'insights.quick_wins',
     description:
-      'Find search queries with at least the requested impressions that rank in a configurable striking-distance position range (8-20 by default). Returns clicks, impressions, CTR, and average position; CTR is context, not an eligibility filter.',
+      'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Average position is an aggregate metric, not a literal current rank; CTR is context, not an eligibility filter.',
   },
   {
     name: 'insights.cannibalization',
@@ -1322,7 +1323,7 @@ class GscMcpRuntime {
       'insights.quick_wins',
       {
         title: 'Identify SEO Quick Wins',
-        description: 'Find search queries with at least the requested impressions that rank in a configurable striking-distance position range (8-20 by default). Returns clicks, impressions, CTR, and average position; CTR is context, not an eligibility filter. Results are ranked deterministically by impressions, then bounded with limit/start_row and explicit result_page metadata. Source pagination separately flags the local 100,000-row safety ceiling.',
+        description: 'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Average position is an aggregate Search Console metric, not a literal current rank; CTR is returned for context and is not an eligibility filter. Results are ordered deterministically by impressions, then bounded with limit/start_row and explicit result_page metadata. Source pagination separately flags the local 100,000-row safety ceiling.',
         inputSchema: createQuickWinsInputSchema(SITE_URL_DESCRIPTION),
         outputSchema: z.object(QUICK_WIN_OUTPUT_SCHEMA),
         annotations: READ_ONLY_ANNOTATIONS,
@@ -1342,6 +1343,7 @@ class GscMcpRuntime {
         const quickWins = processQuickWins(source.rows, min_impressions, min_position, max_position);
         const bounded = windowKnownResults(quickWins, start_row, limit);
         const payload = {
+          note: 'Candidates are observed query/page rows selected by Search Console average position, not proof of a stable or current rank. CTR is reported for context and does not affect eligibility.',
           quick_wins: bounded.items,
           pagination: paginationMetadata(source),
           result_page: bounded.resultPage,

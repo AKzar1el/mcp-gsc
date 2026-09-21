@@ -78,7 +78,7 @@ By default (`GSC_ACCESS_MODE=readwrite`), this server exposes 21 tools. Read-onl
 | **`urls.inspect`** | Read | Google's URL Inspection report for a single page. |
 | **`urls.inspect_many`** | Read | Inspect up to 10 URLs sequentially in one call. Each URL still consumes one Google URL Inspection request and one unit of the server's shared inspection safety budget. |
 | **`sitemaps.list`** / **`sitemaps.get`** | Read | List submitted sitemaps or retrieve one sitemap's details. |
-| **`insights.quick_wins`** / **`insights.cannibalization`** / **`insights.content_decay`** | Read | Surface striking-distance opportunities, query/page overlap, and evidence-ranked click declines. Cannibalization candidate totals/shares are scoped to observed query/page rows rather than true query-level property totals; content-decay results distinguish likely decay from weak evidence and improving visibility with click volatility. |
+| **`insights.quick_wins`** / **`insights.cannibalization`** / **`insights.content_decay`** | Read | Surface average-position opportunity rows, query/page overlap, and evidence-ranked click declines. Quick-win candidates are observed query/page rows selected by aggregate Search Console average position, not proof of a stable current rank, and CTR is context rather than an eligibility filter. Cannibalization candidate totals/shares are scoped to observed query/page rows rather than true query-level property totals; content-decay results distinguish likely decay from weak evidence and improving visibility with click volatility. |
 | **`indexing.list_pages`** / **`analytics.compare`** | Read | Analyze pages receiving Search Console impressions and compare two periods, optionally using the same search type and query/page/country/device/search-appearance filters for both periods. `indexing.list_pages` is performance data, not index coverage: a missing URL may still be indexed; use `urls.inspect` / `urls.inspect_many` for URL-level index status. |
 | **`reports.weekly_digest`** | Read | Generate a plain-language seven-day performance report with movers, top pages, and one recommended action. |
 | **`sites.add`** / **`sites.delete`** | Write | Add or remove a Search Console property. |
@@ -98,7 +98,7 @@ Once connected, ask your assistant things like:
 - *"What are my top 20 queries by clicks in the last 28 days?"*
 - *"Compare impressions for example.com this month vs last month — which pages dropped?"*
 - *"Is `https://example.com/pricing` indexed? When was it last crawled?"*
-- *"Which queries does my blog rank position 5–15 for? Those are my quick wins."*
+- *"Which high-impression query/page rows have an average position between 5 and 15? Show me those optimization opportunities."*
 - *"Give me a weekly digest for `sc-domain:example.com` ending today."*
 - *"Do any of my sitemaps have errors or warnings?"*
 - *"Split my clicks into brand vs non-brand using a regex on the query."*

@@ -62,7 +62,7 @@
     },
     {
       "name": "insights.quick_wins",
-      "description": "Find search queries ranking in positions 8-20 with high impressions and low click-through rate."
+      "description": "Find high-impression query/page rows whose Search Console average position falls in the configured opportunity range. Average position is not a literal current rank, and CTR is context rather than an eligibility filter."
     },
     {
       "name": "insights.cannibalization",
@@ -89,7 +89,7 @@
       "description": "Generate a plain-language weekly SEO report with movers, top pages, and a recommended action."
     }
   ],
-  "version": "0.4.1-registry.1",
+  "version": "0.4.1-registry.2",
   "repository": {
     "url": "https://github.com/AKzar1el/mcp-gsc",
     "source": "github"
