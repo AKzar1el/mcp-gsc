@@ -77,6 +77,32 @@ function isWithinDomainProperty(target: URL, domain: string): boolean {
 }
 
 /**
+ * Confirms that a fully-qualified HTTP(S) URL belongs to the supplied Search
+ * Console property. This is shared by URL Inspection and Indexing API guards
+ * so both paths use identical URL-prefix and Domain-property semantics.
+ */
+export function assertUrlWithinSearchConsoleProperty(
+  url: string,
+  siteUrl: string,
+  fieldName = 'url',
+): void {
+  const target = parseHttpUrl(url, fieldName);
+  const normalizedSiteUrl = normalizeSiteUrl(siteUrl);
+
+  if (normalizedSiteUrl.startsWith(DOMAIN_PROPERTY_PREFIX)) {
+    if (isWithinDomainProperty(target, parseDomainProperty(normalizedSiteUrl))) {
+      return;
+    }
+  } else if (isWithinUrlPrefix(target, new URL(normalizedSiteUrl))) {
+    return;
+  }
+
+  throw new Error(
+    `${fieldName} must belong to the site_url Search Console property.`,
+  );
+}
+
+/**
  * Confirms that an Indexing API URL is contained by an owner-level Search
  * Console property available to the authenticated account. URL parsing avoids
  * string-prefix and userinfo lookalike bypasses before any page fetch occurs.
@@ -86,7 +112,6 @@ export function assertIndexingUrlAuthorized(
   siteUrl: string,
   sites: SearchConsoleSite[],
 ): void {
-  const target = parseHttpUrl(url, 'url');
   const normalizedSiteUrl = normalizeSiteUrl(siteUrl);
   const authorizedSite = sites.find((site) => {
     if (site.permissionLevel !== SITE_OWNER_PERMISSION) return false;
@@ -103,15 +128,7 @@ export function assertIndexingUrlAuthorized(
     );
   }
 
-  if (normalizedSiteUrl.startsWith(DOMAIN_PROPERTY_PREFIX)) {
-    if (isWithinDomainProperty(target, parseDomainProperty(normalizedSiteUrl))) {
-      return;
-    }
-  } else if (isWithinUrlPrefix(target, new URL(normalizedSiteUrl))) {
-    return;
-  }
-
-  throw new Error('url must belong to the authorized site_url Search Console property.');
+  assertUrlWithinSearchConsoleProperty(url, normalizedSiteUrl);
 }
 
 export function assertIndexingRequestUrl(url: string): void {
