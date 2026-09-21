@@ -252,6 +252,29 @@ test('Search Analytics metadata preserves provider-level non-exhaustiveness', ()
   );
 });
 
+test('period comparison guidance does not turn one-sided Search Analytics absence into zero', () => {
+  assert.match(
+    indexSource,
+    /common_returned_rows_only/,
+    'runtime output must expose the common-returned-row comparison scope',
+  );
+  assert.match(
+    indexSource,
+    /A key missing from one Search Analytics response is not treated as zero because Google does not guarantee every data row/,
+    'runtime output must explain why one-sided row absence is not zero',
+  );
+  assert.match(
+    readmeSource,
+    /content-decay results compare only pages returned in both periods and do not turn one-sided row absence into zero traffic/i,
+    'README must preserve content-decay common-row semantics',
+  );
+  assert.match(
+    readmeSource,
+    /analytics\.compare` compares only dimension keys returned in both period responses/i,
+    'README must preserve period-comparison common-row semantics',
+  );
+});
+
 test('Search Analytics page discovery is not presented as index coverage', () => {
   for (const [label, metadata] of [
     ['server.json', serverJson],

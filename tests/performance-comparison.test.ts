@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { processPerformanceComparison } from '../src/google';
 
-test('processPerformanceComparison represents zero-baseline percentage changes accurately', () => {
+test('processPerformanceComparison represents explicit zero baselines accurately and ignores one-sided rows', () => {
   const comparisons = processPerformanceComparison(
     [
       { keys: ['growth'], clicks: 150, impressions: 1500, ctr: 0, position: 0 },
@@ -33,6 +33,6 @@ test('processPerformanceComparison represents zero-baseline percentage changes a
     decline: { clicks: -50, impressions: -50 },
     new: { clicks: null, impressions: null },
     zero: { clicks: 0, impressions: 0 },
-    gone: { clicks: -100, impressions: -100 },
   });
+  assert.equal(comparisons.some(({ key }) => key === 'gone'), false);
 });
