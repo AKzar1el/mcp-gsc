@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Indexing API eligibility preflight now recognizes static JSON-LD, Microdata, and RDFa type markup, including schema.org URL type spellings, instead of rejecting otherwise eligible static pages solely because they do not use the narrow JSON-LD form previously detected.
+- URL Inspection now rejects malformed/non-HTTP(S) URLs and URLs outside the supplied Search Console property locally before consuming the server's inspection safety budget or calling Google.
 
 ## [0.4.5] - 2026-09-21
 

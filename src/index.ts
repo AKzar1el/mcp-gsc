@@ -70,6 +70,7 @@ import {
 import {
   assertIndexingRequestUrl,
   assertIndexingUrlAuthorized,
+  assertUrlWithinSearchConsoleProperty,
 } from './indexing-property-authorization';
 import {
   DEFAULT_ANALYSIS_RESULT_LIMIT,
@@ -759,6 +760,11 @@ class GscMcpRuntime {
       },
       async ({ site_url, inspection_url, language_code }) => {
         const googleId = this.requireGoogleId();
+        assertUrlWithinSearchConsoleProperty(
+          inspection_url,
+          site_url,
+          'inspection_url',
+        );
         const rateLimitError = await this.rateLimitError(googleId, 'urls.inspect');
         if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
@@ -801,6 +807,13 @@ class GscMcpRuntime {
       },
       async ({ site_url, inspection_urls, language_code }) => {
         const googleId = this.requireGoogleId();
+        for (const inspectionUrl of inspection_urls) {
+          assertUrlWithinSearchConsoleProperty(
+            inspectionUrl,
+            site_url,
+            'inspection_url',
+          );
+        }
         const rateLimitError = await this.rateLimitError(
           googleId,
           'urls.inspect_many',

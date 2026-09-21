@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   assertIndexingRequestUrl,
   assertIndexingUrlAuthorized,
+  assertUrlWithinSearchConsoleProperty,
   type SearchConsoleSite,
 } from '../src/indexing-property-authorization';
 import { checkIndexingEligibility } from '../src/google';
@@ -101,6 +102,57 @@ test('Indexing authorization rejects malformed, non-HTTP, and userinfo URLs', ()
     'https://example.com@evil.test/jobs/engineer',
   ]) {
     assert.throws(() => assertIndexingRequestUrl(url), /fully qualified|HTTP or HTTPS|userinfo/);
+  }
+});
+
+test('Search Console URL containment accepts URL-prefix descendants and Domain-property subdomains', () => {
+  assert.doesNotThrow(() =>
+    assertUrlWithinSearchConsoleProperty(
+      'https://example.com/jobs/engineer?source=gsc#details',
+      'https://example.com/jobs/',
+      'inspection_url',
+    ),
+  );
+  assert.doesNotThrow(() =>
+    assertUrlWithinSearchConsoleProperty(
+      'http://careers.example.com/opening/1',
+      'sc-domain:example.com',
+      'inspection_url',
+    ),
+  );
+});
+
+test('Search Console URL containment rejects malformed and out-of-property inspection URLs', () => {
+  for (const inspectionUrl of [
+    '/jobs/engineer',
+    'ftp://example.com/jobs/engineer',
+    'https://example.com@evil.test/jobs/engineer',
+  ]) {
+    assert.throws(
+      () =>
+        assertUrlWithinSearchConsoleProperty(
+          inspectionUrl,
+          'https://example.com/jobs/',
+          'inspection_url',
+        ),
+      /inspection_url must be a fully qualified HTTP or HTTPS URL|inspection_url must not include userinfo/,
+    );
+  }
+
+  for (const inspectionUrl of [
+    'https://example.com/jobs-other/engineer',
+    'https://sub.example.com/jobs/engineer',
+    'http://example.com/jobs/engineer',
+  ]) {
+    assert.throws(
+      () =>
+        assertUrlWithinSearchConsoleProperty(
+          inspectionUrl,
+          'https://example.com/jobs/',
+          'inspection_url',
+        ),
+      /inspection_url must belong to the site_url Search Console property/,
+    );
   }
 });
 
