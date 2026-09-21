@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { SEARCH_CONSOLE_DATE_SCHEMA } from './date-validation';
+import { SEARCH_CONSOLE_PROPERTY_SCHEMA } from './search-console-property-schema';
 import {
   DEFAULT_ANALYSIS_RESULT_LIMIT,
   MAX_ANALYSIS_RESULT_LIMIT,
@@ -16,10 +17,10 @@ const QUICK_WINS_THRESHOLDS_SHAPE = {
   max_position: z.number().positive().default(20).describe('Maximum Search Console average position for the opportunity range (inclusive). This is an aggregate metric, not a literal current rank. Must be greater than 0. Default is 20.'),
 };
 
-export function createQuickWinsInputSchema(siteUrlDescription: string) {
+export function createQuickWinsInputSchema() {
   return z
     .object({
-      site_url: z.string().describe(siteUrlDescription),
+      site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
       start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
       end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
       ...QUICK_WINS_THRESHOLDS_SHAPE,

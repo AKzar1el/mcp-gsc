@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Search Console property inputs now reject malformed, relative, unsupported-scheme, credential-bearing, and malformed `sc-domain:` identifiers locally across all tools instead of deferring obvious property-identifier errors to Google.
 - Sitemap get/list-filter/submit/delete inputs now reject malformed, relative, and non-HTTP(S) sitemap URLs locally instead of deferring obvious contract errors to Google.
 
 ## [0.4.4] - 2026-09-21

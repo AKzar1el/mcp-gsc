@@ -57,6 +57,10 @@ import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from './content-decay-schema';
 import { resolveIndexedPagesDateRange } from './indexed-pages-range';
 import { createQuickWinsInputSchema } from './quick-wins-schema';
 import { SITEMAP_URL_SCHEMA } from './sitemap-url-schema';
+import {
+  SEARCH_CONSOLE_PROPERTY_DESCRIPTION,
+  SEARCH_CONSOLE_PROPERTY_SCHEMA,
+} from './search-console-property-schema';
 import { WRITE_TOOL_ANNOTATIONS } from './write-tool-annotations';
 import {
   getToolCatalogForAccessMode,
@@ -104,9 +108,6 @@ const READ_ONLY_ANNOTATIONS = {
   readOnlyHint: true,
   openWorldHint: true,
 } as const;
-
-const SITE_URL_DESCRIPTION =
-  "The Search Console property identifier, exactly as returned by sites.list. Two formats exist: domain properties use 'sc-domain:example.com'; URL-prefix properties use the full URL including protocol and trailing slash, e.g. 'https://www.example.com/'. Passing the wrong format returns a permission error even when the user owns the site — call sites.list first if unsure.";
 
 const METRIC_OUTPUT_SCHEMA = {
   clicks: z.number(),
@@ -721,7 +722,7 @@ class GscMcpRuntime {
         description:
           "Retrieve one exact Google Search Console property and the connected account's permission level for it. Use this when the user has already named a property and you need to confirm that exact property or its access level without listing every property first.",
         inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
         },
         outputSchema: SITE_DETAIL_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
@@ -740,7 +741,7 @@ class GscMcpRuntime {
         title: 'Inspect URL index status',
         description: `Inspect the version of a single URL currently known in Google's index. Returns Google's index-status analysis, last crawl, page-fetch/indexing state, canonicals, and rich-results/AMP analysis where available. This API does not test the live URL or prove current live-page indexability, and its mobile-usability result is deprecated. Use this when the user asks 'is X indexed?' or wants Google's indexed-state evidence for one page. For a bounded group of 2-10 URLs, prefer urls.inspect_many; Google still processes one URL Inspection request per URL and applies the same quota semantics.`,
         inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           inspection_url: z
             .string()
             .describe(
@@ -780,7 +781,7 @@ class GscMcpRuntime {
         title: 'Inspect multiple URLs',
         description: `Inspect the versions of up to 10 URLs currently known in Google's index from one Search Console property. This API does not run live URL tests. Google still processes one URL Inspection request per URL, so every requested URL consumes one quota unit and one unit of this server's shared URL-inspection safety budget. Requests are sent sequentially to avoid unnecessary bursts. Use this for a small group of important or debugging-target URLs; do not use it to crawl an entire site.`,
         inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           inspection_urls: z
             .array(z.string().url())
             .min(1)
@@ -843,7 +844,7 @@ class GscMcpRuntime {
         description:
           'List sitemaps submitted for a Search Console property. Optionally filter to entries included by one sitemap index. Returns sitemap URLs, last submitted/downloaded dates, submitted URL counts, warning and error counts, and sitemap status. Google\'s deprecated sitemap indexed count is intentionally omitted. Use this when the user asks about sitemap health, submission status, wants to audit which sitemaps are working, or needs the child sitemaps belonging to a specific sitemap index.',
         inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           sitemap_index: SITEMAP_URL_SCHEMA
             .optional()
             .describe(
@@ -927,7 +928,7 @@ class GscMcpRuntime {
           '  non-preliminary data.',
         ].join('\n'),
         inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
             'End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day data lag: the most recent complete date is usually 3 days ago.',
@@ -1085,7 +1086,7 @@ class GscMcpRuntime {
         title: 'Find queries for a page',
         description: 'For one exact page URL, return the Search Console queries that produced impressions for it over a date range. This wraps an exact page dimension filter so agents do not need to construct analytics.query filter groups manually. Exact page matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results; Search Console can still omit anonymized queries. Google Discover is intentionally unavailable because Discover does not expose query data.',
         inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           page_url: z.string().url().describe('Exact fully-qualified page URL to filter on, e.g. https://example.com/guides/seo/. Search Console exact page filters are case-sensitive.'),
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
@@ -1163,7 +1164,7 @@ class GscMcpRuntime {
         title: 'Find pages for a query',
         description: 'For one exact search query, return the site pages that received impressions for it over a date range. This wraps an exact query dimension filter so agents do not need to construct analytics.query filter groups manually. Exact query matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results and verify which URL Google is surfacing before diagnosing cannibalization or content targeting. Google Discover is intentionally unavailable because Discover does not expose query data.',
         inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           query: z.string().min(1).describe('Exact Search Console query text to filter on. Exact query filters are case-sensitive.'),
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
@@ -1242,7 +1243,7 @@ class GscMcpRuntime {
         title: 'Add Search Console property',
         description: 'Add a new website property to your Google Search Console account. Note: Domain properties require sc-domain prefix (e.g., sc-domain:example.com), URL-prefix properties require full URL (e.g., https://example.com/).',
         inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
         },
         outputSchema: MESSAGE_OUTPUT_SCHEMA,
         annotations: WRITE_TOOL_ANNOTATIONS['sites.add'],
@@ -1264,7 +1265,7 @@ class GscMcpRuntime {
         title: 'Delete Search Console property',
         description: 'Remove an existing website property from your Google Search Console account.',
         inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
         },
         outputSchema: MESSAGE_OUTPUT_SCHEMA,
         annotations: WRITE_TOOL_ANNOTATIONS['sites.delete'],
@@ -1286,7 +1287,7 @@ class GscMcpRuntime {
         title: 'Submit sitemap',
         description: 'Submit a new sitemap to your Google Search Console account.',
         inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           feedpath: SITEMAP_URL_SCHEMA.describe('The full HTTP/HTTPS URL of the sitemap file to submit, e.g. https://example.com/sitemap.xml'),
         },
         outputSchema: MESSAGE_OUTPUT_SCHEMA,
@@ -1309,7 +1310,7 @@ class GscMcpRuntime {
         title: 'Delete sitemap',
         description: 'Remove/delete a submitted sitemap from your Google Search Console account.',
         inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           feedpath: SITEMAP_URL_SCHEMA.describe('The full HTTP/HTTPS URL of the sitemap file to delete, e.g. https://example.com/sitemap.xml'),
         },
         outputSchema: MESSAGE_OUTPUT_SCHEMA,
@@ -1333,7 +1334,7 @@ class GscMcpRuntime {
         title: 'Get sitemap details',
         description: 'Get status and details of a single sitemap submitted to Google Search Console.',
         inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           feedpath: SITEMAP_URL_SCHEMA.describe('The full HTTP/HTTPS URL of the sitemap file, e.g. https://example.com/sitemap.xml'),
         },
         outputSchema: { sitemap: SITEMAP_OUTPUT_SCHEMA },
@@ -1352,7 +1353,7 @@ class GscMcpRuntime {
       {
         title: 'Identify SEO Quick Wins',
         description: 'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Average position is an aggregate Search Console metric, not a literal current rank; CTR is returned for context and is not an eligibility filter. Results are ordered deterministically by impressions, then bounded with limit/start_row and explicit result_page metadata. Source pagination separately flags the local 100,000-row safety ceiling.',
-        inputSchema: createQuickWinsInputSchema(SITE_URL_DESCRIPTION),
+        inputSchema: createQuickWinsInputSchema(),
         outputSchema: z.object(QUICK_WIN_OUTPUT_SCHEMA),
         annotations: READ_ONLY_ANNOTATIONS,
       },
@@ -1386,7 +1387,7 @@ class GscMcpRuntime {
         title: 'Detect Keyword Cannibalization',
         description: 'Analyze query/page Search Analytics to find queries split across multiple pages. Candidates are ranked deterministically by the observed query/page impression sum, each candidate bounds its page list, and limit/start_row plus result_page provide safe pagination. total_clicks, total_impressions, and impression_share are calculated from observed query/page rows and are not true query-level property aggregates; multiple pages can make that row sum exceed the query-level Search Console total. Multiple ranking URLs can also reflect legitimate locale or intent differences, so treat candidates as evidence to investigate rather than proof of harmful cannibalization.',
         inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
           min_impressions: CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
@@ -1444,7 +1445,7 @@ class GscMcpRuntime {
         title: 'Detect Content Decay',
         description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
         inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           compare_days: CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,
@@ -1518,7 +1519,7 @@ class GscMcpRuntime {
         title: 'Request Indexing',
         description: "Requests indexing through Google's Indexing API for a URL within an owner-level Search Console property accessible to the connected Google account. Google currently restricts this API to pages containing JobPosting structured data or livestream pages containing BroadcastEvent inside VideoObject. It is not available for general webpage submission.",
         inputSchema: {
-          site_url: z.string().describe(`${SITE_URL_DESCRIPTION} The connected Google account must be an owner of this property.`),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe(`${SEARCH_CONSOLE_PROPERTY_DESCRIPTION} The connected Google account must be an owner of this property.`),
           url: z.string().superRefine((value, ctx) => {
             try {
               assertIndexingRequestUrl(value);
@@ -1556,7 +1557,7 @@ class GscMcpRuntime {
         title: 'List Search-Visible Pages',
         description: `${SEARCH_VISIBLE_PAGES_DESCRIPTION} When one date boundary is omitted, the server derives the other to target an inclusive 30-day range; generated end dates are capped at the latest complete date. Responses are bounded and pageable with row_limit/start_row.`,
         inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('Start date (inclusive) in YYYY-MM-DD format. If end_date is omitted, the generated end date is 29 days later, capped at the latest complete date.'),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('End date (inclusive) in YYYY-MM-DD format. If start_date is omitted, the generated start date is 29 days earlier. Defaults to 3 days ago. Note the 2-3 day data lag.'),
           row_limit: z.number().int().min(1).max(25000).default(1000).describe(`Maximum pages requested for this logical response (1-25000). Output is safely bounded; continue with result_page.next_start_row while result_page.has_more is true.`),
@@ -1616,7 +1617,7 @@ class GscMcpRuntime {
         title: 'Compare Performance Between Periods',
         description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device). Apply the same search type and optional dimension filters to both periods. Results are ranked by largest absolute click change, then impression change, and safely paged with limit/start_row. Percentage change is null when the baseline is zero and the comparison value differs. Discover is intentionally unavailable because this comparison contract includes average position, which the Discover report does not support.',
         inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date of Period A (recent, YYYY-MM-DD)'),
           end_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date of Period A (recent, YYYY-MM-DD)'),
           start_date_b: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date of Period B (previous, YYYY-MM-DD)'),
@@ -1722,7 +1723,7 @@ class GscMcpRuntime {
         description:
           'Generate a plain-language weekly SEO report for one Google Search Console property. Returns a markdown digest covering the 7 days ending on end_date, with week-over-week comparison, top pages, queries gaining or losing traction, and one specific action item. Defaults end_date to 3 days ago so the report uses the latest usually-complete Search Console data; pass end_date explicitly to include fresher preliminary data.',
         inputSchema: {
-          site_url: z.string().describe(SITE_URL_DESCRIPTION),
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           end_date: SEARCH_CONSOLE_DATE_SCHEMA
             .optional()
             .describe('End date (inclusive) in YYYY-MM-DD format. Defaults to 3 days ago, which is usually the latest complete Search Console date. Pass a more recent date explicitly to include preliminary data.'),
