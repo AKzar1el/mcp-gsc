@@ -9,6 +9,7 @@ const forwardedVariables = [
   'GOOGLE_CLIENT_ID',
   'GOOGLE_CLIENT_SECRET',
   'TOKEN_ENCRYPTION_KEY',
+  'GSC_ACCESS_MODE',
   'GLAMA_INSPECTION_MODE',
 ];
 const args = [
