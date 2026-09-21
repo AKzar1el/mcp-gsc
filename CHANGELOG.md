@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-09-21
+
+### Added
+- Bounded bulk URL inspection with \`urls.inspect_many\`, preserving input order and per-URL failures.
+- Exact property lookup with \`sites.get\`.
+- Query/page drilldowns with \`insights.page_queries\` and \`insights.query_pages\`.
+- Hourly Search Analytics support and News Showcase panel aggregation.
+- Read-only deployment mode for least-privilege autonomous/agent installations.
+
+### Changed
+- Migrated the remote MCP runtime to Cloudflare's current stateless handler and modernized OAuth discovery with Client ID Metadata Documents, S256 PKCE, reconnect isolation, and Durable Object-backed pending authorization state.
+- Self-host npm transport metadata now accurately describes the loopback Streamable HTTP launcher and OAuth callback.
+- Search Console calendar defaults now follow Pacific Time and weekly reports default to usually-complete data.
+- Weekly-digest guidance now avoids unsupported indexing, zero-click, branded-query, and average-position conclusions and points users to the underlying Search Console evidence.
+- Search Analytics requests now reject documented invalid cross-field combinations before reaching Google.
+
+### Fixed
+- Higher-level Search Analytics pagination, comparison zero-baseline math, indexing authorization/eligibility bounds, OAuth state atomicity, access-token lifecycle behavior, and tool rate-limit RPC behavior.
+- Dependency and CI hygiene, including current Cloudflare Vitest integration, supported Wrangler floor, Node 24 GitHub Actions, and Ubuntu 26 runners.
+
 ## [0.3.1] - 2026-07-27
 
 ### Added
