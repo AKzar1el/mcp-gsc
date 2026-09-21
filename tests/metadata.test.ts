@@ -152,6 +152,54 @@ test('published tool catalogs remain aligned', () => {
   );
 });
 
+test('Search Analytics page discovery is not presented as index coverage', () => {
+  for (const [label, metadata] of [
+    ['server.json', serverJson],
+    ['manifest.json', manifestJson],
+  ] as const) {
+    const tool = metadata.tools.find(
+      (entry: { name: string }) => entry.name === 'indexing.list_pages',
+    );
+    assert.ok(tool, `${label} must describe indexing.list_pages`);
+    assert.match(
+      tool.description,
+      /performance data/i,
+      `${label} must identify Search Analytics page rows as performance data`,
+    );
+    assert.match(
+      tool.description,
+      /not an index-coverage inventory/i,
+      `${label} must reject index-inventory semantics`,
+    );
+    assert.doesNotMatch(
+      tool.description,
+      /proxy for indexed pages/i,
+      `${label} must not call Search Analytics rows an indexed-page proxy`,
+    );
+  }
+
+  assert.doesNotMatch(
+    indexSource,
+    /title: 'List Indexed Pages'/,
+    'runtime title must not claim Search Analytics rows are indexed pages',
+  );
+  assert.match(
+    indexSource,
+    /title: 'List Search-Visible Pages'/,
+    'runtime title must describe the observable Search Analytics signal',
+  );
+  assert.match(
+    indexSource,
+    /Absence does not mean a URL is unindexed/,
+    'runtime result must warn that missing Search Analytics rows are not proof of non-indexing',
+  );
+  assert.match(
+    readmeSource,
+    /performance data, not index coverage/i,
+    'README must preserve the distinction for users',
+  );
+});
+
 test('agent installation guide preserves the least-privilege readonly path', () => {
   assert.match(
     llmsInstallSource,
