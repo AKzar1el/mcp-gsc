@@ -216,6 +216,10 @@ const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
   row_count: z.number().int().nonnegative(),
   start_row: z.number().int().nonnegative(),
   rows: z.array(z.object(SEARCH_ROW_OUTPUT_SCHEMA)),
+  position_supported: z.boolean().describe(
+    'Whether average position is supported for the selected Search Analytics search type. False for Google Discover.',
+  ),
+  position_note: z.string().optional(),
   provider_exhaustiveness_guaranteed: z.literal(false).describe(
     'False because the Search Analytics API does not guarantee every data row; Google can return only top rows even after local pagination is exhausted.',
   ),
@@ -1101,6 +1105,13 @@ class GscMcpRuntime {
           row_count: bounded.items.length,
           start_row,
           rows: bounded.items,
+          position_supported: search_type !== 'discover',
+          ...(search_type === 'discover'
+            ? {
+                position_note:
+                  "Google Discover does not support average position. Do not interpret rows[].position for search_type='discover'.",
+              }
+            : {}),
           provider_exhaustiveness_guaranteed: false,
           provider_note: SEARCH_ANALYTICS_PROVIDER_NOTE,
           has_more: bounded.resultPage.has_more,
