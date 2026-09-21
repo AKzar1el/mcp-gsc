@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The documented and npm-declared Node.js minimum is now 22+, matching the bundled Wrangler 4 runtime requirement instead of advertising unsupported Node.js 20 installs.
+
 ### Fixed
 - URL Inspection guidance now states that Google reports the version currently in its index rather than running a live URL test, and no longer presents the deprecated mobile-usability field as a current primary signal.
 

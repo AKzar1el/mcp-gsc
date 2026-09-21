@@ -18,6 +18,7 @@ function sortedToolNames(metadata: { tools: Array<{ name: string }> }, label: st
 }
 
 const packageJson = readJson('package.json');
+const packageLockJson = readJson('package-lock.json');
 const serverJson = readJson('server.json');
 const manifestJson = readJson('manifest.json');
 const claudePlugin = readJson('.claude-plugin/plugin.json');
@@ -35,6 +36,27 @@ test('package release versions remain aligned across machine-readable metadata',
   assert.equal(manifestJson.version, expectedVersion, 'manifest.json version must match package.json');
   assert.equal(claudePlugin.version, expectedVersion, 'Claude plugin version must match package.json');
   assert.equal(cursorPlugin.version, expectedVersion, 'Cursor plugin version must match package.json');
+});
+
+test('published Node requirement matches the bundled Wrangler runtime', () => {
+  const wranglerPackage = packageLockJson.packages['node_modules/wrangler'];
+
+  assert.ok(wranglerPackage, 'package-lock.json must include the direct Wrangler runtime dependency');
+  assert.equal(
+    packageJson.engines?.node,
+    wranglerPackage.engines?.node,
+    'package engines.node must not advertise support below the bundled Wrangler runtime',
+  );
+  assert.match(
+    setupSource,
+    /Node\.js 22\+ and npm/,
+    'SETUP must document the supported Node floor',
+  );
+  assert.match(
+    llmsInstallSource,
+    /Node\.js 22\+ and npm/,
+    'llms-install.md must document the supported Node floor',
+  );
 });
 
 test('registry package identity remains aligned', () => {

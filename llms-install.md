@@ -8,7 +8,7 @@ This file is for AI agents (Cline, Claude Code, Cursor, etc.) installing `mcp-gs
 
 ## Prerequisites (check before starting)
 
-1. **Node.js 20+ and npm** — verify with `node --version`.
+1. **Node.js 22+ and npm** — verify with `node --version`. The bundled Wrangler 4 runtime requires Node 22 or newer.
 2. **A Cloudflare account** — the free Workers plan is enough. If the user has none, have them sign up at <https://dash.cloudflare.com/sign-up>.
 3. **A Google account** with access to the Search Console properties the user wants to query, and permission to create a Google Cloud project at <https://console.cloud.google.com/>.
 4. **Wrangler authenticated** — run:
