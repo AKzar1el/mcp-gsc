@@ -235,7 +235,7 @@ const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
   start_row: z.number().int().nonnegative(),
   rows: z.array(z.object(SEARCH_ROW_OUTPUT_SCHEMA)),
   position_supported: z.boolean().describe(
-    'Whether average position is supported for the selected Search Analytics search type. False for Google Discover.',
+    'Whether average position is supported for the selected Search Analytics search type. False for Google Discover and Google News.',
   ),
   position_note: z.string().optional(),
   provider_exhaustiveness_guaranteed: z.literal(false).describe(
@@ -971,10 +971,11 @@ class GscMcpRuntime {
           '- CTR in the response is a 0–1 fraction. Multiply by 100 for percent.',
           '- Use search_type to query image/video/news/discover indexes',
           '  separately from web.',
-          '- Google Discover does not support query grouping/filtering or',
-          '  average position. For Discover, use page/country/device/date/',
-          '  searchAppearance dimensions and interpret clicks, impressions,',
-          '  and CTR; query dimensions/filters are rejected before the API call.',
+          '- Google Discover and Google News do not support query grouping/',
+          '  filtering or average position. For those surfaces, use page/',
+          '  country/device/date/searchAppearance dimensions and interpret',
+          '  clicks, impressions, and CTR; query dimensions/filters are',
+          '  rejected before the API call.',
           '- News Showcase panel reporting: set aggregation_type to',
           '  "byNewsShowcasePanel", use search_type "discover" or',
           '  "googleNews", and include a searchAppearance equals',
@@ -1012,7 +1013,7 @@ class GscMcpRuntime {
             )
             .default(['query'])
             .describe(
-              "Dimensions to group rows by. Pass [] (empty array) to get a single row of true site-level totals. The 'hour' dimension requires data_state 'hourly_all' and an inclusive date range of at most 10 days. Google Discover does not support the query dimension.",
+              "Dimensions to group rows by. Pass [] (empty array) to get a single row of true site-level totals. The 'hour' dimension requires data_state 'hourly_all' and an inclusive date range of at most 10 days. Google Discover and Google News do not support the query dimension.",
             ),
           row_limit: z
             .number()
@@ -1040,7 +1041,7 @@ class GscMcpRuntime {
           search_type: z
             .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
             .default('web')
-            .describe('Which search index to query. Defaults to web. Google Discover does not support query grouping/filtering or average position.'),
+            .describe('Which search index to query. Defaults to web. Google Discover and Google News do not support query grouping/filtering or average position.'),
           aggregation_type: z
             .enum(['auto', 'byNewsShowcasePanel', 'byPage', 'byProperty'])
             .default('auto')
@@ -1075,7 +1076,7 @@ class GscMcpRuntime {
             )
             .optional()
             .describe(
-              "Optional filters ANDed together, e.g. [{ groupType: 'and', filters: [{ dimension: 'country', operator: 'equals', expression: 'usa' }] }]. Countries use ISO 3166-1 alpha-3 codes. Query filters are not supported when search_type is discover.",
+              "Optional filters ANDed together, e.g. [{ groupType: 'and', filters: [{ dimension: 'country', operator: 'equals', expression: 'usa' }] }]. Countries use ISO 3166-1 alpha-3 codes. Query filters are not supported when search_type is discover or googleNews.",
             ),
         },
         outputSchema: SEARCH_ANALYTICS_OUTPUT_SCHEMA,
@@ -1124,11 +1125,12 @@ class GscMcpRuntime {
           row_count: bounded.items.length,
           start_row,
           rows: bounded.items,
-          position_supported: search_type !== 'discover',
-          ...(search_type === 'discover'
+          position_supported:
+            search_type !== 'discover' && search_type !== 'googleNews',
+          ...(search_type === 'discover' || search_type === 'googleNews'
             ? {
                 position_note:
-                  "Google Discover does not support average position. Do not interpret rows[].position for search_type='discover'.",
+                  `${search_type === 'discover' ? 'Google Discover' : 'Google News'} does not support average position. Do not interpret rows[].position for search_type='${search_type}'.`,
               }
             : {}),
           provider_exhaustiveness_guaranteed: false,
@@ -1156,16 +1158,16 @@ class GscMcpRuntime {
       'insights.page_queries',
       {
         title: 'Find queries for a page',
-        description: 'For one exact page URL, return the Search Console queries that produced impressions for it over a date range. This wraps an exact page dimension filter so agents do not need to construct analytics.query filter groups manually. Exact page matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results; Search Console can still omit anonymized queries. Google Discover is intentionally unavailable because Discover does not expose query data.',
+        description: 'For one exact page URL, return the Search Console queries that produced impressions for it over a date range. This wraps an exact page dimension filter so agents do not need to construct analytics.query filter groups manually. Exact page matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results; Search Console can still omit anonymized queries. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           page_url: z.string().url().describe('Exact fully-qualified page URL to filter on, e.g. https://example.com/guides/seo/. Search Console exact page filters are case-sensitive.'),
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
           search_type: z
-            .enum(['web', 'image', 'video', 'news', 'googleNews'])
+            .enum(['web', 'image', 'video', 'news'])
             .default('web')
-            .describe('Which search index to query. Defaults to web. Discover is not supported because this tool groups by query.'),
+            .describe('Which search index to query. Defaults to web. Discover and Google News are not supported because this tool groups by query.'),
           row_limit: z
             .number()
             .int()
@@ -1234,16 +1236,16 @@ class GscMcpRuntime {
       'insights.query_pages',
       {
         title: 'Find pages for a query',
-        description: 'For one exact search query, return the site pages that received impressions for it over a date range. This wraps an exact query dimension filter so agents do not need to construct analytics.query filter groups manually. Exact query matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results and verify which URL Google is surfacing before diagnosing cannibalization or content targeting. Google Discover is intentionally unavailable because Discover does not expose query data.',
+        description: 'For one exact search query, return the site pages that received impressions for it over a date range. This wraps an exact query dimension filter so agents do not need to construct analytics.query filter groups manually. Exact query matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results and verify which URL Google is surfacing before diagnosing cannibalization or content targeting. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           query: z.string().min(1).describe('Exact Search Console query text to filter on. Exact query filters are case-sensitive.'),
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
           search_type: z
-            .enum(['web', 'image', 'video', 'news', 'googleNews'])
+            .enum(['web', 'image', 'video', 'news'])
             .default('web')
-            .describe('Which search index to query. Defaults to web. Discover is not supported because this tool filters by query.'),
+            .describe('Which search index to query. Defaults to web. Discover and Google News are not supported because this tool filters by query.'),
           row_limit: z
             .number()
             .int()
@@ -1690,7 +1692,7 @@ class GscMcpRuntime {
       'analytics.compare',
       {
         title: 'Compare Performance Between Periods',
-        description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device). Only dimension keys returned in both Search Analytics period responses are compared; a key missing from one response is not treated as zero because Google does not guarantee every data row. Apply the same search type and optional dimension filters to both periods. Results are ranked by largest absolute click change, then impression change, and safely paged with limit/start_row. Percentage change is null when an explicitly returned baseline row has zero and the comparison value differs. Discover is intentionally unavailable because this comparison contract includes average position, which the Discover report does not support.',
+        description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device). Only dimension keys returned in both Search Analytics period responses are compared; a key missing from one response is not treated as zero because Google does not guarantee every data row. Apply the same search type and optional dimension filters to both periods. Results are ranked by largest absolute click change, then impression change, and safely paged with limit/start_row. Percentage change is null when an explicitly returned baseline row has zero and the comparison value differs. Discover and Google News are intentionally unavailable because this comparison contract includes average position, which those reports do not support.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date of Period A (recent, YYYY-MM-DD)'),
@@ -1699,9 +1701,9 @@ class GscMcpRuntime {
           end_date_b: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date of Period B (previous, YYYY-MM-DD)'),
           dimension: z.enum(['query', 'page', 'country', 'device']).default('query').describe('The dimension to compare performance for. Defaults to query.'),
           search_type: z
-            .enum(['web', 'image', 'video', 'news', 'googleNews'])
+            .enum(['web', 'image', 'video', 'news'])
             .default('web')
-            .describe('Which Search Console search index to compare. The same search type is used for both periods. Discover is excluded because this tool returns average-position comparisons.'),
+            .describe('Which Search Console search index to compare. The same search type is used for both periods. Discover and Google News are excluded because this tool returns average-position comparisons.'),
           dimension_filter_groups: z
             .array(
               z.object({
