@@ -24,6 +24,8 @@ npx -y @digestseo/mcp-gsc
 
 The npm launcher starts a loopback-only **Streamable HTTP** Worker on `127.0.0.1` (port `8080` by default); it is not a stdio MCP process. Clients that launch the package should connect to `http://127.0.0.1:8080/mcp` after supplying the Google OAuth and token-encryption environment variables described in [SETUP.md](SETUP.md). Before the first OAuth sign-in, authorize the exact callback `http://127.0.0.1:8080/google/callback` in Google Cloud (or use the same custom `PORT` you launch with); the launcher prints both URLs at startup.
 
+The local launcher defaults to `GSC_ACCESS_MODE=readwrite`. For least-privilege analytics/reporting-only use, set `GSC_ACCESS_MODE=readonly` in the environment before running `npx`; the launcher forwards that value into the local Worker so OAuth requests only the read-only Search Console scope and the five mutation tools stay unregistered.
+
 For Google OAuth and Cloudflare deployment configuration, follow [SETUP.md](SETUP.md).
 
 ### Connect in 30 seconds

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Safe Google read operations now make a tightly bounded retry on transient `408`, `429`, and `5xx` provider failures while leaving Search Console writes and OAuth/token mutation paths single-attempt; long `Retry-After` windows are surfaced immediately instead of stalling an MCP call.
+- The published `npx` launcher now forwards `GSC_ACCESS_MODE`, and MCP Registry package metadata exposes the same setting, so local self-hosters can actually select least-privilege `readonly` mode instead of silently inheriting the template's `readwrite` binding.
 
 ## [0.4.7] - 2026-09-21
 

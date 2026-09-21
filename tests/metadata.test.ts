@@ -104,6 +104,8 @@ test('registry package identity remains aligned', () => {
     npmPackage.environmentVariables.map((entry: { name: string }) => [entry.name, entry]),
   );
   assert.equal(environmentVariables.get('PORT')?.default, '8080');
+  assert.equal(environmentVariables.get('GSC_ACCESS_MODE')?.default, 'readwrite');
+  assert.equal(environmentVariables.get('GSC_ACCESS_MODE')?.isSecret, false);
   assert.equal(environmentVariables.get('GOOGLE_CLIENT_ID')?.isRequired, true);
   assert.equal(environmentVariables.get('GOOGLE_CLIENT_SECRET')?.isSecret, true);
   assert.equal(environmentVariables.get('TOKEN_ENCRYPTION_KEY')?.isSecret, true);
@@ -137,6 +139,16 @@ test('registry package identity remains aligned', () => {
     npmLauncherSource,
     /Google OAuth redirect URI: \$\{googleRedirectUri\}/,
     'npm launcher must print the exact Google OAuth redirect URI users need to authorize',
+  );
+  assert.match(
+    npmLauncherSource,
+    /'GSC_ACCESS_MODE'/,
+    'npm launcher must forward the access-mode binding into the local Worker',
+  );
+  assert.match(
+    readmeSource,
+    /local launcher defaults to `GSC_ACCESS_MODE=readwrite`[\s\S]*set `GSC_ACCESS_MODE=readonly`/i,
+    'README npm onboarding must document the least-privilege launcher mode',
   );
   assert.match(
     readmeSource,
