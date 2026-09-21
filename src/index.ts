@@ -58,6 +58,7 @@ import { resolveIndexedPagesDateRange } from './indexed-pages-range';
 import { createQuickWinsInputSchema } from './quick-wins-schema';
 import { SITEMAP_URL_SCHEMA } from './sitemap-url-schema';
 import {
+  classifySearchConsolePropertyIdentifier,
   SEARCH_CONSOLE_PROPERTY_DESCRIPTION,
   SEARCH_CONSOLE_PROPERTY_SCHEMA,
 } from './search-console-property-schema';
@@ -132,6 +133,16 @@ const SITE_OUTPUT_SCHEMA = {
   permissionLevel: z.string(),
 };
 
+const LISTED_SITE_OUTPUT_SCHEMA = {
+  ...SITE_OUTPUT_SCHEMA,
+  api_identifier_kind: z.enum(['domain', 'url_prefix', 'undocumented']),
+  mcp_site_url_accepted: z.boolean(),
+  unsupported_reason: z.string().optional(),
+};
+
+const PLATFORM_PROPERTY_API_NOTE =
+  "Google Search Console now has platform properties for social/video accounts in its UI, but the current Search Console API documentation still defines siteUrl using URL-prefix and sc-domain website-property forms. mcp-gsc preserves any other identifier returned by sites.list but will not pass an undocumented property identifier to API tools until Google publishes that contract.";
+
 const SITEMAP_OUTPUT_SCHEMA = z
   .object({
     path: z.string(),
@@ -168,7 +179,7 @@ const CAPABILITIES_OUTPUT_SCHEMA = {
 };
 
 const SITES_OUTPUT_SCHEMA = {
-  sites: z.array(z.object(SITE_OUTPUT_SCHEMA)),
+  sites: z.array(z.object(LISTED_SITE_OUTPUT_SCHEMA)),
 };
 
 const SITE_DETAIL_OUTPUT_SCHEMA = {
@@ -516,7 +527,7 @@ const TOOL_CATALOG = [
   {
     name: 'sites.list',
     description:
-      'List the Google Search Console properties (sites) the connected Google account can access.',
+      'List the Google Search Console properties (sites) the connected Google account can access, including whether each returned identifier matches the website-property siteUrl forms currently documented by the Search Console API.',
   },
   {
     name: 'sites.get',
@@ -710,7 +721,7 @@ class GscMcpRuntime {
       {
         title: 'List Search Console properties',
         description:
-          "List the Google Search Console properties (sites) the connected Google account has access to. Returns an array of { siteUrl, permissionLevel }. Call this when the user asks 'what sites do I have?' or 'what properties are connected?', or when the user asks about SEO for a site and hasn't specified which property. Also useful as a discovery step before calling other tools that require a site_url argument.",
+          "List the Google Search Console properties (sites) the connected Google account has access to. Each entry preserves Google's siteUrl and permissionLevel and adds api_identifier_kind plus mcp_site_url_accepted. Google now exposes platform properties for social/video accounts in the Search Console UI, but its current API documentation still defines siteUrl using URL-prefix and sc-domain website-property forms; identifiers outside those documented forms are preserved here but marked unsupported rather than guessed. Call this when the user asks 'what sites do I have?' or 'what properties are connected?', or before another tool that requires site_url.",
         inputSchema: {},
         outputSchema: SITES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
@@ -718,7 +729,18 @@ class GscMcpRuntime {
       async () => {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
-        const sites = await listSites(accessToken);
+        const sites = (await listSites(accessToken)).map((site) => {
+          const apiIdentifierKind = classifySearchConsolePropertyIdentifier(site.siteUrl);
+          const mcpSiteUrlAccepted = apiIdentifierKind !== 'undocumented';
+          return {
+            ...site,
+            api_identifier_kind: apiIdentifierKind,
+            mcp_site_url_accepted: mcpSiteUrlAccepted,
+            ...(!mcpSiteUrlAccepted
+              ? { unsupported_reason: PLATFORM_PROPERTY_API_NOTE }
+              : {}),
+          };
+        });
         return toolResponse(JSON.stringify(sites, null, 2), { sites });
       },
     );

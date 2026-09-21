@@ -353,6 +353,8 @@ describe('Worker orchestration', () => {
       expect(result.status).toBe(200);
       const envelope = await readMcpJsonRpc(result);
       expect(JSON.stringify(envelope)).toContain('sc-domain:example.com');
+      expect(JSON.stringify(envelope)).toContain('api_identifier_kind');
+      expect(JSON.stringify(envelope)).toContain('mcp_site_url_accepted');
       expect(JSON.stringify(envelope)).not.toContain('Not authenticated');
     } finally {
       globalThis.fetch = originalFetch;
