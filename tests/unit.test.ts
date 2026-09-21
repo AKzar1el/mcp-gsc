@@ -747,6 +747,54 @@ test('Search Analytics request validation rejects documented invalid cross-field
       }),
     /filter expressions must be at most 4096 characters/,
   );
+  assert.throws(
+    () =>
+      assertSearchAnalyticsQueryCompatible({
+        ...base,
+        dimensions: ['hour'],
+        dataState: 'all',
+      }),
+    /hour dimension requires dataState hourly_all/,
+  );
+  assert.throws(
+    () =>
+      assertSearchAnalyticsQueryCompatible({
+        ...base,
+        startDate: '2026-05-01',
+        endDate: '2026-05-11',
+        dimensions: ['hour'],
+        dataState: 'hourly_all',
+      }),
+    /hourly queries support at most 10 inclusive calendar days/,
+  );
+});
+
+test('Search Analytics request validation leaves hourly_all usable without hour grouping', () => {
+  assert.doesNotThrow(() =>
+    assertSearchAnalyticsQueryCompatible({
+      startDate: '2026-05-01',
+      endDate: '2026-05-31',
+      dimensions: ['page'],
+      rowLimit: 100,
+      dataState: 'hourly_all',
+      type: 'web',
+      aggregationType: 'auto',
+    }),
+  );
+});
+
+test('Search Analytics request validation accepts a ten-day hourly window', () => {
+  assert.doesNotThrow(() =>
+    assertSearchAnalyticsQueryCompatible({
+      startDate: '2026-05-01',
+      endDate: '2026-05-10',
+      dimensions: ['hour', 'page'],
+      rowLimit: 100,
+      dataState: 'hourly_all',
+      type: 'web',
+      aggregationType: 'auto',
+    }),
+  );
 });
 
 test('Search Analytics request validation permits non-query Discover dimensions', () => {
