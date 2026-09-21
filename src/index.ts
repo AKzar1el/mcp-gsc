@@ -298,7 +298,14 @@ const INDEXING_OUTPUT_SCHEMA = {
 
 const INDEXED_PAGES_OUTPUT_SCHEMA = {
   pages: z.array(z.object({ page: z.string(), ...METRIC_OUTPUT_SCHEMA })),
+  note: z.string(),
 };
+
+const SEARCH_VISIBLE_PAGES_DESCRIPTION =
+  'List pages that produced Search Console impressions in the requested period. This is performance data, not an index-coverage inventory: a URL can be indexed even when it is absent here, and Search Analytics can omit some page-level detail. Use urls.inspect or urls.inspect_many for URL-level index status.';
+
+const SEARCH_VISIBLE_PAGES_NOTE =
+  'These are Search Analytics performance rows for pages with recorded impressions in the requested period, not a complete list of indexed URLs. Absence does not mean a URL is unindexed. Use urls.inspect or urls.inspect_many for URL-level index status.';
 
 const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
   comparisons: z.array(
@@ -447,8 +454,7 @@ const TOOL_CATALOG = [
   },
   {
     name: 'indexing.list_pages',
-    description:
-      'Retrieve a list of site pages that have received search impressions, serving as a proxy list of indexed pages on the site. When one date boundary is omitted, the server derives the other to target an inclusive 30-day range; generated end dates are capped at the latest complete date.',
+    description: SEARCH_VISIBLE_PAGES_DESCRIPTION,
   },
   {
     name: 'analytics.compare',
@@ -1301,8 +1307,8 @@ class GscMcpRuntime {
     this.server.registerTool(
       'indexing.list_pages',
       {
-        title: 'List Indexed Pages',
-        description: 'Retrieve a list of site pages that have received search impressions, serving as a proxy list of indexed pages on the site. When one date boundary is omitted, the server derives the other to target an inclusive 30-day range; generated end dates are capped at the latest complete date.',
+        title: 'List Search-Visible Pages',
+        description: `${SEARCH_VISIBLE_PAGES_DESCRIPTION} When one date boundary is omitted, the server derives the other to target an inclusive 30-day range; generated end dates are capped at the latest complete date.`,
         inputSchema: {
           site_url: z.string().describe(SITE_URL_DESCRIPTION),
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('Start date (inclusive) in YYYY-MM-DD format. If end_date is omitted, the generated end date is 29 days later, capped at the latest complete date.'),
@@ -1338,7 +1344,10 @@ class GscMcpRuntime {
           position: row.position,
         }));
 
-        return toolResponse(JSON.stringify(pages, null, 2), { pages });
+        return toolResponse(JSON.stringify(pages, null, 2), {
+          pages,
+          note: SEARCH_VISIBLE_PAGES_NOTE,
+        });
       },
     );
 

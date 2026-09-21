@@ -78,7 +78,7 @@
     },
     {
       "name": "indexing.list_pages",
-      "description": "List site pages that have received search impressions as a practical proxy for indexed pages."
+      "description": "List pages with Search Console impressions. This is performance data, not an index-coverage inventory; use URL Inspection for URL-level index status."
     },
     {
       "name": "analytics.compare",
@@ -89,7 +89,7 @@
       "description": "Generate a plain-language weekly SEO report with movers, top pages, and a recommended action."
     }
   ],
-  "version": "0.4.0-registry.1",
+  "version": "0.4.0-registry.2",
   "repository": {
     "url": "https://github.com/AKzar1el/mcp-gsc",
     "source": "github"
