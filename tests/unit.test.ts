@@ -22,6 +22,7 @@ import { resolveWeeklyDigestEndDate } from '../src/digest';
 import { resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
 import { createQuickWinsInputSchema } from '../src/quick-wins-schema';
 import { SITEMAP_URL_SCHEMA } from '../src/sitemap-url-schema';
+import { SEARCH_CONSOLE_PROPERTY_SCHEMA } from '../src/search-console-property-schema';
 import {
   CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
   CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
@@ -91,6 +92,35 @@ test('sitemap URL schema rejects malformed, relative, and non-web URLs', () => {
     'sc-domain:example.com',
   ]) {
     assert.equal(SITEMAP_URL_SCHEMA.safeParse(url).success, false, url);
+  }
+});
+
+test('Search Console property schema accepts documented Domain and URL-prefix forms', () => {
+  for (const property of [
+    'sc-domain:example.com',
+    'sc-domain:sub.example.co.uk',
+    'https://www.example.com/',
+    'http://example.com/blog/',
+    'https://example.com',
+  ]) {
+    assert.equal(SEARCH_CONSOLE_PROPERTY_SCHEMA.safeParse(property).success, true, property);
+  }
+});
+
+test('Search Console property schema rejects malformed and unsupported identifiers', () => {
+  for (const property of [
+    '',
+    'example.com',
+    '/relative/path/',
+    'ftp://example.com/',
+    'https://user:pass@example.com/',
+    ' sc-domain:example.com',
+    'sc-domain:',
+    'sc-domain:https://example.com',
+    'sc-domain:example.com/path',
+    'sc-domain:example.com:443',
+  ]) {
+    assert.equal(SEARCH_CONSOLE_PROPERTY_SCHEMA.safeParse(property).success, false, property);
   }
 });
 
@@ -190,7 +220,7 @@ test('cannibalization minimum impressions cannot be negative', () => {
 });
 
 test('quick win thresholds require valid impressions and position ranges', () => {
-  const schema = createQuickWinsInputSchema('Search Console property identifier.');
+  const schema = createQuickWinsInputSchema();
   const baseInput = {
     site_url: 'sc-domain:example.com',
     start_date: '2026-01-01',
