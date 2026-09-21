@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- URL Inspection guidance now states that Google reports the version currently in its index rather than running a live URL test, and no longer presents the deprecated mobile-usability field as a current primary signal.
+
 ## [0.4.2] - 2026-09-21
 
 ### Fixed

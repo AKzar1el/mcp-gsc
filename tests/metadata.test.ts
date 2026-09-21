@@ -200,6 +200,51 @@ test('Search Analytics page discovery is not presented as index coverage', () =>
   );
 });
 
+test('URL Inspection metadata preserves indexed-version-only semantics', () => {
+  for (const [label, metadata] of [
+    ['server.json', serverJson],
+    ['manifest.json', manifestJson],
+  ] as const) {
+    for (const toolName of ['urls.inspect', 'urls.inspect_many']) {
+      const tool = metadata.tools.find(
+        (entry: { name: string }) => entry.name === toolName,
+      );
+      assert.ok(tool, `${label} must describe ${toolName}`);
+      assert.match(
+        tool.description,
+        /indexed version/i,
+        `${label} must identify URL Inspection as indexed-version evidence`,
+      );
+      assert.match(
+        tool.description,
+        /not a live URL test|does not run live URL tests/i,
+        `${label} must reject live-test semantics`,
+      );
+    }
+  }
+
+  assert.match(
+    indexSource,
+    /does not test the live URL or prove current live-page indexability/,
+    'runtime tool description must preserve the indexed-version limitation',
+  );
+  assert.match(
+    indexSource,
+    /mobile-usability result is deprecated/,
+    'runtime tool description must mark the deprecated mobile-usability result',
+  );
+  assert.match(
+    indexSource,
+    /Google's URL Inspection API reports the version currently known in Google's index/,
+    'runtime structured output must carry the indexed-version limitation at result time',
+  );
+  assert.match(
+    readmeSource,
+    /not a live URL test/i,
+    'README must preserve the indexed-version-only limitation for users',
+  );
+});
+
 test('quick-win metadata preserves average-position semantics and actual eligibility rules', () => {
   for (const [label, metadata] of [
     ['server.json', serverJson],

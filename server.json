@@ -30,11 +30,11 @@
     },
     {
       "name": "urls.inspect",
-      "description": "Google's URL Inspection report for a single page: index status, last crawl, mobile usability. Use urls.inspect_many for 2-10 URLs."
+      "description": "Google's URL Inspection report for the indexed version of a single page: index status, last crawl, page-fetch/indexing state, canonicals, and rich-results/AMP analysis where available. Not a live URL test; mobile usability is deprecated. Use urls.inspect_many for 2-10 URLs."
     },
     {
       "name": "urls.inspect_many",
-      "description": "Inspect up to 10 URLs sequentially while preserving one URL Inspection quota unit per URL."
+      "description": "Inspect Google's indexed versions of up to 10 URLs sequentially while preserving one URL Inspection quota unit per URL. This does not run live URL tests."
     },
     {
       "name": "sitemaps.list",
@@ -89,7 +89,7 @@
       "description": "Generate a plain-language weekly SEO report with movers, top pages, and a recommended action."
     }
   ],
-  "version": "0.4.2-registry.1",
+  "version": "0.4.2-registry.2",
   "repository": {
     "url": "https://github.com/AKzar1el/mcp-gsc",
     "source": "github"

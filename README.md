@@ -75,8 +75,8 @@ By default (`GSC_ACCESS_MODE=readwrite`), this server exposes 21 tools. Read-onl
 | **`sites.get`** | Read | Retrieve one exact Search Console property and the connected account's permission level for it. |
 | **`analytics.query`** | Read | Impressions, clicks, CTR, and average position over a date range, with dimensions, filters, safe pagination, and selectable search type. Pass `dimensions: []` for true site totals; Google's aggregate row may omit `keys`. |
 | **`insights.page_queries`** / **`insights.query_pages`** | Read | Drill from one exact page to its Search Console queries, or from one exact query to the pages Google surfaced for it, with `row_limit` / `start_row` pagination. |
-| **`urls.inspect`** | Read | Google's URL Inspection report for a single page. |
-| **`urls.inspect_many`** | Read | Inspect up to 10 URLs sequentially in one call. Each URL still consumes one Google URL Inspection request and one unit of the server's shared inspection safety budget. |
+| **`urls.inspect`** | Read | Google's URL Inspection report for the version of one page currently known in Google's index. It is not a live URL test; mobile-usability output is deprecated. |
+| **`urls.inspect_many`** | Read | Inspect Google's indexed versions of up to 10 URLs sequentially in one call. Each URL still consumes one Google URL Inspection request and one unit of the server's shared inspection safety budget; this does not run live URL tests. |
 | **`sitemaps.list`** / **`sitemaps.get`** | Read | List submitted sitemaps or retrieve one sitemap's details. |
 | **`insights.quick_wins`** / **`insights.cannibalization`** / **`insights.content_decay`** | Read | Surface average-position opportunity rows, query/page overlap, and evidence-ranked click declines. Quick-win candidates are observed query/page rows selected by aggregate Search Console average position, not proof of a stable current rank, and CTR is context rather than an eligibility filter. Cannibalization candidate totals/shares are scoped to observed query/page rows rather than true query-level property totals; content-decay results distinguish likely decay from weak evidence and improving visibility with click volatility. |
 | **`indexing.list_pages`** / **`analytics.compare`** | Read | Analyze pages receiving Search Console impressions and compare two periods, optionally using the same search type and query/page/country/device/search-appearance filters for both periods. `indexing.list_pages` is performance data, not index coverage: a missing URL may still be indexed; use `urls.inspect` / `urls.inspect_many` for URL-level index status. |
@@ -97,7 +97,7 @@ Once connected, ask your assistant things like:
 
 - *"What are my top 20 queries by clicks in the last 28 days?"*
 - *"Compare impressions for example.com this month vs last month — which pages dropped?"*
-- *"Is `https://example.com/pricing` indexed? When was it last crawled?"*
+- *"What does Google's indexed version of `https://example.com/pricing` show for index status and last crawl?"*
 - *"Which high-impression query/page rows have an average position between 5 and 15? Show me those optimization opportunities."*
 - *"Give me a weekly digest for `sc-domain:example.com` ending today."*
 - *"Do any of my sitemaps have errors or warnings?"*
