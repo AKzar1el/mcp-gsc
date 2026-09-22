@@ -1,7 +1,13 @@
 import { z } from 'zod';
 
 const YYYY_MM_DD = /^(\d{4})-(\d{2})-(\d{2})$/;
-const SEARCH_CONSOLE_TIME_ZONE = 'America/Los_Angeles';
+export const SEARCH_CONSOLE_TIME_ZONE = 'America/Los_Angeles';
+export const SEARCH_CONSOLE_DATE_TIME_ZONE_NOTE =
+  'Google Search Console interprets this calendar date in Pacific Time (America/Los_Angeles; UTC-8/UTC-7 depending on daylight saving time).';
+
+export function searchConsoleDateDescription(base: string): string {
+  return `${base} ${SEARCH_CONSOLE_DATE_TIME_ZONE_NOTE}`;
+}
 
 export function getSearchConsoleCalendarDate(now: Date = new Date()): string {
   const parts = new Intl.DateTimeFormat('en-US', {

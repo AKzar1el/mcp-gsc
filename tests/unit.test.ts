@@ -16,6 +16,8 @@ import {
   assertDateRange,
   getSearchConsoleCalendarDate,
   SEARCH_CONSOLE_DATE_SCHEMA,
+  SEARCH_CONSOLE_TIME_ZONE,
+  searchConsoleDateDescription,
 } from '../src/date-validation';
 import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from '../src/content-decay-schema';
 import { resolveWeeklyDigestEndDate } from '../src/digest';
@@ -146,6 +148,11 @@ test('Search Console property classifier distinguishes documented API forms with
 });
 
 test('Search Console calendar dates use Pacific Time instead of UTC', () => {
+  assert.equal(SEARCH_CONSOLE_TIME_ZONE, 'America/Los_Angeles');
+  assert.match(
+    searchConsoleDateDescription('Start date (inclusive) in YYYY-MM-DD format.'),
+    /Pacific Time \(America\/Los_Angeles; UTC-8\/UTC-7 depending on daylight saving time\)/,
+  );
   assert.equal(
     getSearchConsoleCalendarDate(new Date('2026-09-20T06:59:59Z')),
     '2026-09-19',
