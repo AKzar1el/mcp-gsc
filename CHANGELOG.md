@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The published npm launcher now fails before starting Wrangler when any required Google OAuth/token-encryption environment variable is missing or blank, reporting only the missing variable names instead of allowing a broken local OAuth session to start.
+
 ## [0.4.20] - 2026-09-22
 
 ### Fixed
