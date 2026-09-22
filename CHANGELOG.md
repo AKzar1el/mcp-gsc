@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The npm launcher now exits deterministically after its Wrangler child terminates by signal instead of re-signalling itself while its own `SIGINT`/`SIGTERM` listeners are installed, preventing wrapper processes from lingering after Ctrl+C or supervisor shutdown on POSIX systems.
+
 ## [0.4.18] - 2026-09-22
 
 ### Fixed

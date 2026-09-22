@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { homedir } from 'node:os';
+import { constants, homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -51,7 +51,8 @@ process.on('SIGTERM', () => forwardSignal('SIGTERM'));
 
 child.on('exit', (code, signal) => {
   if (signal) {
-    process.kill(process.pid, signal);
+    const signalNumber = constants.signals[signal];
+    process.exit(signalNumber === undefined ? 1 : 128 + signalNumber);
   } else {
     process.exit(code ?? 1);
   }
