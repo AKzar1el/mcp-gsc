@@ -537,4 +537,14 @@ test('URL inspection guidance routes bounded multi-URL work to the batch tool', 
     /For a bounded group of 2-10 URLs, prefer urls\.inspect_many/,
     'runtime tool guidance must route bounded multi-URL work to urls.inspect_many',
   );
+  assert.match(
+    indexSource,
+    /Requests use bounded concurrency of \$\{URL_INSPECTION_BATCH_CONCURRENCY\}/,
+    'runtime batch guidance must keep bounded concurrency machine-visible',
+  );
+  assert.match(
+    readmeSource,
+    /urls\.inspect_many[^\n]*bounded concurrency of 3/i,
+    'README must document the bounded URL inspection concurrency',
+  );
 });

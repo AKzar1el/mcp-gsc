@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- `urls.inspect_many` now runs URL Inspection requests with bounded concurrency of three instead of strictly sequentially, reducing batch latency while preserving per-URL safety-budget accounting, input-order results, per-URL failures, and batch-fatal Google-access revocation.
 - Search Analytics now rejects `searchAppearance` combined with another grouping dimension and documents Google's required two-step appearance discovery/filter workflow instead of sending invalid grouped requests to the provider.
 - Brand/non-brand Search Analytics guidance now distinguishes caller-supplied regex segmentation from Search Console's AI-assisted native Branded/Non-branded filter, which the Search Analytics API does not expose.
 

@@ -34,7 +34,7 @@
     },
     {
       "name": "urls.inspect_many",
-      "description": "Inspect Google's indexed versions of up to 10 URLs sequentially while preserving one URL Inspection quota unit per URL. This does not run live URL tests."
+      "description": "Inspect Google's indexed versions of up to 10 URLs with bounded concurrency of 3 while preserving one URL Inspection quota unit per URL and input-order results. This does not run live URL tests."
     },
     {
       "name": "sitemaps.list",
