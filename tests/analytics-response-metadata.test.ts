@@ -53,7 +53,7 @@ test('querySearchAnalytics preserves Google response aggregation type', async ()
 
 test('querySearchAnalytics preserves first incomplete date metadata', async () => {
   const response = await withMockFetch(
-    { rows, metadata: { first_incomplete_date: '2026-08-09' } },
+    { rows, metadata: { firstIncompleteDate: '2026-08-09' } },
     () => querySearchAnalytics('token', 'sc-domain:example.com', QUERY),
   );
 
@@ -65,7 +65,7 @@ test('querySearchAnalytics preserves first incomplete date metadata', async () =
 
 test('querySearchAnalytics preserves first incomplete hour metadata', async () => {
   const response = await withMockFetch(
-    { rows, metadata: { first_incomplete_hour: '2026-08-10T12:00:00Z' } },
+    { rows, metadata: { firstIncompleteHour: '2026-08-10T12:00:00Z' } },
     () => querySearchAnalytics('token', 'sc-domain:example.com', QUERY),
   );
 

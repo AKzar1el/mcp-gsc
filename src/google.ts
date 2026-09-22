@@ -407,6 +407,11 @@ export interface SearchAnalyticsResponseMetadata {
   first_incomplete_hour?: string;
 }
 
+interface GoogleSearchAnalyticsResponseMetadata {
+  firstIncompleteDate?: string;
+  firstIncompleteHour?: string;
+}
+
 export interface SearchAnalyticsResponse {
   rows: SearchAnalyticsRow[];
   responseAggregationType?: string;
@@ -610,14 +615,25 @@ export async function querySearchAnalytics(
   const data = (await resp.json()) as {
     rows?: SearchAnalyticsRow[];
     responseAggregationType?: string;
-    metadata?: SearchAnalyticsResponseMetadata;
+    metadata?: GoogleSearchAnalyticsResponseMetadata;
   };
+  const metadata: SearchAnalyticsResponseMetadata | undefined =
+    data.metadata === undefined
+      ? undefined
+      : {
+          ...(data.metadata.firstIncompleteDate !== undefined
+            ? { first_incomplete_date: data.metadata.firstIncompleteDate }
+            : {}),
+          ...(data.metadata.firstIncompleteHour !== undefined
+            ? { first_incomplete_hour: data.metadata.firstIncompleteHour }
+            : {}),
+        };
   return {
     rows: data.rows ?? [],
     ...(data.responseAggregationType !== undefined
       ? { responseAggregationType: data.responseAggregationType }
       : {}),
-    ...(data.metadata !== undefined ? { metadata: data.metadata } : {}),
+    ...(metadata !== undefined ? { metadata } : {}),
   };
 }
 
