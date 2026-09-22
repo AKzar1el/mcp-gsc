@@ -6,7 +6,7 @@
   "tools": [
     {
       "name": "server.capabilities",
-      "description": "List every tool this server exposes and report whether your Google connection is currently authenticated."
+      "description": "List every tool this server exposes and report local Google credential state. A connected status means a stored refresh credential is present; it is not a live Google authorization check."
     },
     {
       "name": "sites.list",
@@ -93,7 +93,7 @@
       "description": "Generate a plain-language weekly SEO report with movers, top pages, and a recommended action."
     }
   ],
-  "version": "0.4.17-registry.1",
+  "version": "0.4.18-registry.1",
   "repository": {
     "url": "https://github.com/AKzar1el/mcp-gsc",
     "source": "github"
@@ -103,7 +103,7 @@
     {
       "registryType": "npm",
       "identifier": "@digestseo/mcp-gsc",
-      "version": "0.4.17",
+      "version": "0.4.18",
       "runtimeHint": "npx",
       "transport": {
         "type": "streamable-http",
