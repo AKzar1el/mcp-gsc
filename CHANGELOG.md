@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - The repository's Cursor plugin now bundles native `gsc-weekly-review`, `gsc-indexing-triage`, and `gsc-search-opportunities` Agent Skills that compose existing MCP tools into evidence-safe Search Console workflows without adding a second tool surface.
 
+### Fixed
+- The production Wrangler floor is now 4.136.3, and the Cloudflare Vitest plugin floor is 1.2.3, so runtime/test installs use Cloudflare's patched Wrangler line for the bundled `smol-toml` denial-of-service advisories GHSA-7w5x-hrqm-74c2 and GHSA-v3rj-xjv7-4jmq.
+
 ## [0.4.21] - 2026-09-22
 
 ### Fixed
