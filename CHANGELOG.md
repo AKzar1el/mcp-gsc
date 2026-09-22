@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.13] - 2026-09-22
+
 ### Fixed
 - The published `npx` launcher now persists local Wrangler/KV/Durable Object state in a stable per-user directory instead of the versioned npm package cache, preserving the encrypted Google session across later package upgrades and ordinary npm cache cleanup; `MCP_GSC_STATE_DIR` can override the location. The first release with this change may require one Google reconnect because older launcher releases used the package cache for local state.
 - Official MCP Registry discovery no longer advertises the owner-hosted remote while that deployment's tool contract lags the current npm package; the verified npm launcher remains the Registry installation path until hosted parity is restored.

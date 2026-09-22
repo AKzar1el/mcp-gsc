@@ -89,7 +89,7 @@
       "description": "Generate a plain-language weekly SEO report with movers, top pages, and a recommended action."
     }
   ],
-  "version": "0.4.12-registry.2",
+  "version": "0.4.13-registry.1",
   "repository": {
     "url": "https://github.com/AKzar1el/mcp-gsc",
     "source": "github"
@@ -99,7 +99,7 @@
     {
       "registryType": "npm",
       "identifier": "@digestseo/mcp-gsc",
-      "version": "0.4.12",
+      "version": "0.4.13",
       "runtimeHint": "npx",
       "transport": {
         "type": "streamable-http",
@@ -121,6 +121,13 @@
           "isSecret": false,
           "format": "string",
           "default": "readwrite"
+        },
+        {
+          "name": "MCP_GSC_STATE_DIR",
+          "description": "Optional directory for persistent local Wrangler/KV/Durable Object/OAuth state. When omitted, the npm launcher uses its stable per-user default.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
         },
         {
           "name": "GOOGLE_CLIENT_ID",

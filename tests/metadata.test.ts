@@ -106,6 +106,8 @@ test('registry package identity remains aligned', () => {
   assert.equal(environmentVariables.get('PORT')?.default, '8080');
   assert.equal(environmentVariables.get('GSC_ACCESS_MODE')?.default, 'readwrite');
   assert.equal(environmentVariables.get('GSC_ACCESS_MODE')?.isSecret, false);
+  assert.equal(environmentVariables.get('MCP_GSC_STATE_DIR')?.isRequired, false);
+  assert.equal(environmentVariables.get('MCP_GSC_STATE_DIR')?.isSecret, false);
   assert.equal(environmentVariables.get('GOOGLE_CLIENT_ID')?.isRequired, true);
   assert.equal(environmentVariables.get('GOOGLE_CLIENT_SECRET')?.isSecret, true);
   assert.equal(environmentVariables.get('TOKEN_ENCRYPTION_KEY')?.isSecret, true);
