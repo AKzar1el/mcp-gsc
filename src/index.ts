@@ -41,7 +41,11 @@ import {
   PendingAuthStateStore,
   stashPendingAuth,
 } from './pending-auth-state';
-import { enforceToolRateLimit, type RateLimitedToolName } from './tool-rate-limit';
+import {
+  enforceToolRateLimit,
+  getToolRateLimitUnits,
+  type RateLimitedToolName,
+} from './tool-rate-limit';
 export { ToolRateLimiter } from './tool-rate-limiter-do';
 import { generateWeeklyDigest, resolveWeeklyDigestEndDate } from './digest';
 import {
@@ -704,7 +708,7 @@ class GscMcpRuntime {
   private async rateLimitError(
     googleId: string,
     toolName: RateLimitedToolName,
-    units = 1,
+    units = getToolRateLimitUnits(toolName),
   ) {
     const result = await enforceToolRateLimit(this.env, googleId, toolName, units);
     if (result.allowed) return null;

@@ -79,6 +79,16 @@ export type ToolRateLimitCategory = keyof typeof TOOL_RATE_LIMIT_POLICIES;
 export type RateLimitedToolName =
   (typeof TOOL_RATE_LIMIT_POLICIES)[ToolRateLimitCategory]['tools'][number];
 
+const TOOL_RATE_LIMIT_UNITS: Partial<Record<RateLimitedToolName, number>> = {
+  // These helpers can fan one MCP call out into several Search Analytics
+  // requests. Reserve the worst-case upstream call count before starting so
+  // a single helper cannot bypass the shared 10-minute safety budget.
+  'insights.quick_wins': 4,
+  'insights.cannibalization': 4,
+  'insights.content_decay': 8,
+  'analytics.compare': 8,
+};
+
 const POLICY_BY_TOOL = new Map<string, ToolRateLimitPolicy>(
   Object.values(TOOL_RATE_LIMIT_POLICIES).flatMap((policy) =>
     policy.tools.map((tool) => [tool, policy] as const),
@@ -192,6 +202,10 @@ export class ToolRateLimiterCore {
 
 export function getToolRateLimitPolicy(toolName: string): ToolRateLimitPolicy | undefined {
   return POLICY_BY_TOOL.get(toolName);
+}
+
+export function getToolRateLimitUnits(toolName: RateLimitedToolName): number {
+  return TOOL_RATE_LIMIT_UNITS[toolName] ?? 1;
 }
 
 async function userBucketFor(googleId: string): Promise<string> {

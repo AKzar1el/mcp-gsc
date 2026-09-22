@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- High-level Search Analytics helpers now reserve their worst-case upstream request fan-out against the shared local safety budget, so paginated comparison/cannibalization/decay workflows cannot bypass the 10-minute limiter by hiding multiple Google API calls behind one MCP tool call.
+
 ## [0.4.15] - 2026-09-22
 
 ### Fixed
