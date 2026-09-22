@@ -231,6 +231,19 @@ test('published tool catalogs remain aligned', () => {
   );
 });
 
+test('sites.add metadata preserves the property-add versus ownership-verification boundary', () => {
+  assert.match(
+    indexSource,
+    /Sites\.add only adds the property to the user's Search Console site set; it does not verify ownership/,
+    'server runtime must distinguish property addition from ownership verification',
+  );
+  assert.match(
+    readmeSource,
+    /ownership_verification_performed: false[\s\S]*separate Google Site Verification\/Search Console workflow/,
+    'README must document the sites.add verification boundary',
+  );
+});
+
 test('Indexing API discovery metadata preserves its restricted eligibility scope', () => {
   for (const [label, metadata] of [
     ['server.json', serverJson],

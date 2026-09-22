@@ -210,6 +210,9 @@ const SITE_DETAIL_OUTPUT_SCHEMA = {
   site: z.object(SITE_OUTPUT_SCHEMA),
 };
 
+const SITE_ADD_VERIFICATION_NOTE =
+  "Google Search Console Sites.add only adds the property to the user's Search Console site set; it does not verify ownership. Ownership verification is a separate Google Site Verification/Search Console workflow.";
+
 const URL_INSPECTION_SCOPE_NOTE =
   "Google's URL Inspection API reports the version currently known in Google's index; it does not run a live URL test or prove current live-page indexability. The mobileUsabilityResult field is deprecated and may be absent.";
 
@@ -277,6 +280,12 @@ const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
 
 const MESSAGE_OUTPUT_SCHEMA = {
   message: z.string(),
+};
+
+const SITE_ADD_OUTPUT_SCHEMA = {
+  message: z.string(),
+  ownership_verification_performed: z.literal(false),
+  ownership_verification_note: z.string(),
 };
 
 const SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA = z.object({
@@ -573,7 +582,7 @@ const TOOL_CATALOG = [
   {
     name: 'sites.add',
     description:
-      'Add a new website property to your Google Search Console account.',
+      'Add a website property to the connected Google account\'s Search Console site set. This does not verify ownership; Google handles ownership verification through a separate Site Verification/Search Console workflow.',
   },
   {
     name: 'sites.delete',
@@ -1356,11 +1365,11 @@ class GscMcpRuntime {
       'sites.add',
       {
         title: 'Add Search Console property',
-        description: 'Add a new website property to your Google Search Console account. Note: Domain properties require sc-domain prefix (e.g., sc-domain:example.com), URL-prefix properties require full URL (e.g., https://example.com/).',
+        description: 'Add a website property to the connected Google account\'s Search Console site set. This does not verify ownership. Domain properties require an sc-domain prefix (e.g., sc-domain:example.com); URL-prefix properties require a full URL (e.g., https://example.com/).',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
         },
-        outputSchema: MESSAGE_OUTPUT_SCHEMA,
+        outputSchema: SITE_ADD_OUTPUT_SCHEMA,
         annotations: WRITE_TOOL_ANNOTATIONS['sites.add'],
       },
       async ({ site_url }) => {
@@ -1370,7 +1379,12 @@ class GscMcpRuntime {
         const accessToken = await this.getAccessToken(googleId);
         await addSite(accessToken, site_url);
         const message = `Successfully added site property: ${site_url}`;
-        return toolResponse(message, { message });
+        const payload = {
+          message,
+          ownership_verification_performed: false as const,
+          ownership_verification_note: SITE_ADD_VERIFICATION_NOTE,
+        };
+        return toolResponse(`${message}\n\n${SITE_ADD_VERIFICATION_NOTE}`, payload);
       },
     );
 
