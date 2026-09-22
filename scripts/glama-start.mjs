@@ -4,6 +4,21 @@ import { constants, homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const requiredEnvironmentVariables = [
+  'GOOGLE_CLIENT_ID',
+  'GOOGLE_CLIENT_SECRET',
+  'TOKEN_ENCRYPTION_KEY',
+];
+const missingRequiredEnvironmentVariables = requiredEnvironmentVariables.filter(
+  (name) => !process.env[name]?.trim(),
+);
+if (missingRequiredEnvironmentVariables.length > 0) {
+  console.error(
+    `[mcp-gsc] Missing required environment variables: ${missingRequiredEnvironmentVariables.join(', ')}. See SETUP.md for local launcher configuration.`,
+  );
+  process.exit(1);
+}
+
 const port = process.env.PORT || '8080';
 const localBaseUrl = `http://127.0.0.1:${port}`;
 const mcpUrl = `${localBaseUrl}/mcp`;

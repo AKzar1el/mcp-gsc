@@ -176,6 +176,26 @@ test('registry package identity remains aligned', () => {
     /'GSC_ACCESS_MODE'/,
     'npm launcher must forward the access-mode binding into the local Worker',
   );
+  assert.match(
+    npmLauncherSource,
+    /const requiredEnvironmentVariables = \[\s*'GOOGLE_CLIENT_ID',\s*'GOOGLE_CLIENT_SECRET',\s*'TOKEN_ENCRYPTION_KEY',\s*\]/,
+    'npm launcher must declare every required local OAuth/token-encryption environment variable',
+  );
+  assert.match(
+    npmLauncherSource,
+    /requiredEnvironmentVariables\.filter\(\s*\(name\) => !process\.env\[name\]\?\.trim\(\),\s*\)/,
+    'npm launcher must reject missing or blank required environment variables',
+  );
+  assert.match(
+    npmLauncherSource,
+    /Missing required environment variables: \$\{missingRequiredEnvironmentVariables\.join\(', '\)\}[\s\S]*process\.exit\(1\)/,
+    'npm launcher must fail before starting Wrangler and report only which required variables are missing',
+  );
+  assert.ok(
+    npmLauncherSource.indexOf('missingRequiredEnvironmentVariables.length > 0')
+      < npmLauncherSource.indexOf('const child = spawn('),
+    'npm launcher required-environment preflight must run before the Wrangler child starts',
+  );
   assert.doesNotMatch(
     npmLauncherSource,
     /process\.kill\(process\.pid,\s*signal\)/,
@@ -229,6 +249,11 @@ test('registry package identity remains aligned', () => {
     setupSource,
     /~\/\.mcp-gsc\/state[\s\S]*MCP_GSC_STATE_DIR/,
     'SETUP must document the npm launcher local-state path and override',
+  );
+  assert.match(
+    readmeSource,
+    /exits before starting Wrangler[\s\S]*missing or blank/i,
+    'README npm onboarding must explain the required-environment preflight',
   );
 });
 
