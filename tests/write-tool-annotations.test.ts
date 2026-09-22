@@ -6,7 +6,7 @@ test('write tools expose operation-specific MCP annotations', () => {
   assert.deepEqual(WRITE_TOOL_ANNOTATIONS, {
     'sites.add': {
       readOnlyHint: false,
-      destructiveHint: true,
+      destructiveHint: false,
       idempotentHint: true,
       openWorldHint: true,
     },
@@ -18,7 +18,7 @@ test('write tools expose operation-specific MCP annotations', () => {
     },
     'sitemaps.submit': {
       readOnlyHint: false,
-      destructiveHint: true,
+      destructiveHint: false,
       idempotentHint: true,
       openWorldHint: true,
     },

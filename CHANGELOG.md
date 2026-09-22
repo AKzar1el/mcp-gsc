@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - `sites.add` now explicitly reports that adding a Search Console property does not perform ownership verification, preventing agents from confusing the Search Console Sites API with Google's separate Site Verification workflow.
+- MCP write annotations now classify `sites.add` and `sitemaps.submit` as additive (`destructiveHint: false`) while keeping the delete tools destructive, matching the protocol's risk vocabulary instead of labeling every external mutation as destructive.
 
 ## [0.4.13] - 2026-09-22
 
