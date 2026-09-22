@@ -62,7 +62,7 @@ claude mcp add --transport http gsc http://127.0.0.1:8080/mcp
 
 Start the npm launcher before using either install button. Complete its Google OAuth flow on first use.
 
-**ChatGPT** — add it as a custom MCP app in developer mode; see [Connect in your AI client](#connect-in-your-ai-client) below.
+**ChatGPT** — ChatGPT cannot connect directly to this loopback `127.0.0.1` endpoint. Use OpenAI's **Secure MCP Tunnel** for the local launcher, or deploy your own remote Cloudflare Worker and add that `/mcp` URL as a custom MCP app in Developer mode; see [Connect in your AI client](#connect-in-your-ai-client) below.
 
 A self-hostable [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for **Google Search Console**. Connect it to Claude.ai, Cursor, ChatGPT, or any MCP-compatible client and ask your AI assistant about your site's organic search performance — impressions, clicks, top queries, index status, and sitemap health — straight from your own Google account.
 
