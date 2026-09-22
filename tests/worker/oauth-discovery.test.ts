@@ -28,6 +28,33 @@ async function callWorker(input: string | Request, init?: RequestInit) {
   );
 }
 
+async function submitConsent(
+  consent: Response,
+  decision: 'allow' | 'deny' = 'allow',
+): Promise<Response> {
+  expect(consent.status).toBe(200);
+  expect(consent.headers.get('content-type')).toContain('text/html');
+  expect(consent.headers.get('content-security-policy')).toContain("form-action 'self'");
+  const html = await consent.text();
+  const nonce = html.match(/name="consent_nonce" value="([^"]+)"/)?.[1];
+  expect(nonce).toBeTruthy();
+  const cookie = consent.headers.get('set-cookie')?.split(';', 1)[0];
+  expect(cookie).toBeTruthy();
+  return callWorker(
+    new Request('https://worker.example/authorize', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        cookie: cookie!,
+      },
+      body: new URLSearchParams({
+        consent_nonce: nonce!,
+        decision,
+      }),
+    }),
+  );
+}
+
 async function pkceChallenge(verifier: string): Promise<string> {
   const digest = await crypto.subtle.digest(
     'SHA-256',
@@ -122,7 +149,8 @@ describe('OAuth discovery', () => {
       url.searchParams.set('code_challenge', challenge);
       url.searchParams.set('code_challenge_method', 'S256');
 
-      const authorization = await callWorker(new Request(url));
+      const consent = await callWorker(new Request(url));
+      const authorization = await submitConsent(consent);
       expect(authorization.status).toBe(302);
       const googleRedirect = new URL(authorization.headers.get('location')!);
       const providerState = googleRedirect.searchParams.get('state');
@@ -234,7 +262,8 @@ describe('OAuth discovery', () => {
       url.searchParams.set('code_challenge', challenge);
       url.searchParams.set('code_challenge_method', 'S256');
 
-      const authorization = await callWorker(new Request(url));
+      const consent = await callWorker(new Request(url));
+      const authorization = await submitConsent(consent);
       expect(authorization.status).toBe(302);
       const googleRedirect = new URL(authorization.headers.get('location')!);
       const providerState = googleRedirect.searchParams.get('state');
@@ -306,5 +335,108 @@ describe('OAuth discovery', () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it('requires explicit client consent and returns denial to the validated OAuth client', async () => {
+    const redirectUri = 'https://client.example/callback';
+    const registration = await callWorker(
+      new Request('https://worker.example/register', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          client_name: '<script>alert(1)</script>',
+          redirect_uris: [redirectUri],
+          token_endpoint_auth_method: 'none',
+        }),
+      }),
+    );
+    expect(registration.status).toBe(201);
+    const client = await registration.json() as { client_id?: string };
+    expect(client.client_id).toBeTruthy();
+
+    const url = new URL('https://worker.example/authorize');
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('client_id', client.client_id!);
+    url.searchParams.set('redirect_uri', redirectUri);
+    url.searchParams.set('state', 'deny-state');
+    url.searchParams.set('resource', 'https://worker.example/mcp');
+    url.searchParams.set('code_challenge', await pkceChallenge('consent-deny-verifier-0123456789-abcdefghijklmnopqrstuvwxyz'));
+    url.searchParams.set('code_challenge_method', 'S256');
+
+    const consent = await callWorker(new Request(url));
+    expect(consent.status).toBe(200);
+    const clone = consent.clone();
+    const html = await clone.text();
+    expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('webmasters');
+    expect(html).toContain('indexing');
+
+    const consentNonce = html.match(/name="consent_nonce" value="([^"]+)"/)?.[1];
+    expect(consentNonce).toBeTruthy();
+    const forged = await callWorker(
+      new Request('https://worker.example/authorize', {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          consent_nonce: consentNonce!,
+          decision: 'allow',
+        }),
+      }),
+    );
+    expect(forged.status).toBe(400);
+
+    const denied = await submitConsent(consent, 'deny');
+    expect(denied.status).toBe(302);
+    const deniedUrl = new URL(denied.headers.get('location')!);
+    expect(`${deniedUrl.origin}${deniedUrl.pathname}`).toBe(redirectUri);
+    expect(deniedUrl.searchParams.get('error')).toBe('access_denied');
+    expect(deniedUrl.searchParams.get('state')).toBe('deny-state');
+    expect(deniedUrl.searchParams.get('iss')).toBe('https://worker.example');
+  });
+
+  it('returns an upstream Google denial to the validated MCP client', async () => {
+    const redirectUri = 'https://client.example/callback';
+    const registration = await callWorker(
+      new Request('https://worker.example/register', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          client_name: 'Google denial client',
+          redirect_uris: [redirectUri],
+          token_endpoint_auth_method: 'none',
+        }),
+      }),
+    );
+    expect(registration.status).toBe(201);
+    const client = await registration.json() as { client_id?: string };
+    expect(client.client_id).toBeTruthy();
+
+    const url = new URL('https://worker.example/authorize');
+    url.searchParams.set('response_type', 'code');
+    url.searchParams.set('client_id', client.client_id!);
+    url.searchParams.set('redirect_uri', redirectUri);
+    url.searchParams.set('state', 'google-denial-state');
+    url.searchParams.set('resource', 'https://worker.example/mcp');
+    url.searchParams.set('code_challenge', await pkceChallenge('google-denial-verifier-0123456789-abcdefghijklmnopqrstuvwxyz'));
+    url.searchParams.set('code_challenge_method', 'S256');
+
+    const approved = await submitConsent(await callWorker(new Request(url)));
+    expect(approved.status).toBe(302);
+    const googleRedirect = new URL(approved.headers.get('location')!);
+    const providerState = googleRedirect.searchParams.get('state');
+    expect(providerState).toBeTruthy();
+
+    const callback = await callWorker(
+      new Request(
+        `https://worker.example/google/callback?error=access_denied&state=${encodeURIComponent(providerState!)}`,
+      ),
+    );
+    expect(callback.status).toBe(302);
+    const clientRedirect = new URL(callback.headers.get('location')!);
+    expect(`${clientRedirect.origin}${clientRedirect.pathname}`).toBe(redirectUri);
+    expect(clientRedirect.searchParams.get('error')).toBe('access_denied');
+    expect(clientRedirect.searchParams.get('state')).toBe('google-denial-state');
+    expect(clientRedirect.searchParams.get('iss')).toBe('https://worker.example');
   });
 });

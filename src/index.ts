@@ -1,4 +1,4 @@
-import { OAuthProvider } from '@cloudflare/workers-oauth-provider';
+import { OAuthProvider, type AuthRequest } from '@cloudflare/workers-oauth-provider';
 import { DurableObject } from 'cloudflare:workers';
 import { createMcpHandler, getMcpAuthContext } from 'agents/mcp/server';
 import { McpServer } from '@modelcontextprotocol/server';
@@ -71,6 +71,7 @@ import {
 import { WRITE_TOOL_ANNOTATIONS } from './write-tool-annotations';
 import {
   getToolCatalogForAccessMode,
+  getGoogleOAuthScopes,
   resolveGscAccessMode,
   type GscAccessMode,
 } from './access-mode';
@@ -2134,6 +2135,154 @@ export class PendingAuthState extends DurableObject<Env> {
   }
 }
 
+const CONSENT_COOKIE_HTTPS = '__Host-MCP_GSC_CONSENT';
+const CONSENT_COOKIE_LOOPBACK = 'MCP_GSC_CONSENT';
+
+interface PendingConsentPayload {
+  kind: 'mcp-gsc-consent';
+  authRequest: AuthRequest;
+}
+
+function isLoopbackHttp(url: URL): boolean {
+  return (
+    url.protocol === 'http:' &&
+    (url.hostname === '127.0.0.1' ||
+      url.hostname === 'localhost' ||
+      url.hostname === '[::1]')
+  );
+}
+
+function consentCookieName(url: URL): string {
+  return isLoopbackHttp(url) ? CONSENT_COOKIE_LOOPBACK : CONSENT_COOKIE_HTTPS;
+}
+
+function consentCookie(url: URL, value: string, maxAgeSeconds = 600): string {
+  const secure = isLoopbackHttp(url) ? '' : '; Secure';
+  return `${consentCookieName(url)}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${maxAgeSeconds}${secure}`;
+}
+
+function clearConsentCookie(url: URL): string {
+  return consentCookie(url, '', 0);
+}
+
+function getCookie(request: Request, name: string): string | null {
+  const cookie = request.headers.get('cookie');
+  if (!cookie) return null;
+  for (const entry of cookie.split(';')) {
+    const separator = entry.indexOf('=');
+    if (separator < 0) continue;
+    if (entry.slice(0, separator).trim() !== name) continue;
+    try {
+      return decodeURIComponent(entry.slice(separator + 1).trim());
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+async function constantTimeStringEqual(left: string, right: string): Promise<boolean> {
+  const encoder = new TextEncoder();
+  const [leftHash, rightHash] = await Promise.all([
+    crypto.subtle.digest('SHA-256', encoder.encode(left)),
+    crypto.subtle.digest('SHA-256', encoder.encode(right)),
+  ]);
+  const leftBytes = new Uint8Array(leftHash);
+  const rightBytes = new Uint8Array(rightHash);
+  let difference = 0;
+  for (let index = 0; index < leftBytes.length; index += 1) {
+    difference |= leftBytes[index] ^ rightBytes[index];
+  }
+  return difference === 0;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+function isParsedAuthorizationRequest(value: unknown): value is AuthRequest {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<AuthRequest>;
+  return (
+    typeof candidate.responseType === 'string' &&
+    typeof candidate.clientId === 'string' &&
+    typeof candidate.redirectUri === 'string' &&
+    Array.isArray(candidate.scope) &&
+    candidate.scope.every((scope) => typeof scope === 'string') &&
+    typeof candidate.state === 'string'
+  );
+}
+
+function isPendingConsentPayload(value: unknown): value is PendingConsentPayload {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<PendingConsentPayload>;
+  return candidate.kind === 'mcp-gsc-consent' && isParsedAuthorizationRequest(candidate.authRequest);
+}
+
+function oauthErrorRedirect(
+  authRequest: AuthRequest,
+  code: 'access_denied' | 'server_error',
+  description?: string,
+): Response {
+  const redirect = new URL(authRequest.redirectUri);
+  redirect.searchParams.set('error', code);
+  if (description) redirect.searchParams.set('error_description', description);
+  redirect.searchParams.set('state', authRequest.state);
+  if (authRequest.issuer) redirect.searchParams.set('iss', authRequest.issuer);
+  return new Response(null, {
+    status: 302,
+    headers: { location: redirect.toString() },
+  });
+}
+
+function consentHtml(input: {
+  clientName: string;
+  clientId: string;
+  consentNonce: string;
+  mcpScopes: readonly string[];
+  googleScopes: readonly string[];
+  accessMode: GscAccessMode;
+}): string {
+  const list = (values: readonly string[]) =>
+    values.length > 0
+      ? values.map((value) => `<li><code>${escapeHtml(value)}</code></li>`).join('')
+      : '<li><em>No additional scopes requested</em></li>';
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Authorize Google Search Console MCP</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:760px;margin:3rem auto;padding:0 1rem;line-height:1.5;color:#111}main{border:1px solid #ddd;border-radius:12px;padding:1.5rem}code{overflow-wrap:anywhere}button{padding:.65rem 1rem;margin-right:.5rem;font:inherit}button[name="decision"][value="allow"]{font-weight:700}.muted{color:#555}
+</style>
+</head>
+<body>
+<main>
+<h1>Authorize Google Search Console access</h1>
+<p><strong>${escapeHtml(input.clientName)}</strong> is requesting access through mcp-gsc.</p>
+<p class="muted">Client ID: <code>${escapeHtml(input.clientId)}</code></p>
+<h2>MCP scopes requested</h2>
+<ul>${list(input.mcpScopes)}</ul>
+<h2>Google scopes mcp-gsc will request</h2>
+<p>Configured access mode: <strong>${escapeHtml(input.accessMode)}</strong></p>
+<ul>${list(input.googleScopes)}</ul>
+<p>Continue only if you recognize and trust the requesting MCP client.</p>
+<form method="post" action="/authorize">
+<input type="hidden" name="consent_nonce" value="${escapeHtml(input.consentNonce)}">
+<button type="submit" name="decision" value="allow">Allow and continue to Google</button>
+<button type="submit" name="decision" value="deny">Deny</button>
+</form>
+</main>
+</body>
+</html>`;
+}
+
 function googleRedirectUri(request: Request): string {
   return new URL('/google/callback', request.url).toString();
 }
@@ -2169,7 +2318,7 @@ export const defaultHandler = {
       });
     }
 
-    if (url.pathname === '/authorize') {
+    if (url.pathname === '/authorize' && request.method === 'GET') {
       let claudeAuthRequest;
       try {
         claudeAuthRequest = await env.OAUTH_PROVIDER.parseAuthRequest(request);
@@ -2185,6 +2334,9 @@ export const defaultHandler = {
           },
         );
       }
+      if (!isParsedAuthorizationRequest(claudeAuthRequest)) {
+        return new Response('Invalid OAuth authorization request.', { status: 400 });
+      }
       let accessMode: GscAccessMode;
       try {
         accessMode = resolveGscAccessMode(env.GSC_ACCESS_MODE);
@@ -2194,16 +2346,106 @@ export const defaultHandler = {
           { status: 500 },
         );
       }
-      const nonce = crypto.randomUUID();
-      await stashPendingAuth(env, nonce, claudeAuthRequest);
-      const redirectUri = googleRedirectUri(request);
+      let client;
+      try {
+        client = await env.OAUTH_PROVIDER.lookupClient(claudeAuthRequest.clientId);
+      } catch (err) {
+        console.warn('OAuth client lookup failed', {
+          message: (err as Error).message,
+        });
+        return new Response('Could not verify the requesting OAuth client.', { status: 400 });
+      }
+      if (!client) {
+        return new Response('Unknown OAuth client.', { status: 400 });
+      }
+
+      const consentNonce = crypto.randomUUID();
+      const pendingConsent: PendingConsentPayload = {
+        kind: 'mcp-gsc-consent',
+        authRequest: claudeAuthRequest,
+      };
+      await stashPendingAuth(env, consentNonce, pendingConsent);
+      return new Response(
+        consentHtml({
+          clientName: client.clientName ?? claudeAuthRequest.clientId,
+          clientId: claudeAuthRequest.clientId,
+          consentNonce,
+          mcpScopes: claudeAuthRequest.scope,
+          googleScopes: getGoogleOAuthScopes(accessMode),
+          accessMode,
+        }),
+        {
+          headers: {
+            'content-type': 'text/html; charset=utf-8',
+            'cache-control': 'no-store',
+            'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'",
+            'referrer-policy': 'no-referrer',
+            'x-content-type-options': 'nosniff',
+            'x-frame-options': 'DENY',
+            'set-cookie': consentCookie(url, consentNonce),
+          },
+        },
+      );
+    }
+
+    if (url.pathname === '/authorize' && request.method === 'POST') {
+      const contentType = request.headers.get('content-type')?.toLowerCase() ?? '';
+      if (!contentType.startsWith('application/x-www-form-urlencoded')) {
+        return new Response('Unsupported Media Type', { status: 415 });
+      }
+      const contentLength = Number(request.headers.get('content-length') ?? '0');
+      if (Number.isFinite(contentLength) && contentLength > 4096) {
+        return new Response('Authorization response too large', { status: 413 });
+      }
+      const body = await request.formData();
+      const consentNonceValue = body.get('consent_nonce');
+      const decisionValue = body.get('decision');
+      const consentNonce =
+        typeof consentNonceValue === 'string' ? consentNonceValue : null;
+      const decision = typeof decisionValue === 'string' ? decisionValue : null;
+      const cookieNonce = getCookie(request, consentCookieName(url));
+      if (!consentNonce || !cookieNonce || !(await constantTimeStringEqual(consentNonce, cookieNonce))) {
+        return new Response('Invalid or expired authorization consent.', { status: 400 });
+      }
+
+      const pending = await consumePendingAuth(env, consentNonce);
+      if (!pending || !isPendingConsentPayload(pending.claudeAuthRequest)) {
+        return new Response('Authorization consent expired or invalid.', { status: 400 });
+      }
+      const authRequest = pending.claudeAuthRequest.authRequest;
+      if (decision === 'deny') {
+        const denied = oauthErrorRedirect(authRequest, 'access_denied', 'The user denied access.');
+        denied.headers.append('set-cookie', clearConsentCookie(url));
+        return denied;
+      }
+      if (decision !== 'allow') {
+        return new Response('Invalid authorization decision.', { status: 400 });
+      }
+
+      let accessMode: GscAccessMode;
+      try {
+        accessMode = resolveGscAccessMode(env.GSC_ACCESS_MODE);
+      } catch {
+        return new Response(
+          'Server configuration error: GSC_ACCESS_MODE must be "readonly" or "readwrite".',
+          { status: 500 },
+        );
+      }
+      const googleNonce = crypto.randomUUID();
+      await stashPendingAuth(env, googleNonce, authRequest);
       const googleUrl = buildAuthUrl(
         env.GOOGLE_CLIENT_ID,
-        redirectUri,
-        nonce,
+        googleRedirectUri(request),
+        googleNonce,
         accessMode,
       );
-      return Response.redirect(googleUrl, 302);
+      return new Response(null, {
+        status: 302,
+        headers: {
+          location: googleUrl,
+          'set-cookie': clearConsentCookie(url),
+        },
+      });
     }
 
     if (url.pathname === '/google/callback') {
@@ -2211,14 +2453,7 @@ export const defaultHandler = {
       const state = url.searchParams.get('state');
       const googleError = url.searchParams.get('error');
 
-      if (googleError) {
-        console.error('Google OAuth returned error', { error: googleError });
-        return new Response(`Google OAuth error: ${googleError}`, {
-          status: 400,
-        });
-      }
-
-      if (!code || !state) {
+      if (!state || (!code && !googleError)) {
         console.error('Missing code or state on /google/callback', {
           has_code: !!code,
           has_state: !!state,
@@ -2230,6 +2465,27 @@ export const defaultHandler = {
       if (!pending) {
         console.error('Pending auth not found or expired');
         return new Response('Auth request expired or invalid', { status: 400 });
+      }
+
+      const claudeAuthReq = pending.claudeAuthRequest;
+      if (!isParsedAuthorizationRequest(claudeAuthReq)) {
+        console.error('Pending auth had an invalid shape');
+        return new Response('Auth request expired or invalid', { status: 400 });
+      }
+
+      if (googleError) {
+        console.warn('Google OAuth returned error', { error: googleError });
+        return oauthErrorRedirect(
+          claudeAuthReq,
+          googleError === 'access_denied' ? 'access_denied' : 'server_error',
+          googleError === 'access_denied'
+            ? 'Google authorization was denied.'
+            : 'Google authorization failed.',
+        );
+      }
+
+      if (!code) {
+        return new Response('Missing authorization code', { status: 400 });
       }
 
       const redirectUri = googleRedirectUri(request);
@@ -2269,7 +2525,6 @@ export const defaultHandler = {
         return new Response('Save user failed', { status: 500 });
       }
 
-      const claudeAuthReq = pending.claudeAuthRequest as any;
       let redirectTo: string;
       try {
         ({ redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({

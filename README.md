@@ -68,7 +68,7 @@ Start the npm launcher before using either install button. Complete its Google O
 
 A self-hostable [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for **Google Search Console**. Connect it to Claude.ai, Cursor, ChatGPT, or any MCP-compatible client and ask your AI assistant about your site's organic search performance — impressions, clicks, top queries, index status, and sitemap health — straight from your own Google account.
 
-It runs on [Cloudflare Workers](https://workers.cloudflare.com/) and ships with one-click Google OAuth onboarding: connect the server in your client, sign in with Google once, grant the requested Google Search Console permissions, and you're done. No API keys to copy around and no service-account JSON to manage.
+It runs on [Cloudflare Workers](https://workers.cloudflare.com/) and ships with Google OAuth onboarding: connect the server in your client, review the mcp-gsc consent page that identifies the requesting MCP client and permissions, then sign in with Google and grant the requested Google Search Console permissions. No API keys to copy around and no service-account JSON to manage.
 
 ## Tools
 
