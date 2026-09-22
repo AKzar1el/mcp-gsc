@@ -187,4 +187,65 @@ describe('Glama inspection mode', () => {
     });
     expect(result.tools.map((tool) => tool.name)).toContain('analytics.query');
   });
+
+  it('rejects a modern MCP request that omits MCP-Protocol-Version', async () => {
+    const inspectionEnv: InspectionEnv = {
+      ...workerEnv,
+      GLAMA_INSPECTION_MODE: 'true',
+    };
+    const missingVersionHeader = new Request('https://worker.example/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+        'Mcp-Method': 'server/discover',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 7,
+        method: 'server/discover',
+        params: modernParams(),
+      }),
+    });
+
+    const response = await callWorker(missingVersionHeader, inspectionEnv);
+    expect(response.status).toBe(400);
+    const envelope = await readJsonRpc(response);
+    expect(envelope).toMatchObject({
+      jsonrpc: '2.0',
+      id: 7,
+      error: {
+        code: -32020,
+      },
+    });
+  });
+
+  it('keeps legacy initialization compatible when no protocol header is sent', async () => {
+    const inspectionEnv: InspectionEnv = {
+      ...workerEnv,
+      GLAMA_INSPECTION_MODE: 'true',
+    };
+    const legacyWithoutVersionHeader = new Request('https://worker.example/mcp', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json, text/event-stream',
+      },
+      body: JSON.stringify({
+        jsonrpc: '2.0',
+        id: 8,
+        method: 'initialize',
+        params: {
+          protocolVersion,
+          capabilities: {},
+          clientInfo: { name: 'legacy-no-version-header', version: '1.0.0' },
+        },
+      }),
+    });
+
+    const response = await callWorker(legacyWithoutVersionHeader, inspectionEnv);
+    expect(response.status).toBe(200);
+    const envelope = await readJsonRpc(response);
+    expect(envelope).toHaveProperty('result');
+  });
 });

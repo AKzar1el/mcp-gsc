@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Modern MCP requests that use the 2026-07-28 `Mcp-Method` header now fail with the required HTTP 400 `HeaderMismatch` error when `MCP-Protocol-Version` is missing, while legacy initialization without the modern header remains compatible.
+
 ## [0.4.19] - 2026-09-22
 
 ### Fixed
