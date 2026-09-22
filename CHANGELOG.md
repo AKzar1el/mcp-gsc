@@ -7,8 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.16] - 2026-09-22
+
 ### Fixed
 - High-level Search Analytics helpers now reserve their worst-case upstream request fan-out against the shared local safety budget, so paginated comparison/cannibalization/decay workflows cannot bypass the 10-minute limiter by hiding multiple Google API calls behind one MCP tool call.
+- `indexing.request` now exposes Google's current Indexing API usage boundary: the default 200 publish requests/day/project is onboarding/testing capacity rather than ongoing-use approval, ongoing usage/resource provisioning requires approval, and all submissions are subject to spam detection.
 
 ## [0.4.15] - 2026-09-22
 
