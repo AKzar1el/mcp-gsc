@@ -191,7 +191,18 @@ const CAPABILITIES_OUTPUT_SCHEMA = {
   server: z.string(),
   version: z.string(),
   access_mode: z.enum(['readonly', 'readwrite']),
-  auth_status: z.enum(['connected', 'not_connected', 'unknown']),
+  auth_status: z.enum(['connected', 'not_connected', 'unknown']).describe(
+    "Local credential state: 'connected' means a stored Google refresh credential is present; it does not live-verify that Google still accepts it.",
+  ),
+  auth_status_basis: z.enum([
+    'stored_refresh_token',
+    'no_stored_refresh_token',
+    'local_state_unavailable',
+  ]),
+  provider_auth_live_verified: z.literal(false).describe(
+    'Always false because server.capabilities does not make a Google token or API request merely to probe authorization.',
+  ),
+  auth_note: z.string(),
   tools: z.array(
     z.object({
       name: z.string(),
@@ -719,7 +730,7 @@ const TOOL_CATALOG = [
   {
     name: 'server.capabilities',
     description:
-      "List every tool this server exposes and report whether the user's Google Search Console connection is currently authenticated.",
+      "List every tool this server exposes and report local Google credential state. A connected status means a stored refresh credential is present; it is not a live Google authorization check.",
   },
 ] as const;
 
@@ -776,32 +787,49 @@ class GscMcpRuntime {
       {
         title: 'Get server capabilities and auth status',
         description:
-          "List every tool this server exposes, its configured access mode, and whether the user's Google Search Console connection is currently authenticated. Call this first if you're unsure what tools are available, whether the deployment is read-only, or whether the user is connected. Returns the tool catalog plus an access mode and auth status. Takes no arguments.",
+          "List every tool this server exposes, its configured access mode, and local Google credential state. Call this first if you're unsure what tools are available, whether the deployment is read-only, or whether stored Google credentials are configured. auth_status='connected' means a stored refresh credential is present; this tool does not make a Google token/API request and therefore does not live-verify that Google still accepts it. Takes no arguments.",
         inputSchema: {},
         outputSchema: CAPABILITIES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async () => {
         let authStatus: 'connected' | 'not_connected' | 'unknown';
+        let authStatusBasis:
+          | 'stored_refresh_token'
+          | 'no_stored_refresh_token'
+          | 'local_state_unavailable';
         try {
           const googleId = this.props?.google_id;
           if (!googleId) {
             authStatus = 'not_connected';
+            authStatusBasis = 'no_stored_refresh_token';
           } else {
             const refreshToken = await getDecryptedRefreshToken(
               this.env,
               googleId,
             );
             authStatus = refreshToken ? 'connected' : 'not_connected';
+            authStatusBasis = refreshToken
+              ? 'stored_refresh_token'
+              : 'no_stored_refresh_token';
           }
         } catch {
           authStatus = 'unknown';
+          authStatusBasis = 'local_state_unavailable';
         }
+        const authNote = authStatus === 'connected'
+          ? "Stored Google refresh credentials are present, but server.capabilities does not live-verify them with Google. Refresh tokens can expire or be revoked; a Google tool call may still require reconnection."
+          : authStatus === 'not_connected'
+            ? 'No stored Google refresh credential is available. Reconnect this server in your MCP client to sign in with Google.'
+            : 'Local Google credential state could not be read. Provider authorization was not checked.';
         const capabilities = {
           server: SERVER_NAME,
           version: SERVER_VERSION,
           access_mode: accessMode,
           auth_status: authStatus,
+          auth_status_basis: authStatusBasis,
+          provider_auth_live_verified: false as const,
+          auth_note: authNote,
           tools: getToolCatalogForAccessMode(TOOL_CATALOG, accessMode),
           provider_limits: {
             generative_ai_performance_report: {
@@ -809,7 +837,9 @@ class GscMcpRuntime {
               note: GENERATIVE_AI_REPORT_API_NOTE,
             },
           },
-          hint: "If auth_status is not 'connected', the user should reconnect this server in their MCP client to sign in with Google.",
+          hint: authStatus === 'connected'
+            ? 'Stored Google credentials are configured. If a Google tool later reports revoked access, reconnect this server in your MCP client.'
+            : 'Reconnect this server in your MCP client to sign in with Google.',
         };
         return toolResponse(JSON.stringify(capabilities, null, 2), capabilities);
       },
