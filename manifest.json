@@ -96,10 +96,6 @@
       "description": "Request an eligible JobPosting or livestream URL update through Google's restricted Indexing API; this is not a general webpage submission tool. Google's default publish quota is for onboarding/testing, ongoing usage requires approval, and submissions are spam-screened."
     },
     {
-      "name": "indexing.remove",
-      "description": "Request a URL_DELETED notification for a previously eligible Indexing API page after it returns HTTP 404/410 or exposes robots noindex. Notification receipt does not prove removal completed."
-    },
-    {
       "name": "indexing.status",
       "description": "Read the latest successful Indexing API update/remove notifications Google received for a previously submitted URL. This reports notification receipt only, not crawl, index coverage, indexing completion, or removal completion."
     },
