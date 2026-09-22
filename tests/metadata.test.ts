@@ -25,6 +25,7 @@ const claudePlugin = readJson('.claude-plugin/plugin.json');
 const cursorPlugin = readJson('.cursor-plugin/plugin.json');
 const indexSource = readFileSync(resolve(projectRoot, 'src/index.ts'), 'utf8');
 const npmLauncherSource = readFileSync(resolve(projectRoot, 'scripts/glama-start.mjs'), 'utf8');
+const wranglerExampleSource = readFileSync(resolve(projectRoot, 'wrangler.example.jsonc'), 'utf8');
 const readmeSource = readFileSync(resolve(projectRoot, 'README.md'), 'utf8');
 const setupSource = readFileSync(resolve(projectRoot, 'SETUP.md'), 'utf8');
 const llmsInstallSource = readFileSync(resolve(projectRoot, 'llms-install.md'), 'utf8');
@@ -174,6 +175,20 @@ test('registry package identity remains aligned', () => {
     npmLauncherSource,
     /'GSC_ACCESS_MODE'/,
     'npm launcher must forward the access-mode binding into the local Worker',
+  );
+  const forwardedVariables = npmLauncherSource.match(
+    /const forwardedVariables = \[([\s\S]*?)\];/,
+  );
+  assert.ok(forwardedVariables, 'npm launcher must declare its explicit Wrangler --var allowlist');
+  assert.doesNotMatch(
+    forwardedVariables[1],
+    /GOOGLE_CLIENT_SECRET|TOKEN_ENCRYPTION_KEY/,
+    'npm launcher must never serialize secret values into Wrangler command-line --var arguments',
+  );
+  assert.match(
+    wranglerExampleSource,
+    /"secrets"\s*:\s*\{\s*"required"\s*:\s*\[\s*"GOOGLE_CLIENT_SECRET"\s*,\s*"TOKEN_ENCRYPTION_KEY"\s*\]/,
+    'Wrangler config must load the npm launcher secrets from process.env via secrets.required',
   );
   assert.match(
     readmeSource,
