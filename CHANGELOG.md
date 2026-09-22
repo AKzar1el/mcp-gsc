@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `sites.add` now explicitly reports that adding a Search Console property does not perform ownership verification, preventing agents from confusing the Search Console Sites API with Google's separate Site Verification workflow.
+
 ## [0.4.13] - 2026-09-22
 
 ### Fixed

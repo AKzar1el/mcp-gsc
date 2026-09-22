@@ -215,6 +215,72 @@ describe('Worker orchestration', () => {
     });
   });
 
+  it('adds a Search Console property without implying ownership verification', async () => {
+    await saveUser(
+      workerEnv,
+      'site-add-user',
+      'site-add@example.test',
+      'site-add-refresh-token',
+    );
+    const server = await createGscMcpServer(
+      workerEnv,
+      {
+        google_id: 'site-add-user',
+        email: 'site-add@example.test',
+      },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        { handler: (args: Record<string, unknown>) => Promise<unknown> }
+      >;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requestedUrls: string[] = [];
+
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        requestedUrls.push(url);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'site-add-access-token', expires_in: 3600 });
+        }
+        if (
+          url ===
+          'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com'
+        ) {
+          expect(init?.method).toBe('PUT');
+          return new Response(null, { status: 204 });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const result = await tools['sites.add'].handler({
+        site_url: 'sc-domain:example.com',
+      }) as {
+        structuredContent: {
+          message: string;
+          ownership_verification_performed: boolean;
+          ownership_verification_note: string;
+        };
+      };
+
+      expect(requestedUrls).toContain(
+        'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com',
+      );
+      expect(result.structuredContent.ownership_verification_performed).toBe(false);
+      expect(result.structuredContent.ownership_verification_note).toContain(
+        'does not verify ownership',
+      );
+      expect(result.structuredContent.ownership_verification_note).toContain(
+        'separate Google Site Verification/Search Console workflow',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('explains sitemap provider timestamps without rewriting provider values', async () => {
     await saveUser(
       workerEnv,
