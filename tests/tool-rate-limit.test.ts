@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   getToolRateLimitPolicy,
+  getToolRateLimitUnits,
   TOOL_RATE_LIMIT_POLICIES,
   ToolRateLimiterCore,
   type ToolRateLimitPolicy,
@@ -109,6 +110,18 @@ test('tool rate-limit policy table assigns the documented categories and limits'
   assert.equal(getToolRateLimitPolicy('insights.query_pages')?.category, 'search-analytics');
   assert.equal(getToolRateLimitPolicy('sitemaps.delete')?.category, 'search-console-write');
   assert.equal(getToolRateLimitPolicy('sites.list'), undefined);
+});
+
+test('Search Analytics helpers reserve their worst-case upstream request fan-out', () => {
+  assert.equal(getToolRateLimitUnits('analytics.query'), 1);
+  assert.equal(getToolRateLimitUnits('insights.page_queries'), 1);
+  assert.equal(getToolRateLimitUnits('insights.query_pages'), 1);
+  assert.equal(getToolRateLimitUnits('indexing.list_pages'), 1);
+  assert.equal(getToolRateLimitUnits('insights.quick_wins'), 4);
+  assert.equal(getToolRateLimitUnits('insights.cannibalization'), 4);
+  assert.equal(getToolRateLimitUnits('insights.content_decay'), 8);
+  assert.equal(getToolRateLimitUnits('analytics.compare'), 8);
+  assert.equal(getToolRateLimitUnits('reports.weekly_digest'), 1);
 });
 
 test('ToolRateLimiter allows calls through the configured boundary then rejects with retry information', async () => {
