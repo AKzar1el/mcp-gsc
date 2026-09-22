@@ -1459,7 +1459,8 @@ export async function checkIndexingEligibility(
 }
 
 function hasRobotsNoindexMeta(html: string): boolean {
-  const head = /<head\b[^>]*>([\s\S]*?)<\/head\s*>/i.exec(html)?.[1];
+  // HTML permits an omitted </head>, so stop at </head>, <body>, or EOF.
+  const head = /<head\b[^>]*>([\s\S]*?)(?:<\/head\s*>|<body\b|$)/i.exec(html)?.[1];
   if (!head) return false;
 
   const metaPattern = /<meta\b([^>]*)>/gi;

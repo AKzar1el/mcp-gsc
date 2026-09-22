@@ -217,11 +217,16 @@ test('removal eligibility accepts HTTP 404 and 410 without reading a body', asyn
 });
 
 test('removal eligibility accepts a robots noindex meta directive in the document head', async () => {
-  const result = await withMockFetch(
-    async () => htmlResponse('<html><head><meta name="robots" content="nofollow, noindex"></head><body>Retired job</body></html>'),
-    () => checkIndexingRemovalEligibility('https://example.com/jobs/old-role'),
-  );
-  assert.deepEqual(result, { eligible: true });
+  for (const html of [
+    '<html><head><meta name="robots" content="nofollow, noindex"></head><body>Retired job</body></html>',
+    '<html><head><meta content="noindex" name="robots"><body>Retired job</body></html>',
+  ]) {
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingRemovalEligibility('https://example.com/jobs/old-role'),
+    );
+    assert.deepEqual(result, { eligible: true });
+  }
 });
 
 test('removal eligibility rejects an ordinary live page and noindex outside the document head', async () => {
