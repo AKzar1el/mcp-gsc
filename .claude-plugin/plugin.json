@@ -1,6 +1,6 @@
 {
   "name": "mcp-gsc",
-  "version": "0.4.12",
+  "version": "0.4.13",
   "description": "Connect Claude Code to Google Search Console for organic-search analytics, URL inspection, sitemap management, indexing requests, and SEO insights.",
   "author": {
     "name": "DigestSEO"
