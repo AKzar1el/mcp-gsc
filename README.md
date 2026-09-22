@@ -68,8 +68,6 @@ A self-hostable [Model Context Protocol](https://modelcontextprotocol.io) (MCP) 
 
 It runs on [Cloudflare Workers](https://workers.cloudflare.com/) and ships with one-click Google OAuth onboarding: connect the server in your client, sign in with Google once, grant the requested Google Search Console permissions, and you're done. No API keys to copy around and no service-account JSON to manage.
 
-> **Prefer zero setup?** The hosted version — with automatic weekly email digests delivered to your inbox — is at **[digestseo.com](https://digestseo.com)**. This repository is the open-source core you can run yourself.
-
 ## Tools
 
 By default (`GSC_ACCESS_MODE=readwrite`), this server exposes 22 tools. Read-only analytics and reporting tools are marked with MCP's `readOnlyHint`; the write tools below can change Search Console properties, sitemaps, or indexing state. Set `GSC_ACCESS_MODE=readonly` to request only the Search Console read-only scope and expose the 16 tools that do not require either write access or the separate Indexing API scope.
@@ -126,7 +124,7 @@ https://<your-worker>.workers.dev/mcp
 ```
 
 - **Claude.ai / Claude Desktop** — go to **Customize → Connectors**, click **+ → Add custom connector**, enter a name and paste the `/mcp` URL. Leave the optional advanced OAuth Client ID/Secret fields blank. On Team/Enterprise, an Owner or Primary Owner must first add the custom Web connector from **Organization settings → Connectors**; members then connect it from Customize → Connectors. On first connection, Claude opens the Google sign-in flow.
-- **Cursor** — add a remote **Streamable HTTP** MCP server pointing at the same `/mcp` URL; Cursor supports OAuth for remote HTTP MCP servers. The hosted Add to Cursor button above uses this endpoint directly.
+- **Cursor** — add a remote **Streamable HTTP** MCP server pointing at the same `/mcp` URL; Cursor supports OAuth for remote HTTP MCP servers. The Add to Cursor button above targets the local npm launcher's loopback endpoint instead.
 - **ChatGPT** — enable **Developer mode**, then create a custom MCP **app** from **Settings → Apps → Create** (admins/owners can also use **Workspace settings → Apps → Create**). Provide the `/mcp` endpoint, select the applicable authentication option, **Scan Tools**, complete OAuth, then create the app. Full MCP including write/modify tools is currently available to Business and Enterprise/Edu; Pro custom MCP access is read/fetch-only, so use `GSC_ACCESS_MODE=readonly` for that path.
 
 The `/mcp` endpoint is the same across clients, but each host has its own setup and permission flow.
@@ -166,4 +164,4 @@ Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
-*Built and maintained by [Tomi Šeregi](https://tomiseregi.si), the builder behind [digestseo.com](https://digestseo.com) — weekly SEO digests for non-technical site owners.*
+*Built and maintained by [Tomi Šeregi](https://tomiseregi.si), the builder behind [DigestSEO](https://digestseo.com) - open-source SEO tooling and search visibility software.*
