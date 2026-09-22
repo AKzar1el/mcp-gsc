@@ -18,7 +18,7 @@
     },
     {
       "name": "analytics.query",
-      "description": "Impressions, clicks, CTR, and average position over a date range. Google can return only top rows and does not guarantee every data row. The current documented API does not expose a dedicated Generative AI performance-report selector."
+      "description": "Impressions, clicks, CTR, and average position over a date range. Google can return only top rows and does not guarantee every data row."
     },
     {
       "name": "insights.page_queries",

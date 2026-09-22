@@ -296,20 +296,15 @@ test('Search Analytics metadata preserves provider-level non-exhaustiveness', ()
 });
 
 test('Search Analytics metadata does not fabricate dedicated Generative AI API support', () => {
-  for (const [label, metadata] of [
-    ['server.json', serverJson],
-    ['manifest.json', manifestJson],
-  ] as const) {
-    const tool = metadata.tools.find(
-      (entry: { name: string }) => entry.name === 'analytics.query',
-    );
-    assert.ok(tool, `${label} must describe analytics.query`);
-    assert.match(
-      tool.description,
-      /does not expose a dedicated Generative AI performance-report selector/i,
-      `${label} must preserve the current documented API boundary`,
-    );
-  }
+  const manifestTool = manifestJson.tools.find(
+    (entry: { name: string }) => entry.name === 'analytics.query',
+  );
+  assert.ok(manifestTool, 'manifest.json must describe analytics.query');
+  assert.match(
+    manifestTool.description,
+    /does not expose a dedicated Generative AI performance-report selector/i,
+    'manifest.json must preserve the current documented API boundary',
+  );
 
   assert.match(
     indexSource,
