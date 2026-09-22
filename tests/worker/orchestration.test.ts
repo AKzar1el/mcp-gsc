@@ -529,6 +529,9 @@ describe('Worker orchestration', () => {
       expect(serialized).toContain('"provider_exhaustiveness_guaranteed":false');
       expect(serialized).toContain('Google Search Analytics does not guarantee all data rows');
       expect(serialized).toContain('do not prove provider-level exhaustiveness');
+      expect(serialized).toContain('"generative_ai_report_isolatable":false');
+      expect(serialized).toContain('dedicated Generative AI performance reports');
+      expect(serialized).toContain('overall web Search performance data');
       expect(serialized).not.toContain('Output validation error');
       expect(serialized).not.toContain('\"keys\"');
     } finally {
