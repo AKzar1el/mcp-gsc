@@ -1458,15 +1458,124 @@ export async function checkIndexingEligibility(
   };
 }
 
-export async function requestIndexing(
-  accessToken: string,
-  url: string,
-): Promise<unknown> {
-  const eligibility = await checkIndexingEligibility(url);
-  if (!eligibility.eligible) {
-    throw new Error(eligibility.reason);
+function hasRobotsNoindexMeta(html: string): boolean {
+  // HTML permits an omitted </head>, so stop at </head>, <body>, or EOF.
+  const head = /<head\b[^>]*>([\s\S]*?)(?:<\/head\s*>|<body\b|$)/i.exec(html)?.[1];
+  if (!head) return false;
+
+  const metaPattern = /<meta\b([^>]*)>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = metaPattern.exec(head)) !== null) {
+    const name = htmlAttribute(match[1], 'name')?.trim().toLowerCase();
+    if (name !== 'robots') continue;
+    const content = htmlAttribute(match[1], 'content')?.trim().toLowerCase();
+    if (!content) continue;
+    const directives = content.split(/[\s,]+/).filter(Boolean);
+    if (directives.includes('noindex')) return true;
   }
 
+  return false;
+}
+
+const INDEXING_REMOVAL_REQUIREMENT_MESSAGE =
+  'Before requesting removal, Google requires the URL to return HTTP 404 or 410, or the page to contain a robots noindex meta directive.';
+
+/**
+ * Verifies Google's documented precondition for an Indexing API URL_DELETED
+ * notification without requiring the page to keep its former structured data.
+ */
+export async function checkIndexingRemovalEligibility(
+  url: string,
+  { timeoutMs = INDEXING_ELIGIBILITY_TIMEOUT_MS }: IndexingEligibilityOptions = {},
+): Promise<IndexingEligibility> {
+  if (!isHttpUrl(url)) {
+    return {
+      eligible: false,
+      reason: `${url} must be a valid HTTP or HTTPS URL. ${INDEXING_REMOVAL_REQUIREMENT_MESSAGE}`,
+    };
+  }
+
+  const controller = new AbortController();
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    const resp = await fetch(url, {
+      signal: controller.signal,
+      redirect: 'manual',
+      headers: {
+        'user-agent':
+          'Mozilla/5.0 (compatible; DigestSEO-GSC-MCP/1.0; +https://github.com/AKzar1el/mcp-gsc)',
+      },
+    });
+
+    if (resp.status === 404 || resp.status === 410) {
+      await cancelResponseBody(resp);
+      return { eligible: true };
+    }
+
+    if (!resp.ok) {
+      await cancelResponseBody(resp);
+      return {
+        eligible: false,
+        reason: `Could not confirm indexing-removal eligibility for ${url} (HTTP ${resp.status}). ${INDEXING_REMOVAL_REQUIREMENT_MESSAGE}`,
+      };
+    }
+
+    const contentType = resp.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase();
+    if (
+      contentType &&
+      contentType !== 'text/html' &&
+      contentType !== 'application/xhtml+xml'
+    ) {
+      await cancelResponseBody(resp);
+      return {
+        eligible: false,
+        reason: `Could not confirm indexing-removal eligibility for ${url} (expected HTML, received ${contentType}). ${INDEXING_REMOVAL_REQUIREMENT_MESSAGE}`,
+      };
+    }
+
+    const contentLength = Number(resp.headers.get('content-length'));
+    if (
+      Number.isFinite(contentLength) &&
+      contentLength > INDEXING_ELIGIBILITY_MAX_RESPONSE_BYTES
+    ) {
+      await cancelResponseBody(resp);
+      return {
+        eligible: false,
+        reason: `Could not confirm indexing-removal eligibility for ${url} (response exceeds the ${INDEXING_ELIGIBILITY_MAX_RESPONSE_BYTES}-byte limit). ${INDEXING_REMOVAL_REQUIREMENT_MESSAGE}`,
+      };
+    }
+
+    const html = await readBoundedResponseText(resp);
+    if (hasRobotsNoindexMeta(html)) return { eligible: true };
+
+    return {
+      eligible: false,
+      reason: `${url} does not currently return HTTP 404/410 and does not expose a robots noindex meta directive. ${INDEXING_REMOVAL_REQUIREMENT_MESSAGE}`,
+    };
+  } catch (err) {
+    const detail = timedOut
+      ? `timed out after ${timeoutMs}ms`
+      : (err as Error).message;
+    return {
+      eligible: false,
+      reason: `Could not confirm indexing-removal eligibility for ${url} (${detail}). ${INDEXING_REMOVAL_REQUIREMENT_MESSAGE}`,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function publishIndexingNotification(
+  accessToken: string,
+  url: string,
+  type: 'URL_UPDATED' | 'URL_DELETED',
+  actionLabel: string,
+): Promise<unknown> {
   const resp = await fetch(
     'https://indexing.googleapis.com/v3/urlNotifications:publish',
     {
@@ -1475,10 +1584,7 @@ export async function requestIndexing(
         authorization: `Bearer ${accessToken}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({
-        url,
-        type: 'URL_UPDATED',
-      }),
+      body: JSON.stringify({ url, type }),
     },
   );
   if (resp.status === 401) {
@@ -1486,9 +1592,36 @@ export async function requestIndexing(
   }
   if (!resp.ok) {
     const text = await resp.text();
-    throw new Error(`Request indexing failed: ${resp.status} ${text}`);
+    throw new Error(`${actionLabel} failed: ${resp.status} ${text}`);
   }
   return await resp.json();
+}
+
+export async function requestIndexing(
+  accessToken: string,
+  url: string,
+): Promise<unknown> {
+  const eligibility = await checkIndexingEligibility(url);
+  if (!eligibility.eligible) {
+    throw new Error(eligibility.reason);
+  }
+  return publishIndexingNotification(accessToken, url, 'URL_UPDATED', 'Request indexing');
+}
+
+export async function requestIndexingRemoval(
+  accessToken: string,
+  url: string,
+): Promise<unknown> {
+  const eligibility = await checkIndexingRemovalEligibility(url);
+  if (!eligibility.eligible) {
+    throw new Error(eligibility.reason);
+  }
+  return publishIndexingNotification(
+    accessToken,
+    url,
+    'URL_DELETED',
+    'Request indexing removal',
+  );
 }
 
 export interface IndexingNotification {

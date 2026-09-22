@@ -28,6 +28,7 @@ import {
   processCannibalization,
   processContentDecay,
   requestIndexing,
+  requestIndexingRemoval,
   getIndexingNotificationMetadata,
   processPerformanceComparison,
   type PaginatedSearchAnalyticsResult,
@@ -474,6 +475,11 @@ const INDEXING_OUTPUT_SCHEMA = {
   provider_usage_note: z.string(),
 };
 
+const INDEXING_REMOVE_OUTPUT_SCHEMA = {
+  ...INDEXING_OUTPUT_SCHEMA,
+  removal_completion_proven: z.literal(false),
+};
+
 const INDEXING_NOTIFICATION_SCHEMA = z.object({
   url: z.string().optional(),
   type: z.string().optional(),
@@ -709,6 +715,11 @@ const TOOL_CATALOG = [
     name: 'indexing.request',
     description:
       'Request an eligible JobPosting or livestream URL update through Google\'s restricted Indexing API; this is not a general webpage submission tool. Google treats the default publish quota as onboarding/testing capacity, requires approval for ongoing usage/resource provisioning, and spam-screens submissions.',
+  },
+  {
+    name: 'indexing.remove',
+    description:
+      "Request a URL_DELETED notification for a previously eligible JobPosting or livestream URL through Google's restricted Indexing API. The URL must already return HTTP 404/410 or expose a robots noindex meta directive; notification receipt does not prove removal completed.",
   },
   {
     name: 'indexing.status',
@@ -1837,6 +1848,48 @@ class GscMcpRuntime {
           provider_usage_approval_required: true as const,
           provider_spam_detection_applies: true as const,
           provider_usage_note: INDEXING_PROVIDER_USAGE_NOTE,
+        };
+        return toolResponse(JSON.stringify(payload, null, 2), payload);
+      },
+      );
+
+      this.server.registerTool(
+      'indexing.remove',
+      {
+        title: 'Request Indexing API removal',
+        description: "Requests a URL_DELETED notification through Google's Indexing API for a URL within an owner-level Search Console property accessible to the connected Google account. Use only for pages that were eligible for the restricted Indexing API (JobPosting or livestream BroadcastEvent in VideoObject). Before removal Google requires the URL to return HTTP 404/410 or contain a robots noindex meta directive. A successful notification is only receipt acknowledgment and does not prove Google removed the URL from its index.",
+        inputSchema: {
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe(`${SEARCH_CONSOLE_PROPERTY_DESCRIPTION} The connected Google account must be an owner of this property.`),
+          url: z.string().superRefine((value, ctx) => {
+            try {
+              assertIndexingRequestUrl(value);
+            } catch (error) {
+              ctx.addIssue({
+                code: 'custom',
+                message: (error as Error).message,
+              });
+            }
+          }).describe('The fully qualified HTTP/HTTPS URL to request removal for. It must fall within site_url, must have been eligible for the restricted Indexing API, and must currently return HTTP 404/410 or contain a robots noindex meta directive.'),
+        },
+        outputSchema: INDEXING_REMOVE_OUTPUT_SCHEMA,
+        annotations: WRITE_TOOL_ANNOTATIONS['indexing.remove'],
+      },
+      async ({ site_url, url }) => {
+        const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'indexing.remove');
+        if (rateLimitError) return rateLimitError;
+        const accessToken = await this.getAccessToken(googleId);
+        const sites = await listSites(accessToken);
+        assertIndexingUrlAuthorized(url, site_url, sites);
+        const result = await requestIndexingRemoval(accessToken, url);
+        const payload = {
+          result,
+          note: "Google accepting this URL_DELETED notification only confirms receipt. It does not prove the URL was removed from Google's index; use URL Inspection for indexed-state evidence.",
+          provider_default_quota_for_testing_only: true as const,
+          provider_usage_approval_required: true as const,
+          provider_spam_detection_applies: true as const,
+          provider_usage_note: INDEXING_PROVIDER_USAGE_NOTE,
+          removal_completion_proven: false as const,
         };
         return toolResponse(JSON.stringify(payload, null, 2), payload);
       },

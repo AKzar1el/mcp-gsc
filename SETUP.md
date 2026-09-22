@@ -61,7 +61,7 @@ npx wrangler login
 
    `readwrite` preserves the full tool surface: it grants Search Console read-write access and the Indexing API scope required to manage sites, sitemaps, and request URL crawling. `readonly` requests only the Search Console read-only scope and omits the mutation tools.
 
-   Note that the Indexing API itself is narrow: Google currently restricts it to pages containing `JobPosting` structured data or livestream pages containing `BroadcastEvent` inside `VideoObject`. It is not available for general webpage submission — the `indexing.request` tool checks a page's structured data before submitting and returns an error for ineligible URLs. Google's default **200 publish requests/day/project** is explicitly for onboarding and submission testing; ongoing usage/resource provisioning requires additional Google approval. All submissions are subject to spam detection, and Google warns that abuse or attempts to exceed quotas through multiple accounts or other means can result in revoked access. The server's own lower safety limits do not constitute Google approval or increase provider quota.
+   Note that the Indexing API itself is narrow: Google currently restricts it to pages containing `JobPosting` structured data or livestream pages containing `BroadcastEvent` inside `VideoObject`. It is not available for general webpage submission - the `indexing.request` tool checks a page's structured data before submitting and returns an error for ineligible URLs. `indexing.remove` is for previously eligible pages and requires the URL to already return HTTP 404/410 or expose a robots `noindex` meta directive before it sends Google's `URL_DELETED` notification. Google's default **200 publish requests/day/project** is shared by update and removal notifications and is explicitly for onboarding and submission testing; ongoing usage/resource provisioning requires additional Google approval. All submissions are subject to spam detection, and Google warns that abuse or attempts to exceed quotas through multiple accounts or other means can result in revoked access. The server's own lower safety limits do not constitute Google approval or increase provider quota.
 5. Save the Data Access changes. In **Google Auth platform → Audience**, leave **Publishing status** as **Testing** for now — see [Step 7](#step-7--important-google-verification).
 
 ---
@@ -154,7 +154,7 @@ The template also sets `GSC_ACCESS_MODE` to `readwrite`, preserving the historic
 }
 ```
 
-Read-only deployments request `webmasters.readonly`, omit the Indexing API scope, and do not register `sites.add`, `sites.delete`, `sitemaps.submit`, `sitemaps.delete`, `indexing.request`, or the otherwise read-only `indexing.status` lookup. Changing modes affects OAuth grants for future connections; reconnect users after changing the mode so Google grants the matching scope set.
+Read-only deployments request `webmasters.readonly`, omit the Indexing API scope, and do not register `sites.add`, `sites.delete`, `sitemaps.submit`, `sitemaps.delete`, `indexing.request`, `indexing.remove`, or the otherwise read-only `indexing.status` lookup. Changing modes affects OAuth grants for future connections; reconnect users after changing the mode so Google grants the matching scope set.
 
 `wrangler.jsonc` is gitignored because it contains your account's namespace ids. The `wrangler.example.jsonc` template stays in git.
 

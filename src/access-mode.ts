@@ -23,6 +23,7 @@ export const WRITE_TOOL_NAMES = [
   'sitemaps.submit',
   'sitemaps.delete',
   'indexing.request',
+  'indexing.remove',
 ] as const;
 
 const INDEXING_SCOPE_READ_TOOL_NAMES = ['indexing.status'] as const;

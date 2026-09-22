@@ -28,6 +28,7 @@ const ALL_TOOL_NAMES = [
   'insights.content_decay',
   'indexing.status',
   'indexing.request',
+  'indexing.remove',
   'indexing.list_pages',
   'analytics.compare',
   'reports.weekly_digest',

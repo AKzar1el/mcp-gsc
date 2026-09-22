@@ -34,5 +34,11 @@ test('write tools expose operation-specific MCP annotations', () => {
       idempotentHint: false,
       openWorldHint: true,
     },
+    'indexing.remove': {
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+      openWorldHint: true,
+    },
   });
 });

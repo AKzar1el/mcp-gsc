@@ -59,7 +59,7 @@ export const TOOL_RATE_LIMIT_POLICIES = {
   },
   indexing_request: {
     category: 'indexing-request',
-    tools: ['indexing.request'],
+    tools: ['indexing.request', 'indexing.remove'],
     // Google's 200 publish/day default is onboarding/testing quota and does
     // not itself authorize ongoing use. Mirror that number only as a local
     // safety ceiling; two per user reserves it for up to 100 users.
