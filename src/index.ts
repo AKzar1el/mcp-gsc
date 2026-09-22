@@ -58,6 +58,7 @@ import {
   assertDateRange,
   getSearchConsoleCalendarDate,
   SEARCH_CONSOLE_DATE_SCHEMA,
+  searchConsoleDateDescription,
 } from './date-validation';
 import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from './content-decay-schema';
 import { resolveIndexedPagesDateRange } from './indexed-pages-range';
@@ -1125,9 +1126,13 @@ class GscMcpRuntime {
         ].join('\n'),
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
-          start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
+          start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
+            searchConsoleDateDescription('Start date (inclusive) in YYYY-MM-DD format.'),
+          ),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
-            'End date (inclusive) in YYYY-MM-DD format. Recent dates are allowed: data_state all/hourly_all can include preliminary data, while final returns only finalized data.',
+            searchConsoleDateDescription(
+              'End date (inclusive) in YYYY-MM-DD format. Recent dates are allowed: data_state all/hourly_all can include preliminary data, while final returns only finalized data.',
+            ),
           ),
           dimensions: z
             .array(
@@ -1296,8 +1301,14 @@ class GscMcpRuntime {
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           page_url: z.string().url().describe('Exact fully-qualified page URL to filter on, e.g. https://example.com/guides/seo/. Search Console exact page filters are case-sensitive.'),
-          start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
-          end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
+          start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
+            searchConsoleDateDescription('Start date (inclusive) in YYYY-MM-DD format.'),
+          ),
+          end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
+            searchConsoleDateDescription(
+              'End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.',
+            ),
+          ),
           search_type: z
             .enum(['web', 'image', 'video', 'news'])
             .default('web')
@@ -1374,8 +1385,14 @@ class GscMcpRuntime {
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           query: z.string().min(1).describe('Exact Search Console query text to filter on. Exact query filters are case-sensitive.'),
-          start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
-          end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
+          start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
+            searchConsoleDateDescription('Start date (inclusive) in YYYY-MM-DD format.'),
+          ),
+          end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
+            searchConsoleDateDescription(
+              'End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.',
+            ),
+          ),
           search_type: z
             .enum(['web', 'image', 'video', 'news'])
             .default('web')
@@ -1608,8 +1625,14 @@ class GscMcpRuntime {
         description: 'Analyze query/page Search Analytics to find queries split across multiple pages. Candidates are ranked deterministically by the observed query/page impression sum, each candidate bounds its page list, and limit/start_row plus result_page provide safe pagination. total_clicks, total_impressions, and impression_share are calculated from observed query/page rows and are not true query-level property aggregates; multiple pages can make that row sum exceed the query-level Search Console total. Multiple ranking URLs can also reflect legitimate locale or intent differences, so treat candidates as evidence to investigate rather than proof of harmful cannibalization.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
-          start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
-          end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
+          start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
+            searchConsoleDateDescription('Start date (inclusive) in YYYY-MM-DD format.'),
+          ),
+          end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
+            searchConsoleDateDescription(
+              'End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.',
+            ),
+          ),
           min_impressions: CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
           min_page_percentage: CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
@@ -1827,8 +1850,16 @@ class GscMcpRuntime {
         description: `${SEARCH_VISIBLE_PAGES_DESCRIPTION} When one date boundary is omitted, the server derives the other to target an inclusive 30-day range; generated end dates are capped at the latest complete date. Responses are bounded and pageable with row_limit/start_row.`,
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
-          start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('Start date (inclusive) in YYYY-MM-DD format. If end_date is omitted, the generated end date is 29 days later, capped at the latest complete date.'),
-          end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('End date (inclusive) in YYYY-MM-DD format. If start_date is omitted, the generated start date is 29 days earlier. Defaults to 3 days ago. Note the 2-3 day data lag.'),
+          start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(
+            searchConsoleDateDescription(
+              'Start date (inclusive) in YYYY-MM-DD format. If end_date is omitted, the generated end date is 29 days later, capped at the latest complete date.',
+            ),
+          ),
+          end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(
+            searchConsoleDateDescription(
+              'End date (inclusive) in YYYY-MM-DD format. If start_date is omitted, the generated start date is 29 days earlier. Defaults to 3 days ago. Note the 2-3 day data lag.',
+            ),
+          ),
           row_limit: z.number().int().min(1).max(25000).default(1000).describe(`Maximum pages requested for this logical response (1-25000). Output is safely bounded; continue with result_page.next_start_row while result_page.has_more is true.`),
           start_row: z.number().int().min(0).default(0).describe('Zero-based page-row offset for pagination.'),
         },
@@ -1887,10 +1918,18 @@ class GscMcpRuntime {
         description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device). Only dimension keys returned in both Search Analytics period responses are compared; a key missing from one response is not treated as zero because Google does not guarantee every data row. Apply the same search type and optional dimension filters to both periods. Results are ranked by largest absolute click change, then impression change, and safely paged with limit/start_row. Percentage change is null when an explicitly returned baseline row has zero and the comparison value differs. Discover and Google News are intentionally unavailable because this comparison contract includes average position, which those reports do not support.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
-          start_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date of Period A (recent, YYYY-MM-DD)'),
-          end_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date of Period A (recent, YYYY-MM-DD)'),
-          start_date_b: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date of Period B (previous, YYYY-MM-DD)'),
-          end_date_b: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date of Period B (previous, YYYY-MM-DD)'),
+          start_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe(
+            searchConsoleDateDescription('Start date of Period A (recent, YYYY-MM-DD).'),
+          ),
+          end_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe(
+            searchConsoleDateDescription('End date of Period A (recent, YYYY-MM-DD).'),
+          ),
+          start_date_b: SEARCH_CONSOLE_DATE_SCHEMA.describe(
+            searchConsoleDateDescription('Start date of Period B (previous, YYYY-MM-DD).'),
+          ),
+          end_date_b: SEARCH_CONSOLE_DATE_SCHEMA.describe(
+            searchConsoleDateDescription('End date of Period B (previous, YYYY-MM-DD).'),
+          ),
           dimension: z.enum(['query', 'page', 'country', 'device']).default('query').describe('The dimension to compare performance for. Defaults to query.'),
           search_type: z
             .enum(['web', 'image', 'video', 'news'])
@@ -1997,7 +2036,11 @@ class GscMcpRuntime {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           end_date: SEARCH_CONSOLE_DATE_SCHEMA
             .optional()
-            .describe('End date (inclusive) in YYYY-MM-DD format. Defaults to 3 days ago, which is usually the latest complete Search Console date. Pass a more recent date explicitly to include preliminary data.'),
+            .describe(
+              searchConsoleDateDescription(
+                'End date (inclusive) in YYYY-MM-DD format. Defaults to 3 days ago, which is usually the latest complete Search Console date. Pass a more recent date explicitly to include preliminary data.',
+              ),
+            ),
         },
         outputSchema: WEEKLY_DIGEST_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,

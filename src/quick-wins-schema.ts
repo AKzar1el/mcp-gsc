@@ -1,5 +1,8 @@
 import { z } from 'zod';
-import { SEARCH_CONSOLE_DATE_SCHEMA } from './date-validation';
+import {
+  SEARCH_CONSOLE_DATE_SCHEMA,
+  searchConsoleDateDescription,
+} from './date-validation';
 import { SEARCH_CONSOLE_PROPERTY_SCHEMA } from './search-console-property-schema';
 import {
   DEFAULT_ANALYSIS_RESULT_LIMIT,
@@ -21,8 +24,14 @@ export function createQuickWinsInputSchema() {
   return z
     .object({
       site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
-      start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
-      end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.'),
+      start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
+        searchConsoleDateDescription('Start date (inclusive) in YYYY-MM-DD format.'),
+      ),
+      end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
+        searchConsoleDateDescription(
+          'End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.',
+        ),
+      ),
       ...QUICK_WINS_THRESHOLDS_SHAPE,
       limit: z
         .number()

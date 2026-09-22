@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Search Analytics date inputs now explicitly state Google's Pacific Time calendar (`America/Los_Angeles`, UTC-8/UTC-7 depending on daylight saving time), matching the server's existing Pacific-Time default/date-range calculations and preventing agents from interpreting YYYY-MM-DD inputs in the caller's local timezone or UTC.
+
 ## [0.4.23] - 2026-09-22
 
 ### Fixed

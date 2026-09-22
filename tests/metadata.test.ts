@@ -24,6 +24,7 @@ const manifestJson = readJson('manifest.json');
 const claudePlugin = readJson('.claude-plugin/plugin.json');
 const cursorPlugin = readJson('.cursor-plugin/plugin.json');
 const indexSource = readFileSync(resolve(projectRoot, 'src/index.ts'), 'utf8');
+const quickWinsSource = readFileSync(resolve(projectRoot, 'src/quick-wins-schema.ts'), 'utf8');
 const npmLauncherSource = readFileSync(resolve(projectRoot, 'scripts/glama-start.mjs'), 'utf8');
 const wranglerExampleSource = readFileSync(resolve(projectRoot, 'wrangler.example.jsonc'), 'utf8');
 const readmeSource = readFileSync(resolve(projectRoot, 'README.md'), 'utf8');
@@ -525,6 +526,34 @@ test('Search Analytics metadata preserves provider-level non-exhaustiveness', ()
     readmeSource,
     /exhausting local pagination is not proof that the provider dataset is exhaustive/i,
     'README must preserve the provider-level limitation for users',
+  );
+});
+
+test('Search Analytics date inputs preserve the provider Pacific Time calendar contract', () => {
+  assert.match(
+    indexSource,
+    /searchConsoleDateDescription\(/,
+    'runtime date inputs must use the shared Search Console date description',
+  );
+  assert.match(
+    quickWinsSource,
+    /searchConsoleDateDescription\(/,
+    'quick-win date inputs must use the shared Search Console date description',
+  );
+  assert.doesNotMatch(
+    indexSource,
+    /SEARCH_CONSOLE_DATE_SCHEMA(?:\.optional\(\))?\.describe\(['"`]/,
+    'runtime Search Console date descriptions must not bypass the shared Pacific Time note',
+  );
+  assert.doesNotMatch(
+    quickWinsSource,
+    /SEARCH_CONSOLE_DATE_SCHEMA(?:\.optional\(\))?\.describe\(['"`]/,
+    'quick-win Search Console date descriptions must not bypass the shared Pacific Time note',
+  );
+  assert.match(
+    readmeSource,
+    /Search Analytics calendar dates[\s\S]*Pacific Time calendar[\s\S]*America\/Los_Angeles/i,
+    'README must tell users which calendar timezone Search Analytics dates use',
   );
 });
 
