@@ -30,35 +30,37 @@ The local launcher defaults to `GSC_ACCESS_MODE=readwrite`. For least-privilege 
 
 For Google OAuth and Cloudflare deployment configuration, follow [SETUP.md](SETUP.md).
 
-### Connect in 30 seconds
+### Connect the local launcher
 
-Every deployed instance exposes the same endpoint shape:
+For the current verified quick-connect path, start the npm launcher first after supplying the Google OAuth and token-encryption environment variables described in [SETUP.md](SETUP.md):
+
+```bash
+npx -y @digestseo/mcp-gsc
+```
+
+Then connect your MCP client to the launcher's loopback endpoint:
 
 ```
-https://<your-worker>.workers.dev/mcp
+http://127.0.0.1:8080/mcp
 ```
 
-The DigestSEO-hosted instance is available at:
-
-```
-https://mcp-gsc.digestseo.com/mcp
-```
+Self-hosted Cloudflare Worker deployments continue to use `https://<your-worker>.workers.dev/mcp`. The repo does not currently advertise the owner-hosted remote as a quick-connect path because its deployed tool contract is behind the published package.
 
 **Claude Code**
 
 ```bash
-claude mcp add --transport http gsc https://<your-worker>.workers.dev/mcp
+claude mcp add --transport http gsc http://127.0.0.1:8080/mcp
 ```
 
 **Cursor**
 
-[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=gsc&config=eyJ1cmwiOiJodHRwczovL21jcC1nc2MuZGlnZXN0c2VvLmNvbS9tY3AifQ%3D%3D)
+[![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=gsc&config=eyJ1cmwiOiJodHRwOi8vMTI3LjAuMC4xOjgwODAvbWNwIn0%3D)
 
 **Kiro**
 
-[![Add to Kiro](https://kiro.dev/images/add-to-kiro.svg)](https://kiro.dev/launch/mcp/add?name=mcp-gsc&config=%7B%22url%22%3A%22https%3A%2F%2Fmcp-gsc.digestseo.com%2Fmcp%22%2C%22disabled%22%3Afalse%2C%22autoApprove%22%3A%5B%5D%7D)
+[![Add to Kiro](https://kiro.dev/images/add-to-kiro.svg)](https://kiro.dev/launch/mcp/add?name=mcp-gsc&config=%7B%22url%22%3A%22http%3A%2F%2F127.0.0.1%3A8080%2Fmcp%22%2C%22disabled%22%3Afalse%2C%22autoApprove%22%3A%5B%5D%7D)
 
-Uses the hosted endpoint above; complete its Google OAuth flow on first use.
+Start the npm launcher before using either install button. Complete its Google OAuth flow on first use.
 
 **ChatGPT** — add it as a custom MCP app in developer mode; see [Connect in your AI client](#connect-in-your-ai-client) below.
 

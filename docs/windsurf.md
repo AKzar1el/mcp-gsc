@@ -2,7 +2,13 @@
 
 mcp-gsc works with Windsurf / Devin Desktop through Cascade's native MCP support.
 
-## Hosted setup (recommended)
+## Local npm launcher setup (recommended)
+
+First supply the Google OAuth and token-encryption environment variables described in [`SETUP.md`](../SETUP.md), then start the verified package launcher:
+
+```bash
+npx -y @digestseo/mcp-gsc
+```
 
 Open `~/.codeium/windsurf/mcp_config.json` and merge this server into the existing `mcpServers` object:
 
@@ -10,13 +16,13 @@ Open `~/.codeium/windsurf/mcp_config.json` and merge this server into the existi
 {
   "mcpServers": {
     "mcp-gsc": {
-      "serverUrl": "https://mcp-gsc.digestseo.com/mcp"
+      "serverUrl": "http://127.0.0.1:8080/mcp"
     }
   }
 }
 ```
 
-The hosted endpoint uses Streamable HTTP and completes Google authentication through its normal MCP/OAuth flow. Do not replace existing MCP entries when adding this configuration.
+The npm launcher serves Streamable HTTP on loopback and completes Google authentication through its normal MCP/OAuth flow. Keep the launcher running while Windsurf uses the server, and do not replace existing MCP entries when adding this configuration.
 
 ## Verify
 
