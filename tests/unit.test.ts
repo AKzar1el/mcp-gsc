@@ -52,6 +52,7 @@ import {
   processCannibalization,
   processContentDecay,
   requestIndexing,
+  getIndexingNotificationMetadata,
   checkIndexingEligibility,
   processPerformanceComparison,
 } from '../src/google';
@@ -1392,6 +1393,32 @@ test('requestIndexing: sends POST request to the correct indexing endpoint for a
     url: 'https://example.com/careers/senior-engineer',
     type: 'URL_UPDATED',
   });
+  assert.deepEqual(result, mockResult);
+});
+
+test('getIndexingNotificationMetadata: reads provider notification receipt metadata without fetching the page', async () => {
+  const targetUrl = 'https://example.com/careers/senior-engineer?role=platform&level=senior';
+  const mockResult = {
+    url: targetUrl,
+    latestUpdate: {
+      url: targetUrl,
+      type: 'URL_UPDATED',
+      notifyTime: '2026-09-22T07:30:00Z',
+    },
+  };
+  const { result, calls } = await withMockFetch(
+    () => json(200, mockResult),
+    () => getIndexingNotificationMetadata('at', targetUrl),
+  );
+
+  assert.equal(calls.length, 1);
+  const requestUrl = new URL(calls[0].url);
+  assert.equal(
+    `${requestUrl.origin}${requestUrl.pathname}`,
+    'https://indexing.googleapis.com/v3/urlNotifications/metadata',
+  );
+  assert.equal(requestUrl.searchParams.get('url'), targetUrl);
+  assert.equal(calls[0].init?.method, undefined);
   assert.deepEqual(result, mockResult);
 });
 

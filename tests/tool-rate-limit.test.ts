@@ -98,6 +98,13 @@ test('tool rate-limit policy table assigns the documented categories and limits'
       projectLimit: 200,
     },
     {
+      category: 'indexing-metadata',
+      tools: ['indexing.status'],
+      windowMs: 60 * 1000,
+      userLimit: 30,
+      projectLimit: 180,
+    },
+    {
       category: 'weekly-digest',
       tools: ['reports.weekly_digest'],
       windowMs: 60 * 60 * 1000,
@@ -109,6 +116,7 @@ test('tool rate-limit policy table assigns the documented categories and limits'
   assert.equal(getToolRateLimitPolicy('insights.page_queries')?.category, 'search-analytics');
   assert.equal(getToolRateLimitPolicy('insights.query_pages')?.category, 'search-analytics');
   assert.equal(getToolRateLimitPolicy('sitemaps.delete')?.category, 'search-console-write');
+  assert.equal(getToolRateLimitPolicy('indexing.status')?.category, 'indexing-metadata');
   assert.equal(getToolRateLimitPolicy('sites.list'), undefined);
 });
 
@@ -121,6 +129,7 @@ test('Search Analytics helpers reserve their worst-case upstream request fan-out
   assert.equal(getToolRateLimitUnits('insights.cannibalization'), 4);
   assert.equal(getToolRateLimitUnits('insights.content_decay'), 8);
   assert.equal(getToolRateLimitUnits('analytics.compare'), 8);
+  assert.equal(getToolRateLimitUnits('indexing.status'), 1);
   assert.equal(getToolRateLimitUnits('reports.weekly_digest'), 1);
 });
 

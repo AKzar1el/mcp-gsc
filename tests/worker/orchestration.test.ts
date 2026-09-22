@@ -192,6 +192,7 @@ describe('Worker orchestration', () => {
         'sites.delete',
         'sitemaps.submit',
         'sitemaps.delete',
+        'indexing.status',
         'indexing.request',
       ]),
     );
@@ -217,6 +218,10 @@ describe('Worker orchestration', () => {
       readOnlyHint: false,
       destructiveHint: true,
       idempotentHint: false,
+    });
+    expect(tools['indexing.status'].annotations).toMatchObject({
+      readOnlyHint: true,
+      openWorldHint: true,
     });
   });
 
@@ -281,6 +286,158 @@ describe('Worker orchestration', () => {
       expect(result.structuredContent.ownership_verification_note).toContain(
         'separate Google Site Verification/Search Console workflow',
       );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('removes a Search Console property from the connected account without implying website deletion', async () => {
+    await saveUser(
+      workerEnv,
+      'site-delete-user',
+      'site-delete@example.test',
+      'site-delete-refresh-token',
+    );
+    const server = await createGscMcpServer(
+      workerEnv,
+      {
+        google_id: 'site-delete-user',
+        email: 'site-delete@example.test',
+      },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        { handler: (args: Record<string, unknown>) => Promise<unknown> }
+      >;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({
+            access_token: 'site-delete-access-token',
+            expires_in: 3600,
+          });
+        }
+        if (
+          url ===
+          'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com'
+        ) {
+          expect(init?.method).toBe('DELETE');
+          return new Response(null, { status: 204 });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const result = await tools['sites.delete'].handler({
+        site_url: 'sc-domain:example.com',
+      }) as {
+        structuredContent: {
+          message: string;
+          removed_from_connected_account_site_set: boolean;
+          website_content_deleted: boolean;
+          provider_scope_note: string;
+        };
+      };
+
+      expect(result.structuredContent.message).toContain(
+        "removed site property from the connected account's Search Console site set",
+      );
+      expect(result.structuredContent.removed_from_connected_account_site_set).toBe(true);
+      expect(result.structuredContent.website_content_deleted).toBe(false);
+      expect(result.structuredContent.provider_scope_note).toContain(
+        "removes the property from the connected user's Search Console site set",
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('reads Indexing API notification metadata without implying index coverage', async () => {
+    await saveUser(
+      workerEnv,
+      'indexing-status-user',
+      'indexing-status@example.test',
+      'indexing-status-refresh-token',
+    );
+    const server = await createGscMcpServer(
+      workerEnv,
+      {
+        google_id: 'indexing-status-user',
+        email: 'indexing-status@example.test',
+      },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        { handler: (args: Record<string, unknown>) => Promise<unknown> }
+      >;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const targetUrl = 'https://example.com/careers/senior-engineer';
+
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({
+            access_token: 'indexing-status-access-token',
+            expires_in: 3600,
+          });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites') {
+          return response({
+            siteEntry: [
+              { siteUrl: 'sc-domain:example.com', permissionLevel: 'siteOwner' },
+            ],
+          });
+        }
+        const parsed = new URL(url);
+        if (
+          `${parsed.origin}${parsed.pathname}` ===
+          'https://indexing.googleapis.com/v3/urlNotifications/metadata'
+        ) {
+          expect(parsed.searchParams.get('url')).toBe(targetUrl);
+          return response({
+            url: targetUrl,
+            latestUpdate: {
+              url: targetUrl,
+              type: 'URL_UPDATED',
+              notifyTime: '2026-09-22T07:30:00Z',
+            },
+          });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const result = await tools['indexing.status'].handler({
+        site_url: 'sc-domain:example.com',
+        url: targetUrl,
+      }) as {
+        structuredContent: {
+          notification_metadata: {
+            latestUpdate?: { type?: string; notifyTime?: string };
+          };
+          notification_receipt_only: boolean;
+          index_coverage_report: boolean;
+          indexing_or_removal_completion_proven: boolean;
+          note: string;
+        };
+      };
+
+      expect(result.structuredContent.notification_metadata.latestUpdate).toMatchObject({
+        type: 'URL_UPDATED',
+        notifyTime: '2026-09-22T07:30:00Z',
+      });
+      expect(result.structuredContent.notification_receipt_only).toBe(true);
+      expect(result.structuredContent.index_coverage_report).toBe(false);
+      expect(result.structuredContent.indexing_or_removal_completion_proven).toBe(false);
+      expect(result.structuredContent.note).toContain('does not report whether Google crawled, indexed, or removed');
     } finally {
       globalThis.fetch = originalFetch;
     }

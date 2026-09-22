@@ -287,6 +287,19 @@ test('sites.add metadata preserves the property-add versus ownership-verificatio
   );
 });
 
+test('sites.delete metadata preserves the account-site-set boundary', () => {
+  assert.match(
+    indexSource,
+    /Sites\.delete method removes the property from the connected user's Search Console site set/,
+    'server runtime must describe the provider operation as account-scoped site-set removal',
+  );
+  assert.match(
+    readmeSource,
+    /sites\.delete[\s\S]*removes the property from that account's Search Console site set; it does not delete the website itself/i,
+    'README must not imply that sites.delete deletes the website itself',
+  );
+});
+
 test('Indexing API metadata preserves eligibility and provider-approval boundaries', () => {
   for (const [label, metadata] of [
     ['server.json', serverJson],
