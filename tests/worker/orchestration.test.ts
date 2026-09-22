@@ -60,6 +60,21 @@ function createPendingStateBinding() {
 }
 
 describe('Worker orchestration', () => {
+  it('keeps the root discovery response deployment-neutral', async () => {
+    const result = await defaultHandler.fetch(
+      new Request('http://127.0.0.1:8080/'),
+      workerEnv,
+    );
+
+    expect(result.status).toBe(200);
+    expect(result.headers.get('content-type')).toContain('text/plain');
+    await expect(result.text()).resolves.toBe(
+      'mcp-gsc — Google Search Console MCP server.\n' +
+        'MCP endpoint: http://127.0.0.1:8080/mcp\n' +
+        'Setup: https://github.com/AKzar1el/mcp-gsc#readme\n',
+    );
+  });
+
   it('uses configured KV and Durable Object bindings to consume OAuth state once', async () => {
     expect(workerEnv.OAUTH_KV).toBeDefined();
     expect(workerEnv.USER_KV).toBeDefined();
