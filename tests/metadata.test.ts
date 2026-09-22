@@ -289,6 +289,44 @@ test('published tool catalogs remain aligned', () => {
   );
 });
 
+test('server.capabilities distinguishes stored credentials from live Google authorization', () => {
+  for (const [label, metadata] of [
+    ['server.json', serverJson],
+    ['manifest.json', manifestJson],
+  ] as const) {
+    const tool = metadata.tools.find(
+      (entry: { name: string }) => entry.name === 'server.capabilities',
+    );
+    assert.ok(tool, `${label} must describe server.capabilities`);
+    assert.match(
+      tool.description,
+      /stored refresh credential[\s\S]*not a live Google authorization check/i,
+      `${label} must not claim stored credentials prove current provider authorization`,
+    );
+    assert.doesNotMatch(
+      tool.description,
+      /currently authenticated/i,
+      `${label} must not describe the local credential check as live authentication`,
+    );
+  }
+
+  assert.match(
+    indexSource,
+    /auth_status_basis:[\s\S]*provider_auth_live_verified: false as const[\s\S]*auth_note:/,
+    'runtime output must make the local auth-status basis and lack of live verification machine-readable',
+  );
+  assert.match(
+    indexSource,
+    /Refresh tokens can expire or be revoked; a Google tool call may still require reconnection/,
+    'runtime guidance must preserve the provider-revocation boundary',
+  );
+  assert.match(
+    readmeSource,
+    /server\.capabilities[\s\S]*stored refresh credential[\s\S]*provider_auth_live_verified: false[\s\S]*expired or was revoked/i,
+    'README must explain that connected is stored-credential state rather than a live Google check',
+  );
+});
+
 test('sites.add metadata preserves the property-add versus ownership-verification boundary', () => {
   assert.match(
     indexSource,

@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - The published npm launcher now keeps `GOOGLE_CLIENT_SECRET` and `TOKEN_ENCRYPTION_KEY` out of Wrangler `--var` command-line arguments; Wrangler loads those declared local secrets directly from the child process environment instead.
+- `server.capabilities` now distinguishes stored local Google credentials from live provider authorization, exposing the credential-state basis and explicitly reporting that the discovery call does not probe Google before claiming a connection is usable.
 
 ## [0.4.17] - 2026-09-22
 
