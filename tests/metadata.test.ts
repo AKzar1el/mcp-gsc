@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { WRITE_TOOL_NAMES } from '../src/access-mode';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, '..');
@@ -160,6 +161,21 @@ test('registry package identity remains aligned', () => {
   assert.equal(environmentVariables.get('PORT')?.default, '8080');
   assert.equal(environmentVariables.get('GSC_ACCESS_MODE')?.default, 'readwrite');
   assert.equal(environmentVariables.get('GSC_ACCESS_MODE')?.isSecret, false);
+  assert.equal(
+    WRITE_TOOL_NAMES.length,
+    6,
+    'update install and Registry write-tool counts when the canonical write-tool catalog changes',
+  );
+  assert.match(
+    environmentVariables.get('GSC_ACCESS_MODE')?.description ?? '',
+    /readwrite for the six mutation tools/i,
+    'server.json access-mode guidance must match the canonical write-tool count',
+  );
+  assert.match(
+    llmsInstallSource,
+    /readwrite` only when the user explicitly needs the six mutation tools/i,
+    'llms-install access-mode guidance must match the canonical write-tool count',
+  );
   assert.equal(environmentVariables.get('MCP_GSC_STATE_DIR')?.isRequired, false);
   assert.equal(environmentVariables.get('MCP_GSC_STATE_DIR')?.isSecret, false);
   assert.equal(environmentVariables.get('GOOGLE_CLIENT_ID')?.isRequired, true);
