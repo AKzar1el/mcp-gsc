@@ -77,6 +77,10 @@
       "description": "Request an eligible JobPosting or livestream URL update through Google's restricted Indexing API; this is not a general webpage submission tool. Google's default publish quota is for onboarding/testing, ongoing usage requires approval, and submissions are spam-screened."
     },
     {
+      "name": "indexing.status",
+      "description": "Read the latest successful Indexing API update/remove notifications Google received for a previously submitted URL. This reports notification receipt only, not crawl, index coverage, indexing completion, or removal completion."
+    },
+    {
       "name": "indexing.list_pages",
       "description": "List pages with Search Console impressions. This is performance data, not an index-coverage inventory; use URL Inspection for URL-level index status."
     },
@@ -89,7 +93,7 @@
       "description": "Generate a plain-language weekly SEO report with movers, top pages, and a recommended action."
     }
   ],
-  "version": "0.4.16-registry.1",
+  "version": "0.4.17-registry.1",
   "repository": {
     "url": "https://github.com/AKzar1el/mcp-gsc",
     "source": "github"
@@ -99,7 +103,7 @@
     {
       "registryType": "npm",
       "identifier": "@digestseo/mcp-gsc",
-      "version": "0.4.16",
+      "version": "0.4.17",
       "runtimeHint": "npx",
       "transport": {
         "type": "streamable-http",

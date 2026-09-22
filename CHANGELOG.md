@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.17] - 2026-09-22
+
 ### Added
 - `indexing.status` reads Google's latest successful Indexing API update/remove notification receipts for a previously submitted URL while explicitly distinguishing notification receipt from crawl, index coverage, indexing completion, or removal completion.
 
