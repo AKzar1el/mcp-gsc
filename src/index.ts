@@ -985,6 +985,13 @@ class GscMcpRuntime {
           '  data_state to "hourly_all". The hourly date range can span at',
           '  most 10 inclusive days, and hourly data',
           '  is preliminary.',
+          '- SEARCH APPEARANCE uses a two-step workflow. To discover the',
+          '  property-specific appearance values Google currently exposes,',
+          '  call with dimensions: ["searchAppearance"] and no other grouping',
+          '  dimension. Then filter to one exact returned searchAppearance',
+          '  value in a separate query and group by page/query/country/device/',
+          '  date/hour as needed. Do not guess new appearance identifiers;',
+          '  discover the values Google returns for the property first.',
           '- Use dimension_filter_groups to filter by country, device, query',
           '  content, page URL, or search feature. includingRegex and',
           '  excludingRegex use RE2 syntax. A query regex can provide a manual',
@@ -1018,7 +1025,7 @@ class GscMcpRuntime {
             )
             .default(['query'])
             .describe(
-              "Dimensions to group rows by. Pass [] (empty array) to get a single row of true site-level totals. The 'hour' dimension requires data_state 'hourly_all' and an inclusive date range of at most 10 days. Google Discover and Google News do not support the query dimension.",
+              "Dimensions to group rows by. Pass [] (empty array) to get a single row of true site-level totals. searchAppearance must be the only grouping dimension; discover an appearance value with ['searchAppearance'], then filter to that value in a separate query when grouping by another dimension. The 'hour' dimension requires data_state 'hourly_all' and an inclusive date range of at most 10 days. Google Discover and Google News do not support the query dimension.",
             ),
           row_limit: z
             .number()

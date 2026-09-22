@@ -309,6 +309,12 @@ export function assertSearchAnalyticsQueryCompatible(body: SearchAnalyticsQuery)
     throw new Error('Search Analytics dimensions must not contain duplicates.');
   }
 
+  if (body.dimensions.includes('searchAppearance') && body.dimensions.length > 1) {
+    throw new Error(
+      'Search Analytics searchAppearance must be the only grouping dimension. Discover an appearance value with dimensions ["searchAppearance"], then filter by that value in a separate query when grouping by page, query, country, device, date, or hour.',
+    );
+  }
+
   const hasHourDimension = body.dimensions.includes('hour');
   const usesHourlyData = body.dataState === 'hourly_all';
   if (hasHourDimension && !usesHourlyData) {

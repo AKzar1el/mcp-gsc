@@ -824,6 +824,14 @@ test('Search Analytics request validation rejects documented invalid cross-field
     () =>
       assertSearchAnalyticsQueryCompatible({
         ...base,
+        dimensions: ['searchAppearance', 'page'],
+      }),
+    /searchAppearance must be the only grouping dimension/,
+  );
+  assert.throws(
+    () =>
+      assertSearchAnalyticsQueryCompatible({
+        ...base,
         dimensions: ['page'],
         aggregationType: 'byProperty',
       }),
@@ -1018,6 +1026,42 @@ test('Search Analytics request validation permits supported Google News dimensio
       rowLimit: 100,
       type: 'googleNews',
       aggregationType: 'auto',
+    }),
+  );
+});
+
+test('Search Analytics request validation accepts searchAppearance discovery and filtered breakdowns', () => {
+  assert.doesNotThrow(() =>
+    assertSearchAnalyticsQueryCompatible({
+      startDate: '2026-05-01',
+      endDate: '2026-05-31',
+      dimensions: ['searchAppearance'],
+      rowLimit: 100,
+      type: 'web',
+      aggregationType: 'auto',
+    }),
+  );
+
+  assert.doesNotThrow(() =>
+    assertSearchAnalyticsQueryCompatible({
+      startDate: '2026-05-01',
+      endDate: '2026-05-31',
+      dimensions: ['page'],
+      rowLimit: 100,
+      type: 'web',
+      aggregationType: 'auto',
+      dimensionFilterGroups: [
+        {
+          groupType: 'and',
+          filters: [
+            {
+              dimension: 'searchAppearance',
+              operator: 'equals',
+              expression: 'AMP_BLUE_LINK',
+            },
+          ],
+        },
+      ],
     }),
   );
 });
