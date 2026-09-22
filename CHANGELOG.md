@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.24] - 2026-09-23
+
 ### Added
 - `indexing.remove` publishes Google's supported `URL_DELETED` notification for previously eligible Indexing API pages after a bounded preflight confirms the URL already returns HTTP 404/410 or exposes a robots `noindex` meta directive. A successful notification is reported only as receipt acknowledgment, never as proof that Google completed removal.
 
