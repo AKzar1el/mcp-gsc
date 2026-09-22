@@ -176,6 +176,16 @@ test('registry package identity remains aligned', () => {
     /'GSC_ACCESS_MODE'/,
     'npm launcher must forward the access-mode binding into the local Worker',
   );
+  assert.doesNotMatch(
+    npmLauncherSource,
+    /process\.kill\(process\.pid,\s*signal\)/,
+    'npm launcher must not re-signal itself while its SIGINT/SIGTERM listeners are still installed',
+  );
+  assert.match(
+    npmLauncherSource,
+    /constants\.signals\[signal\][\s\S]*128 \+ signalNumber/,
+    'npm launcher must translate child signal termination into the conventional process exit code',
+  );
   const forwardedVariables = npmLauncherSource.match(
     /const forwardedVariables = \[([\s\S]*?)\];/,
   );
