@@ -56,6 +56,8 @@ claude mcp add --transport http gsc http://127.0.0.1:8080/mcp
 
 [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=gsc&config=eyJ1cmwiOiJodHRwOi8vMTI3LjAuMC4xOjgwODAvbWNwIn0%3D)
 
+When this repository is installed as a Cursor plugin, Cursor also auto-discovers three bundled Agent Skills that compose the MCP tools into evidence-safe workflows: `gsc-weekly-review`, `gsc-indexing-triage`, and `gsc-search-opportunities`. The **Add to Cursor** button above installs the MCP connection only; the bundled skills are part of the repository's Cursor plugin package.
+
 **Kiro**
 
 [![Add to Kiro](https://kiro.dev/images/add-to-kiro.svg)](https://kiro.dev/launch/mcp/add?name=mcp-gsc&config=%7B%22url%22%3A%22http%3A%2F%2F127.0.0.1%3A8080%2Fmcp%22%2C%22disabled%22%3Afalse%2C%22autoApprove%22%3A%5B%5D%7D)
