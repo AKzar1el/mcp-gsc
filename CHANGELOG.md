@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.15] - 2026-09-22
+
 ### Fixed
 - `analytics.query` now distinguishes fresh preliminary Search Analytics data from finalized-data lag, echoes the requested `data_state`, and reports whether preliminary data is possible instead of implying a blanket 2-3 day delay.
 - Repo-owned quick-connect configs and client docs now use the verified loopback npm launcher instead of routing new users to the intentionally unadvertised hosted remote while that deployment lags the current package.
