@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.23] - 2026-09-22
+
 ### Fixed
 - The OAuth proxy now requires an explicit, CSRF-bound consent step that identifies the requesting MCP client and requested permissions before forwarding the browser to Google, preventing cached upstream Google consent from silently authorizing an untrusted MCP client. User or Google denial is returned to the validated MCP client as a terminal OAuth error instead of stranding the connection flow on a local error page.
 
