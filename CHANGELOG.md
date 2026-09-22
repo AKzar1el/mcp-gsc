@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.21] - 2026-09-22
+
 ### Fixed
 - The published npm launcher now fails before starting Wrangler when any required Google OAuth/token-encryption environment variable is missing or blank, reporting only the missing variable names instead of allowing a broken local OAuth session to start.
 - URL Inspection and Indexing API authorization now follow Search Console's literal URL-prefix property semantics instead of inventing a path-segment boundary when a provider-returned property identifier does not end in `/`.
