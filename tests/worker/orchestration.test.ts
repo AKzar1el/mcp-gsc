@@ -132,8 +132,17 @@ describe('Worker orchestration', () => {
     const completed: unknown[] = [];
     const oauthProvider = {
       parseAuthRequest: async () => ({
-        client_id: 'mcp-client',
+        responseType: 'code',
+        clientId: 'mcp-client',
+        redirectUri: 'https://client.example/callback',
         scope: ['openid'],
+        state: 'client-state',
+        issuer: 'https://worker.example',
+      }),
+      lookupClient: async () => ({
+        clientId: 'mcp-client',
+        clientName: 'Test MCP client',
+        redirectUris: ['https://client.example/callback'],
       }),
       completeAuthorization: async (authorization: unknown) => {
         completed.push(authorization);
@@ -151,9 +160,34 @@ describe('Worker orchestration', () => {
         new Request('https://worker.example/authorize'),
         oauthEnv,
       );
-      expect(authorize.status).toBe(302);
+      expect(authorize.status).toBe(200);
+      const consentHtml = await authorize.text();
+      const consentNonce = consentHtml.match(
+        /name="consent_nonce" value="([^"]+)"/,
+      )?.[1];
+      expect(consentNonce).toBeTruthy();
+      const consentCookie = authorize.headers.get('set-cookie')?.split(';', 1)[0];
+      expect(consentCookie).toBeTruthy();
+      expect(authorize.headers.get('set-cookie')).toContain('__Host-MCP_GSC_CONSENT=');
+      expect(authorize.headers.get('set-cookie')).toContain('Secure');
 
-      const state = new URL(authorize.headers.get('location')!).searchParams.get(
+      const approved = await defaultHandler.fetch(
+        new Request('https://worker.example/authorize', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/x-www-form-urlencoded',
+            cookie: consentCookie!,
+          },
+          body: new URLSearchParams({
+            consent_nonce: consentNonce!,
+            decision: 'allow',
+          }),
+        }),
+        oauthEnv,
+      );
+      expect(approved.status).toBe(302);
+
+      const state = new URL(approved.headers.get('location')!).searchParams.get(
         'state',
       );
       expect(state).toBeTruthy();
