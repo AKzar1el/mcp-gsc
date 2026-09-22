@@ -200,7 +200,12 @@ describe('Worker orchestration', () => {
     expect(tools['insights.query_pages'].inputSchema).toBeDefined();
     expect(tools['sites.add'].annotations).toMatchObject({
       readOnlyHint: false,
-      destructiveHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+    });
+    expect(tools['sitemaps.submit'].annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: false,
       idempotentHint: true,
     });
     expect(tools['sites.delete'].annotations).toMatchObject({

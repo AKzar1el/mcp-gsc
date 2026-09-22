@@ -1,17 +1,18 @@
 /**
  * MCP hints for each mutation exposed by this server.
  *
- * Search Console's sites and sitemaps APIs use PUT for additions and DELETE
- * for removals, so repeating the same request has the same intended effect.
- * Indexing publishes a URL_UPDATED notification with POST; each call can
- * consume quota and update Google's notification state, so it is not marked
- * idempotent. Every mutation is marked destructive so MCP clients require
- * explicit confirmation before changing external Google state.
+ * MCP defines destructiveHint=false for non-read-only tools that perform only
+ * additive updates. Search Console's site addition and sitemap submission are
+ * additive PUT operations; the corresponding DELETE operations remain
+ * destructive. Indexing publishes a URL_UPDATED notification with POST; each
+ * call can consume quota and change Google's indexing state, so it remains
+ * conservative (destructive + non-idempotent). Tool annotations are client
+ * hints, not an enforcement or confirmation mechanism.
  */
 export const WRITE_TOOL_ANNOTATIONS = {
   'sites.add': {
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: true,
     openWorldHint: true,
   },
@@ -23,7 +24,7 @@ export const WRITE_TOOL_ANNOTATIONS = {
   },
   'sitemaps.submit': {
     readOnlyHint: false,
-    destructiveHint: true,
+    destructiveHint: false,
     idempotentHint: true,
     openWorldHint: true,
   },
