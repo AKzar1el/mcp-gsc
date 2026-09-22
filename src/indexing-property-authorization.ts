@@ -60,16 +60,9 @@ function normalizeSiteUrl(siteUrl: string): string {
 function isWithinUrlPrefix(target: URL, property: URL): boolean {
   if (target.origin !== property.origin) return false;
 
-  const propertyPath = property.pathname;
-  if (propertyPath === '/') return true;
-  const descendantPrefix = propertyPath.endsWith('/')
-    ? propertyPath
-    : `${propertyPath}/`;
-
-  return (
-    target.pathname === propertyPath ||
-    target.pathname.startsWith(descendantPrefix)
-  );
+  // Search Console URL-prefix properties are literal URL prefixes. Do not
+  // strengthen a provider-returned prefix into an invented path boundary.
+  return target.href.startsWith(property.href);
 }
 
 function isWithinDomainProperty(target: URL, domain: string): boolean {
