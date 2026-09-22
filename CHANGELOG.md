@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Repo-owned quick-connect configs and client docs now use the verified loopback npm launcher instead of routing new users to the intentionally unadvertised hosted remote while that deployment lags the current package.
+
 ## [0.4.14] - 2026-09-22
 
 ### Fixed

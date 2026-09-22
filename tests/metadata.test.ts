@@ -29,6 +29,9 @@ const readmeSource = readFileSync(resolve(projectRoot, 'README.md'), 'utf8');
 const setupSource = readFileSync(resolve(projectRoot, 'SETUP.md'), 'utf8');
 const llmsInstallSource = readFileSync(resolve(projectRoot, 'llms-install.md'), 'utf8');
 const testsReadmeSource = readFileSync(resolve(projectRoot, 'tests/README.md'), 'utf8');
+const rootMcpConfig = readFileSync(resolve(projectRoot, '.mcp.json'), 'utf8');
+const cursorMcpConfig = readFileSync(resolve(projectRoot, 'mcp.json'), 'utf8');
+const windsurfSource = readFileSync(resolve(projectRoot, 'docs/windsurf.md'), 'utf8');
 
 test('package release versions remain aligned across machine-readable metadata', () => {
   const expectedVersion = packageJson.version;
@@ -214,6 +217,46 @@ test('registry advertises only currently aligned install paths', () => {
     [],
     'server.json must not advertise the hosted remote while its deployed tool contract lags the published package',
   );
+});
+
+test('package-only quick-connect surfaces do not route users to the stale hosted remote', () => {
+  const staleHostedRemote = 'https://mcp-gsc.digestseo.com/mcp';
+  const loopbackRemote = 'http://127.0.0.1:8080/mcp';
+
+  for (const [label, source] of [
+    ['README.md', readmeSource],
+    ['.mcp.json', rootMcpConfig],
+    ['mcp.json', cursorMcpConfig],
+    ['docs/windsurf.md', windsurfSource],
+  ] as const) {
+    assert.equal(
+      source.includes(staleHostedRemote),
+      false,
+      `${label} must not advertise the hosted remote while the deployed tool contract lags the package`,
+    );
+    assert.equal(
+      source.includes(loopbackRemote),
+      true,
+      `${label} must route the current quick-connect path through the verified npm launcher`,
+    );
+  }
+});
+
+test('one-click client links resolve to the verified loopback launcher', () => {
+  const loopbackRemote = 'http://127.0.0.1:8080/mcp';
+  const cursorLink = readmeSource.match(/\]\((https:\/\/cursor\.com\/en\/install-mcp\?[^)]+)\)/)?.[1];
+  const kiroLink = readmeSource.match(/\]\((https:\/\/kiro\.dev\/launch\/mcp\/add\?[^)]+)\)/)?.[1];
+
+  assert.ok(cursorLink, 'README must include the Cursor install link');
+  assert.ok(kiroLink, 'README must include the Kiro install link');
+
+  const cursorConfig = new URL(cursorLink).searchParams.get('config');
+  const kiroConfig = new URL(kiroLink).searchParams.get('config');
+  assert.ok(cursorConfig, 'Cursor install link must include a config payload');
+  assert.ok(kiroConfig, 'Kiro install link must include a config payload');
+
+  assert.equal(JSON.parse(Buffer.from(cursorConfig, 'base64').toString('utf8')).url, loopbackRemote);
+  assert.equal(JSON.parse(kiroConfig).url, loopbackRemote);
 });
 
 test('published tool catalogs remain aligned', () => {
