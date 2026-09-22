@@ -37,7 +37,8 @@ import {
   listSites,
   getSite,
   listSitemaps,
-  inspectUrlsSequentially,
+  inspectUrlsBoundedConcurrently,
+  URL_INSPECTION_BATCH_CONCURRENCY,
   assertSearchAnalyticsQueryCompatible,
   querySearchAnalytics,
   GoogleRefreshTokenRevokedError,
@@ -586,7 +587,7 @@ test('getSite: percent-encodes the exact property and returns its permission lev
   assert.deepEqual(result, site);
 });
 
-test('inspectUrlsSequentially: preserves input order and returns per-URL failures', async () => {
+test('inspectUrlsBoundedConcurrently: preserves input order and returns per-URL failures', async () => {
   const { result, calls } = await withMockFetch(
     (_url, init) => {
       const body = JSON.parse(String(init?.body));
@@ -598,7 +599,7 @@ test('inspectUrlsSequentially: preserves input order and returns per-URL failure
       });
     },
     () =>
-      inspectUrlsSequentially(
+      inspectUrlsBoundedConcurrently(
         'at',
         'https://example.com/',
         ['https://example.com/good', 'https://example.com/bad'],
@@ -617,6 +618,32 @@ test('inspectUrlsSequentially: preserves input order and returns per-URL failure
       error: 'URL inspection failed: 400 invalid request',
     },
   ]);
+});
+
+test('inspectUrlsBoundedConcurrently: caps in-flight inspections at three', async () => {
+  let active = 0;
+  let maxActive = 0;
+  const urls = Array.from({ length: 7 }, (_, index) => `https://example.com/${index + 1}`);
+
+  const { result, calls } = await withMockFetch(
+    async (_url, init) => {
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      active -= 1;
+      const body = JSON.parse(String(init?.body));
+      return json(200, { inspectionResult: { inspected: body.inspectionUrl } });
+    },
+    () => inspectUrlsBoundedConcurrently('at', 'https://example.com/', urls, 'en-US'),
+  );
+
+  assert.equal(URL_INSPECTION_BATCH_CONCURRENCY, 3);
+  assert.equal(calls.length, urls.length);
+  assert.equal(maxActive, URL_INSPECTION_BATCH_CONCURRENCY);
+  assert.deepEqual(
+    result.map((entry) => entry.inspectionUrl),
+    urls,
+  );
 });
 
 test('querySearchAnalytics: retries a transient 429 and preserves the POST body', async () => {
@@ -649,18 +676,38 @@ test('querySearchAnalytics: retries a transient 429 and preserves the POST body'
   assert.deepEqual(result.rows[0]?.keys, ['retry-safe']);
 });
 
-test('inspectUrlsSequentially: stops immediately when Google access is revoked', async () => {
-  await assert.rejects(
-    withMockFetch(
-      () => new Response('', { status: 401 }),
-      () =>
-        inspectUrlsSequentially(
-          'expired-token',
-          'https://example.com/',
-          ['https://example.com/a', 'https://example.com/b'],
-        ),
-    ),
-    new RegExp(GSC_ACCESS_REVOKED_MESSAGE.slice(0, 22)),
+test('inspectUrlsBoundedConcurrently: access revocation prevents later chunks from starting', async () => {
+  const urls = [
+    'https://example.com/a',
+    'https://example.com/b',
+    'https://example.com/c',
+    'https://example.com/d',
+    'https://example.com/e',
+  ];
+  const original = globalThis.fetch;
+  const calls: CapturedRequest[] = [];
+  globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
+    const url = String(input);
+    calls.push({ url, init });
+    const body = JSON.parse(String(init?.body));
+    return body.inspectionUrl.endsWith('/a')
+      ? new Response('', { status: 401 })
+      : json(200, { inspectionResult: { inspected: body.inspectionUrl } });
+  }) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      () => inspectUrlsBoundedConcurrently('expired-token', 'https://example.com/', urls),
+      new RegExp(GSC_ACCESS_REVOKED_MESSAGE.slice(0, 22)),
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+
+  assert.equal(calls.length, URL_INSPECTION_BATCH_CONCURRENCY);
+  assert.deepEqual(
+    calls.map((call) => JSON.parse(String(call.init?.body)).inspectionUrl),
+    urls.slice(0, URL_INSPECTION_BATCH_CONCURRENCY),
   );
 });
 

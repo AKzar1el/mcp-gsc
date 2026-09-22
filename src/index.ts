@@ -12,7 +12,8 @@ import {
   GSC_ACCESS_REVOKED_MESSAGE,
   MCP_RECONNECT_INSTRUCTION,
   inspectUrl,
-  inspectUrlsSequentially,
+  inspectUrlsBoundedConcurrently,
+  URL_INSPECTION_BATCH_CONCURRENCY,
   listSitemaps,
   listSites,
   getSite,
@@ -589,7 +590,7 @@ const TOOL_CATALOG = [
   {
     name: 'urls.inspect_many',
     description:
-      "Inspect Google's indexed versions of up to 10 URLs sequentially in one MCP call while charging the same URL Inspection safety budget per URL. This does not run live URL tests.",
+      `Inspect Google's indexed versions of up to 10 URLs with bounded concurrency of ${URL_INSPECTION_BATCH_CONCURRENCY} in one MCP call while charging the same URL Inspection safety budget per URL. This does not run live URL tests.`,
   },
   {
     name: 'sitemaps.list',
@@ -836,7 +837,7 @@ class GscMcpRuntime {
       'urls.inspect_many',
       {
         title: 'Inspect multiple URLs',
-        description: `Inspect the versions of up to 10 URLs currently known in Google's index from one Search Console property. This API does not run live URL tests. Google still processes one URL Inspection request per URL, so every requested URL consumes one quota unit and one unit of this server's shared URL-inspection safety budget. Requests are sent sequentially to avoid unnecessary bursts. Use this for a small group of important or debugging-target URLs; do not use it to crawl an entire site.`,
+        description: `Inspect the versions of up to 10 URLs currently known in Google's index from one Search Console property. This API does not run live URL tests. Google still processes one URL Inspection request per URL, so every requested URL consumes one quota unit and one unit of this server's shared URL-inspection safety budget. Requests use bounded concurrency of ${URL_INSPECTION_BATCH_CONCURRENCY}; results preserve input order, and a Google-access revocation stops later chunks from starting. Use this for a small group of important or debugging-target URLs; do not use it to crawl an entire site.`,
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           inspection_urls: z
@@ -873,7 +874,7 @@ class GscMcpRuntime {
         if (rateLimitError) return rateLimitError;
 
         const accessToken = await this.getAccessToken(googleId);
-        const batchResults = await inspectUrlsSequentially(
+        const batchResults = await inspectUrlsBoundedConcurrently(
           accessToken,
           site_url,
           inspection_urls,

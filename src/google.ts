@@ -473,7 +473,9 @@ export interface UrlInspectionBatchResult {
   error?: string;
 }
 
-export async function inspectUrlsSequentially(
+export const URL_INSPECTION_BATCH_CONCURRENCY = 3;
+
+export async function inspectUrlsBoundedConcurrently(
   accessToken: string,
   siteUrl: string,
   inspectionUrls: readonly string[],
@@ -481,30 +483,52 @@ export async function inspectUrlsSequentially(
 ): Promise<UrlInspectionBatchResult[]> {
   const results: UrlInspectionBatchResult[] = [];
 
-  for (const inspectionUrl of inspectionUrls) {
-    try {
-      results.push({
-        inspectionUrl,
-        inspectionResult: await inspectUrl(
-          accessToken,
-          siteUrl,
-          inspectionUrl,
-          languageCode,
-        ),
-      });
-    } catch (error) {
-      if (error instanceof Error && error.message === GSC_ACCESS_REVOKED_MESSAGE) {
-        throw error;
-      }
-      results.push({
-        inspectionUrl,
-        error: error instanceof Error ? error.message : 'URL inspection failed.',
-      });
+  for (
+    let offset = 0;
+    offset < inspectionUrls.length;
+    offset += URL_INSPECTION_BATCH_CONCURRENCY
+  ) {
+    const chunk = inspectionUrls.slice(offset, offset + URL_INSPECTION_BATCH_CONCURRENCY);
+    const chunkResults = await Promise.all(
+      chunk.map(async (inspectionUrl): Promise<UrlInspectionBatchResult | Error> => {
+        try {
+          return {
+            inspectionUrl,
+            inspectionResult: await inspectUrl(
+              accessToken,
+              siteUrl,
+              inspectionUrl,
+              languageCode,
+            ),
+          };
+        } catch (error) {
+          if (error instanceof Error && error.message === GSC_ACCESS_REVOKED_MESSAGE) {
+            return error;
+          }
+          return {
+            inspectionUrl,
+            error: error instanceof Error ? error.message : 'URL inspection failed.',
+          };
+        }
+      }),
+    );
+
+    const accessRevoked = chunkResults.find((result): result is Error => result instanceof Error);
+    if (accessRevoked) {
+      throw accessRevoked;
     }
+    results.push(
+      ...chunkResults.filter(
+        (result): result is UrlInspectionBatchResult => !(result instanceof Error),
+      ),
+    );
   }
 
   return results;
 }
+
+// Kept for compatibility with callers that imported the original helper directly.
+export const inspectUrlsSequentially = inspectUrlsBoundedConcurrently;
 
 export interface SitemapEntry {
   path: string;
