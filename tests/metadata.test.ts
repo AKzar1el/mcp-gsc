@@ -732,6 +732,12 @@ test('host-native MCP onboarding uses current Claude and ChatGPT surfaces', () =
     assert.match(source, /Settings\s*→\s*Apps\s*→\s*Create/i, `${label} must use ChatGPT's current Apps -> Create flow`);
     assert.match(source, /Pro[^\n]*(?:read\/fetch|read-fetch|read and fetch)/i, `${label} must preserve ChatGPT Pro's read/fetch limitation`);
   }
+
+  assert.match(
+    readmeSource,
+    /ChatGPT cannot connect directly[^\n]*127\.0\.0\.1[^\n]*Secure MCP Tunnel/i,
+    'README local-launcher guidance must not imply that ChatGPT can connect directly to loopback MCP',
+  );
 });
 
 test('URL inspection guidance routes bounded multi-URL work to the batch tool', () => {
