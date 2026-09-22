@@ -132,6 +132,21 @@ test('registry package identity remains aligned', () => {
   );
   assert.match(
     npmLauncherSource,
+    /process\.env\.MCP_GSC_STATE_DIR[\s\S]*resolve\(homedir\(\), '\.mcp-gsc', 'state'\)/,
+    'npm launcher must keep local binding state outside the versioned npm package cache while allowing an override',
+  );
+  assert.match(
+    npmLauncherSource,
+    /'--persist-to',\s*stateDir/,
+    'npm launcher must give Wrangler an explicit stable local persistence path',
+  );
+  assert.match(
+    npmLauncherSource,
+    /Local state directory: \$\{stateDir\}/,
+    'npm launcher must print the effective local state directory for troubleshooting',
+  );
+  assert.match(
+    npmLauncherSource,
     /'--ip',\s*'127\.0\.0\.1'/,
     'npm launcher must bind its local HTTP endpoint to loopback only',
   );
@@ -162,6 +177,11 @@ test('registry package identity remains aligned', () => {
   );
   assert.match(
     readmeSource,
+    /~\/\.mcp-gsc\/state[\s\S]*MCP_GSC_STATE_DIR/,
+    'README npm onboarding must document durable local launcher state and its override',
+  );
+  assert.match(
+    readmeSource,
     /http:\/\/127\.0\.0\.1:8080\/google\/callback/,
     'README npm onboarding must name the launcher default Google OAuth callback',
   );
@@ -174,6 +194,11 @@ test('registry package identity remains aligned', () => {
     setupSource,
     /If you set `PORT`, replace `8080` with that exact port/,
     'SETUP must explain how a custom launcher port changes the OAuth callback',
+  );
+  assert.match(
+    setupSource,
+    /~\/\.mcp-gsc\/state[\s\S]*MCP_GSC_STATE_DIR/,
+    'SETUP must document the npm launcher local-state path and override',
   );
 });
 
