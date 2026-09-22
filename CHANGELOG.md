@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.19] - 2026-09-22
+
 ### Fixed
+- Search Analytics freshness metadata now normalizes Google's camelCase `firstIncompleteDate` / `firstIncompleteHour` wire fields into the stable MCP `first_incomplete_date` / `first_incomplete_hour` response contract.
 - The npm launcher now exits deterministically after its Wrangler child terminates by signal instead of re-signalling itself while its own `SIGINT`/`SIGTERM` listeners are installed, preventing wrapper processes from lingering after Ctrl+C or supervisor shutdown on POSIX systems.
+- ChatGPT local-launcher guidance now explicitly requires Secure MCP Tunnel for the loopback `127.0.0.1` endpoint, or a separately deployed remote Worker, instead of implying that ChatGPT can connect directly to localhost.
 
 ## [0.4.18] - 2026-09-22
 
