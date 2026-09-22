@@ -16,8 +16,6 @@ const stateDir = process.env.MCP_GSC_STATE_DIR
   : resolve(homedir(), '.mcp-gsc', 'state');
 const forwardedVariables = [
   'GOOGLE_CLIENT_ID',
-  'GOOGLE_CLIENT_SECRET',
-  'TOKEN_ENCRYPTION_KEY',
   'GSC_ACCESS_MODE',
   'GLAMA_INSPECTION_MODE',
 ];

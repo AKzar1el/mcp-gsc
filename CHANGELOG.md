@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The published npm launcher now keeps `GOOGLE_CLIENT_SECRET` and `TOKEN_ENCRYPTION_KEY` out of Wrangler `--var` command-line arguments; Wrangler loads those declared local secrets directly from the child process environment instead.
+
 ## [0.4.17] - 2026-09-22
 
 ### Added
