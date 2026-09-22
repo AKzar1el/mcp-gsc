@@ -244,6 +244,12 @@ const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
   row_count: z.number().int().nonnegative(),
   start_row: z.number().int().nonnegative(),
   rows: z.array(z.object(SEARCH_ROW_OUTPUT_SCHEMA)),
+  data_state: z.enum(['all', 'final', 'hourly_all']).describe(
+    'The Search Analytics dataState requested from Google for this response.',
+  ),
+  preliminary_data_possible: z.boolean().describe(
+    'True when the requested data state can include fresh data that is still being collected and processed. This does not assert that every returned row is incomplete.',
+  ),
   position_supported: z.boolean().describe(
     'Whether average position is supported for the selected Search Analytics search type. False for Google Discover and Google News.',
   ),
@@ -989,10 +995,13 @@ class GscMcpRuntime {
           '  matching dimension. Expect the returned rows to cover only a',
           '  subset of total impressions; this is normal Google behavior, not',
           '  a data error.',
-          '- DATA FRESHNESS: Search Console data lags about 2-3 days behind',
-          '  real time. If the user asks about "today" or "yesterday", expect',
-          '  empty or partial rows for the most recent days; the latest',
-          '  reliably-complete date is usually 3 days ago.',
+          '- DATA FRESHNESS: data_state "all" can include fresh preliminary',
+          '  data instead of imposing the finalized-data lag; "final" returns',
+          '  only finalized data and can therefore lag recent activity. When',
+          '  Google returns metadata.first_incomplete_date or',
+          '  metadata.first_incomplete_hour for date/hour groupings, treat',
+          '  that boundary and later rows as still subject to change. The',
+          '  response also echoes data_state and preliminary_data_possible.',
           '- AVERAGE POSITION is impression-weighted. To compute an overall',
           '  position across multiple rows, use',
           '  sum(position * impressions) / sum(impressions). Never plain-average',
@@ -1045,7 +1054,7 @@ class GscMcpRuntime {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe('Start date (inclusive) in YYYY-MM-DD format.'),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
-            'End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day data lag: the most recent complete date is usually 3 days ago.',
+            'End date (inclusive) in YYYY-MM-DD format. Recent dates are allowed: data_state all/hourly_all can include preliminary data, while final returns only finalized data.',
           ),
           dimensions: z
             .array(
@@ -1173,6 +1182,8 @@ class GscMcpRuntime {
           row_count: bounded.items.length,
           start_row,
           rows: bounded.items,
+          data_state,
+          preliminary_data_possible: data_state !== 'final',
           position_supported:
             search_type !== 'discover' && search_type !== 'googleNews',
           ...(search_type === 'discover' || search_type === 'googleNews'

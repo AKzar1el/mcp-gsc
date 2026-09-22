@@ -653,6 +653,7 @@ describe('Worker orchestration', () => {
       const callAnalytics = async (
         dimensions: ['query'] | ['page'],
         startRow: number,
+        dataState: 'all' | 'final' = 'all',
       ) =>
         mcpApiHandler.fetch(
           new Request('https://worker.example/mcp', {
@@ -675,6 +676,7 @@ describe('Worker orchestration', () => {
                   dimensions,
                   row_limit: 1,
                   start_row: startRow,
+                  data_state: dataState,
                 },
               },
             }),
@@ -696,14 +698,18 @@ describe('Worker orchestration', () => {
       expect(querySerialized).toContain('gsc mcp');
       expect(querySerialized).toContain('\"has_more\":true');
       expect(querySerialized).toContain('\"next_start_row\":1');
+      expect(querySerialized).toContain('\"data_state\":\"all\"');
+      expect(querySerialized).toContain('\"preliminary_data_possible\":true');
       expect(querySerialized).not.toContain('Output validation error');
 
-      const pageResponse = await callAnalytics(['page'], 10);
+      const pageResponse = await callAnalytics(['page'], 10, 'final');
       expect(pageResponse.status).toBe(200);
       const pageSerialized = JSON.stringify(await readMcpJsonRpc(pageResponse));
       expect(pageSerialized).toContain('https://example.com/gsc-mcp/');
       expect(pageSerialized).toContain('\"has_more\":true');
       expect(pageSerialized).toContain('\"next_start_row\":11');
+      expect(pageSerialized).toContain('\"data_state\":\"final\"');
+      expect(pageSerialized).toContain('\"preliminary_data_possible\":false');
       expect(pageSerialized).not.toContain('Output validation error');
     } finally {
       globalThis.fetch = originalFetch;
