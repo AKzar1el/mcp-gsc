@@ -7,8 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.20] - 2026-09-22
+
 ### Fixed
 - Modern MCP requests that use the 2026-07-28 `Mcp-Method` header now fail with the required HTTP 400 `HeaderMismatch` error when `MCP-Protocol-Version` is missing, while legacy initialization without the modern header remains compatible.
+- Repo-owned onboarding and support documentation no longer advertises the intentionally unavailable owner-hosted/automatic-weekly-email service, and Cursor guidance now identifies the one-click path as the local npm launcher.
+- `GET /` now returns deployment-neutral discovery text with the derived MCP endpoint and canonical setup link instead of calling every deployment hosted or telling loopback users to connect it directly from Claude.ai.
 
 ## [0.4.19] - 2026-09-22
 
