@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- The repository's Cursor plugin now bundles native `gsc-weekly-review`, `gsc-indexing-triage`, and `gsc-search-opportunities` Agent Skills that compose existing MCP tools into evidence-safe Search Console workflows without adding a second tool surface.
+
 ## [0.4.21] - 2026-09-22
 
 ### Fixed

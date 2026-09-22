@@ -33,7 +33,56 @@ const testsReadmeSource = readFileSync(resolve(projectRoot, 'tests/README.md'), 
 const rootMcpConfig = readFileSync(resolve(projectRoot, '.mcp.json'), 'utf8');
 const cursorMcpConfig = readFileSync(resolve(projectRoot, 'mcp.json'), 'utf8');
 const windsurfSource = readFileSync(resolve(projectRoot, 'docs/windsurf.md'), 'utf8');
+const cursorSkills = [
+  {
+    path: 'skills/gsc-weekly-review/SKILL.md',
+    name: 'gsc-weekly-review',
+    requiredTerms: ['reports.weekly_digest', 'analytics.compare', 'average position'],
+  },
+  {
+    path: 'skills/gsc-indexing-triage/SKILL.md',
+    name: 'gsc-indexing-triage',
+    requiredTerms: ['urls.inspect', 'indexing.request', 'not a live URL test'],
+  },
+  {
+    path: 'skills/gsc-search-opportunities/SKILL.md',
+    name: 'gsc-search-opportunities',
+    requiredTerms: ['insights.quick_wins', 'insights.cannibalization', 'not guaranteed exhaustive'],
+  },
+] as const;
 
+test('Cursor plugin bundles valid evidence-safe workflow skills', () => {
+  const seenNames = new Set<string>();
+
+  for (const skill of cursorSkills) {
+    const source = readFileSync(resolve(projectRoot, skill.path), 'utf8').replace(/^\uFEFF/, '');
+    const frontmatter = source.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n/);
+    assert.ok(frontmatter, `${skill.path} must begin with YAML frontmatter`);
+
+    const name = frontmatter[1].match(/^name:\s*(.+)$/m)?.[1]?.trim();
+    const description = frontmatter[1].match(/^description:\s*(.+)$/m)?.[1]?.trim();
+    assert.equal(name, skill.name, `${skill.path} frontmatter name must match its directory`);
+    assert.match(name ?? '', /^[a-z0-9]+(?:-[a-z0-9]+)*$/, `${skill.path} name must be lowercase kebab-case`);
+    assert.ok(description && description.length >= 30, `${skill.path} must include a useful description`);
+    assert.equal(seenNames.has(name!), false, `Cursor skill name ${name} must be unique`);
+    seenNames.add(name!);
+
+    for (const term of skill.requiredTerms) {
+      assert.equal(source.includes(term), true, `${skill.path} must preserve the ${term} workflow guardrail`);
+    }
+  }
+
+  assert.match(
+    readmeSource,
+    /Cursor plugin[\s\S]*gsc-weekly-review[\s\S]*gsc-indexing-triage[\s\S]*gsc-search-opportunities/i,
+    'README must make the bundled Cursor workflow skills discoverable',
+  );
+  assert.match(
+    readmeSource,
+    /Add to Cursor[\s\S]*installs the MCP connection only/i,
+    'README must not imply that the MCP deeplink installs the full Cursor plugin skills',
+  );
+});
 test('package release versions remain aligned across machine-readable metadata', () => {
   const expectedVersion = packageJson.version;
 
