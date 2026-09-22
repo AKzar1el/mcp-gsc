@@ -193,6 +193,12 @@ const CAPABILITIES_OUTPUT_SCHEMA = {
       description: z.string(),
     }),
   ),
+  provider_limits: z.object({
+    generative_ai_performance_report: z.object({
+      dedicated_api_supported: z.literal(false),
+      note: z.string(),
+    }),
+  }),
   hint: z.string(),
 };
 
@@ -243,6 +249,10 @@ const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
     'False because the Search Analytics API does not guarantee every data row; Google can return only top rows even after local pagination is exhausted.',
   ),
   provider_note: z.string(),
+  generative_ai_report_isolatable: z.literal(false).describe(
+    'False because the current documented Search Analytics API exposes no dedicated Generative AI report search type or filter selector.',
+  ),
+  generative_ai_note: z.string(),
   next_start_row: z.number().int().nonnegative().optional(),
   has_more: z.boolean(),
   truncated: z.boolean(),
@@ -480,6 +490,9 @@ function toolResponse<T extends Record<string, unknown>>(
 const SEARCH_ANALYTICS_PROVIDER_NOTE =
   'Google Search Analytics does not guarantee all data rows and can return only top rows. Local pagination fields describe what this server fetched or bounded; they do not prove provider-level exhaustiveness.';
 
+const GENERATIVE_AI_REPORT_API_NOTE =
+  "Search Console's dedicated Generative AI performance reports are not exposed by the current documented Search Analytics API as a dedicated search type or filter selector. AI Overviews and AI Mode remain included in overall web Search performance data. Do not infer isolated Generative AI metrics from analytics.query or guess a searchAppearance identifier.";
+
 function paginationMetadata(result: PaginatedSearchAnalyticsResult) {
   return {
     rows_fetched: result.rows.length,
@@ -570,7 +583,7 @@ const TOOL_CATALOG = [
   {
     name: 'analytics.query',
     description:
-      'Query Search Console search analytics (impressions, clicks, CTR, average position) over a date range, broken down by query, page, country, device, date, or search appearance. Supports filters and pagination. Google does not guarantee every data row and can return only top rows.',
+      'Query Search Console search analytics (impressions, clicks, CTR, average position) over a date range, broken down by query, page, country, device, date, or search appearance. Supports filters and pagination. Google does not guarantee every data row and can return only top rows. The current documented API does not expose a dedicated Generative AI performance-report selector; do not invent one.',
   },
   {
     name: 'insights.page_queries',
@@ -733,6 +746,12 @@ class GscMcpRuntime {
           access_mode: accessMode,
           auth_status: authStatus,
           tools: getToolCatalogForAccessMode(TOOL_CATALOG, accessMode),
+          provider_limits: {
+            generative_ai_performance_report: {
+              dedicated_api_supported: false as const,
+              note: GENERATIVE_AI_REPORT_API_NOTE,
+            },
+          },
           hint: "If auth_status is not 'connected', the user should reconnect this server in their MCP client to sign in with Google.",
         };
         return toolResponse(JSON.stringify(capabilities, null, 2), capabilities);
@@ -993,6 +1012,13 @@ class GscMcpRuntime {
           '  value in a separate query and group by page/query/country/device/',
           '  date/hour as needed. Do not guess new appearance identifiers;',
           '  discover the values Google returns for the property first.',
+          '- GENERATIVE AI REPORT: Search Console now has dedicated',
+          '  Generative AI performance reports in its UI, but the current',
+          '  documented Search Analytics API exposes no dedicated Generative',
+          '  AI search type or filter selector. AI Overviews and AI Mode remain',
+          '  included in overall web Search performance data. Do not guess a',
+          '  searchAppearance identifier or claim analytics.query isolates the',
+          '  dedicated Generative AI report.',
           '- Use dimension_filter_groups to filter by country, device, query',
           '  content, page URL, or search feature. includingRegex and',
           '  excludingRegex use RE2 syntax. A query regex can provide a manual',
@@ -1054,7 +1080,7 @@ class GscMcpRuntime {
           search_type: z
             .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
             .default('web')
-            .describe('Which search index to query. Defaults to web. Google Discover and Google News do not support query grouping/filtering or average position.'),
+            .describe('Which documented Search Analytics search index to query. Defaults to web. Google Discover and Google News do not support query grouping/filtering or average position. The current API does not expose a dedicated Generative AI performance-report search type.'),
           aggregation_type: z
             .enum(['auto', 'byNewsShowcasePanel', 'byPage', 'byProperty'])
             .default('auto')
@@ -1148,6 +1174,8 @@ class GscMcpRuntime {
             : {}),
           provider_exhaustiveness_guaranteed: false,
           provider_note: SEARCH_ANALYTICS_PROVIDER_NOTE,
+          generative_ai_report_isolatable: false,
+          generative_ai_note: GENERATIVE_AI_REPORT_API_NOTE,
           has_more: bounded.resultPage.has_more,
           truncated: bounded.resultPage.truncated,
           byte_limit_reached: bounded.resultPage.byte_limit_reached,

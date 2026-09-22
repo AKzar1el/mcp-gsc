@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - The published `npx` launcher now persists local Wrangler/KV/Durable Object state in a stable per-user directory instead of the versioned npm package cache, preserving the encrypted Google session across later package upgrades and ordinary npm cache cleanup; `MCP_GSC_STATE_DIR` can override the location. The first release with this change may require one Google reconnect because older launcher releases used the package cache for local state.
 - Official MCP Registry discovery no longer advertises the owner-hosted remote while that deployment's tool contract lags the current npm package; the verified npm launcher remains the Registry installation path until hosted parity is restored.
+- Search Analytics now exposes a machine-readable Generative AI report boundary instead of inviting agents to invent an unsupported selector: the current documented API has no dedicated Generative AI search type/filter, while AI Overviews and AI Mode remain included in overall web Search performance data.
 
 ## [0.4.12] - 2026-09-22
 

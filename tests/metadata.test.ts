@@ -295,6 +295,39 @@ test('Search Analytics metadata preserves provider-level non-exhaustiveness', ()
   );
 });
 
+test('Search Analytics metadata does not fabricate dedicated Generative AI API support', () => {
+  for (const [label, metadata] of [
+    ['server.json', serverJson],
+    ['manifest.json', manifestJson],
+  ] as const) {
+    const tool = metadata.tools.find(
+      (entry: { name: string }) => entry.name === 'analytics.query',
+    );
+    assert.ok(tool, `${label} must describe analytics.query`);
+    assert.match(
+      tool.description,
+      /does not expose a dedicated Generative AI performance-report selector/i,
+      `${label} must preserve the current documented API boundary`,
+    );
+  }
+
+  assert.match(
+    indexSource,
+    /generative_ai_report_isolatable/,
+    'runtime structured output must expose the Generative AI isolation boundary',
+  );
+  assert.match(
+    indexSource,
+    /Do not infer isolated Generative AI metrics from analytics\.query or guess a searchAppearance identifier/,
+    'runtime guidance must reject guessed Generative AI selectors',
+  );
+  assert.match(
+    readmeSource,
+    /use the Search Console UI for the dedicated Generative AI report until Google documents API access/i,
+    'README must route dedicated Generative AI reporting to the supported surface',
+  );
+});
+
 test('period comparison guidance does not turn one-sided Search Analytics absence into zero', () => {
   assert.match(
     indexSource,
