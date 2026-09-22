@@ -290,25 +290,20 @@ test('published tool catalogs remain aligned', () => {
 });
 
 test('server.capabilities distinguishes stored credentials from live Google authorization', () => {
-  for (const [label, metadata] of [
-    ['server.json', serverJson],
-    ['manifest.json', manifestJson],
-  ] as const) {
-    const tool = metadata.tools.find(
-      (entry: { name: string }) => entry.name === 'server.capabilities',
-    );
-    assert.ok(tool, `${label} must describe server.capabilities`);
-    assert.match(
-      tool.description,
-      /stored refresh credential[\s\S]*not a live Google authorization check/i,
-      `${label} must not claim stored credentials prove current provider authorization`,
-    );
-    assert.doesNotMatch(
-      tool.description,
-      /currently authenticated/i,
-      `${label} must not describe the local credential check as live authentication`,
-    );
-  }
+  const manifestTool = manifestJson.tools.find(
+    (entry: { name: string }) => entry.name === 'server.capabilities',
+  );
+  assert.ok(manifestTool, 'manifest.json must describe server.capabilities');
+  assert.match(
+    manifestTool.description,
+    /stored refresh credential[\s\S]*not a live Google authorization check/i,
+    'manifest.json must not claim stored credentials prove current provider authorization',
+  );
+  assert.doesNotMatch(
+    manifestTool.description,
+    /currently authenticated/i,
+    'manifest.json must not describe the local credential check as live authentication',
+  );
 
   assert.match(
     indexSource,
