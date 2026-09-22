@@ -2156,9 +2156,9 @@ export const defaultHandler = {
         });
       }
       return new Response(
-        'mcp-gsc — Hosted MCP server for Google Search Console.\n' +
-          'Connect this URL as a custom MCP connector in Claude.ai:\n' +
-          `${url.origin}/mcp\n`,
+        'mcp-gsc — Google Search Console MCP server.\n' +
+          `MCP endpoint: ${url.origin}/mcp\n` +
+          'Setup: https://github.com/AKzar1el/mcp-gsc#readme\n',
         { headers: { 'content-type': 'text/plain; charset=utf-8' } },
       );
     }
