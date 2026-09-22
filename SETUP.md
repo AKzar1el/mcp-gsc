@@ -84,7 +84,6 @@ npx wrangler login
    - The `npx` launcher persists its local KV and Durable Object state in `~/.mcp-gsc/state` by default so npm package upgrades or cache cleanup do not discard the encrypted Google session. Set `MCP_GSC_STATE_DIR` to use another directory, and keep the same `TOKEN_ENCRYPTION_KEY` when reusing existing state. The first release with this stable path may require one Google reconnect because older launcher releases stored local state under the npm package cache.
    - The Worker derives Google's redirect URI from the MCP request URL. Google requires an exact authorized-URI match, so keep the same scheme, host, port, and `/google/callback` path. `localhost` and `127.0.0.1` are different hosts for this check.
    - The path must be exactly `/google/callback` — that's the route this server handles.
-   - The DigestSEO-hosted instance also requires this exact callback URI in the OAuth client configured on its Worker: `https://mcp-gsc.digestseo.com/google/callback`.
 4. Click **Create**. Copy the **Client ID** and **Client secret** — you'll set them as secrets in the next step.
 
 ---
@@ -207,8 +206,6 @@ To remove all three limits you must move the app to **Publishing status: In prod
 - Once the app is **In production and verified**, the unverified-app screen goes away, the 100-user cap is lifted, and refresh tokens stop expiring on the 7-day clock.
 
 **Bottom line:** for personal use with one or two Google accounts, Testing mode is fine as long as you don't mind reconnecting roughly every 7 days. For anything shared or automated, you'll want to complete Google's verification — and that, not the code, is the heaviest part of self-hosting a Google Search Console MCP.
-
-> Don't want to deal with verification at all? The hosted version at **[digestseo.com](https://digestseo.com)** has already been through it (and adds automatic weekly email digests on top).
 
 ---
 
