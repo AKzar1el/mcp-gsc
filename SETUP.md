@@ -61,7 +61,7 @@ npx wrangler login
 
    `readwrite` preserves the full tool surface: it grants Search Console read-write access and the Indexing API scope required to manage sites, sitemaps, and request URL crawling. `readonly` requests only the Search Console read-only scope and omits the mutation tools.
 
-   Note that the Indexing API itself is narrow: Google currently restricts it to pages containing `JobPosting` structured data or livestream pages containing `BroadcastEvent` inside `VideoObject`. It is not available for general webpage submission — the `indexing.request` tool checks a page's structured data before submitting and returns an error for ineligible URLs.
+   Note that the Indexing API itself is narrow: Google currently restricts it to pages containing `JobPosting` structured data or livestream pages containing `BroadcastEvent` inside `VideoObject`. It is not available for general webpage submission — the `indexing.request` tool checks a page's structured data before submitting and returns an error for ineligible URLs. Google's default **200 publish requests/day/project** is explicitly for onboarding and submission testing; ongoing usage/resource provisioning requires additional Google approval. All submissions are subject to spam detection, and Google warns that abuse or attempts to exceed quotas through multiple accounts or other means can result in revoked access. The server's own lower safety limits do not constitute Google approval or increase provider quota.
 5. Save the Data Access changes. In **Google Auth platform → Audience**, leave **Publishing status** as **Testing** for now — see [Step 7](#step-7--important-google-verification).
 
 ---

@@ -60,8 +60,9 @@ export const TOOL_RATE_LIMIT_POLICIES = {
   indexing_request: {
     category: 'indexing-request',
     tools: ['indexing.request'],
-    // Google defaults to 200 publish requests per project per day. Two per
-    // user reserves the default quota for up to 100 authenticated users.
+    // Google's 200 publish/day default is onboarding/testing quota and does
+    // not itself authorize ongoing use. Mirror that number only as a local
+    // safety ceiling; two per user reserves it for up to 100 users.
     windowMs: DAY_MS,
     userLimit: 2,
     projectLimit: 200,

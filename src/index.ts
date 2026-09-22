@@ -217,6 +217,9 @@ const SITE_DETAIL_OUTPUT_SCHEMA = {
 const SITE_ADD_VERIFICATION_NOTE =
   "Google Search Console Sites.add only adds the property to the user's Search Console site set; it does not verify ownership. Ownership verification is a separate Google Site Verification/Search Console workflow.";
 
+const INDEXING_PROVIDER_USAGE_NOTE =
+  "Google describes the Indexing API's default 200 publish-requests-per-day project quota as onboarding/testing capacity, not approval for ongoing usage. Additional approval is required for usage/resource provisioning. Google also applies spam detection to all submissions and warns that abuse or attempts to exceed quotas through multiple accounts or other means can result in revoked access.";
+
 const URL_INSPECTION_SCOPE_NOTE =
   "Google's URL Inspection API reports the version currently known in Google's index; it does not run a live URL test or prove current live-page indexability. The mobileUsabilityResult field is deprecated and may be absent.";
 
@@ -444,6 +447,10 @@ const CONTENT_DECAY_OUTPUT_SCHEMA = {
 const INDEXING_OUTPUT_SCHEMA = {
   result: z.unknown(),
   note: z.string(),
+  provider_default_quota_for_testing_only: z.literal(true),
+  provider_usage_approval_required: z.literal(true),
+  provider_spam_detection_applies: z.literal(true),
+  provider_usage_note: z.string(),
 };
 
 const INDEXED_PAGES_OUTPUT_SCHEMA = {
@@ -662,7 +669,7 @@ const TOOL_CATALOG = [
   {
     name: 'indexing.request',
     description:
-      'Request an eligible JobPosting or livestream URL update through Google\'s restricted Indexing API; this is not a general webpage submission tool.',
+      'Request an eligible JobPosting or livestream URL update through Google\'s restricted Indexing API; this is not a general webpage submission tool. Google treats the default publish quota as onboarding/testing capacity, requires approval for ongoing usage/resource provisioning, and spam-screens submissions.',
   },
   {
     name: 'indexing.list_pages',
@@ -1664,7 +1671,7 @@ class GscMcpRuntime {
       'indexing.request',
       {
         title: 'Request Indexing',
-        description: "Requests indexing through Google's Indexing API for a URL within an owner-level Search Console property accessible to the connected Google account. Google currently restricts this API to pages containing JobPosting structured data or livestream pages containing BroadcastEvent inside VideoObject. It is not available for general webpage submission.",
+        description: "Requests indexing through Google's Indexing API for a URL within an owner-level Search Console property accessible to the connected Google account. Google currently restricts this API to pages containing JobPosting structured data or livestream pages containing BroadcastEvent inside VideoObject. It is not available for general webpage submission. Google's default 200 publish-requests-per-day project quota is for onboarding/testing rather than ongoing-use approval; additional approval is required for usage/resource provisioning, and all submissions are subject to spam detection.",
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe(`${SEARCH_CONSOLE_PROPERTY_DESCRIPTION} The connected Google account must be an owner of this property.`),
           url: z.string().superRefine((value, ctx) => {
@@ -1692,6 +1699,10 @@ class GscMcpRuntime {
         const payload = {
           result,
           note: "Google accepting this notification does not guarantee the URL will be indexed. Indexing remains at Google's discretion.",
+          provider_default_quota_for_testing_only: true as const,
+          provider_usage_approval_required: true as const,
+          provider_spam_detection_applies: true as const,
+          provider_usage_note: INDEXING_PROVIDER_USAGE_NOTE,
         };
         return toolResponse(JSON.stringify(payload, null, 2), payload);
       },

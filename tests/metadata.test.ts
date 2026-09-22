@@ -287,7 +287,7 @@ test('sites.add metadata preserves the property-add versus ownership-verificatio
   );
 });
 
-test('Indexing API discovery metadata preserves its restricted eligibility scope', () => {
+test('Indexing API metadata preserves eligibility and provider-approval boundaries', () => {
   for (const [label, metadata] of [
     ['server.json', serverJson],
     ['manifest.json', manifestJson],
@@ -306,12 +306,42 @@ test('Indexing API discovery metadata preserves its restricted eligibility scope
       /not a general webpage submission tool/i,
       `${label} must reject general-purpose indexing semantics`,
     );
+    assert.match(
+      tool.description,
+      /onboarding\/testing/i,
+      `${label} must identify the default quota as onboarding/testing capacity`,
+    );
+    assert.match(
+      tool.description,
+      /usage requires approval/i,
+      `${label} must preserve the provider approval boundary`,
+    );
+    assert.match(
+      tool.description,
+      /spam-screened/i,
+      `${label} must disclose provider spam screening`,
+    );
   }
 
   assert.match(
     indexSource,
-    /Request an eligible JobPosting or livestream URL update through Google\\'s restricted Indexing API; this is not a general webpage submission tool/,
+    /provider_default_quota_for_testing_only:[\s\S]*provider_usage_approval_required:[\s\S]*provider_spam_detection_applies:/,
+    'runtime structured output must expose Indexing API provider-usage boundaries',
+  );
+  assert.match(
+    indexSource,
+    /default 200 publish-requests-per-day project quota is for onboarding\/testing rather than ongoing-use approval/,
     'server.capabilities must preserve the restricted Indexing API scope',
+  );
+  assert.match(
+    readmeSource,
+    /default 200 publish requests\/day\/project is for onboarding and submission testing[\s\S]*spam detection[\s\S]*revoke access/i,
+    'README must document Indexing API approval and spam-enforcement semantics',
+  );
+  assert.match(
+    setupSource,
+    /default \*\*200 publish requests\/day\/project\*\*[\s\S]*ongoing usage\/resource provisioning requires additional Google approval[\s\S]*spam detection/i,
+    'SETUP must distinguish local safety limits from Google Indexing API approval',
   );
 });
 
