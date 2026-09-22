@@ -4,10 +4,10 @@
  * MCP defines destructiveHint=false for non-read-only tools that perform only
  * additive updates. Search Console's site addition and sitemap submission are
  * additive PUT operations; the corresponding DELETE operations remain
- * destructive. Indexing publishes a URL_UPDATED notification with POST; each
- * call can consume quota and change Google's indexing state, so it remains
- * conservative (destructive + non-idempotent). Tool annotations are client
- * hints, not an enforcement or confirmation mechanism.
+ * destructive. Indexing update/removal notifications use POST; each call can
+ * consume quota and change Google's indexing state, so both remain conservative
+ * (destructive + non-idempotent). Tool annotations are client hints, not an
+ * enforcement or confirmation mechanism.
  */
 export const WRITE_TOOL_ANNOTATIONS = {
   'sites.add': {
@@ -35,7 +35,12 @@ export const WRITE_TOOL_ANNOTATIONS = {
     openWorldHint: true,
   },
   'indexing.request': {
-    // The implementation only publishes URL_UPDATED, never URL_DELETED.
+    readOnlyHint: false,
+    destructiveHint: true,
+    idempotentHint: false,
+    openWorldHint: true,
+  },
+  'indexing.remove': {
     readOnlyHint: false,
     destructiveHint: true,
     idempotentHint: false,

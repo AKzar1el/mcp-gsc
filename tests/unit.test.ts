@@ -54,6 +54,7 @@ import {
   processCannibalization,
   processContentDecay,
   requestIndexing,
+  requestIndexingRemoval,
   getIndexingNotificationMetadata,
   checkIndexingEligibility,
   processPerformanceComparison,
@@ -1426,6 +1427,36 @@ test('getIndexingNotificationMetadata: reads provider notification receipt metad
   );
   assert.equal(requestUrl.searchParams.get('url'), targetUrl);
   assert.equal(calls[0].init?.method, undefined);
+  assert.deepEqual(result, mockResult);
+});
+
+test('requestIndexingRemoval: verifies removal readiness then publishes URL_DELETED', async () => {
+  const targetUrl = 'https://example.com/careers/old-role';
+  const mockResult = {
+    urlNotificationMetadata: {
+      latestRemove: {
+        url: targetUrl,
+        type: 'URL_DELETED',
+        notifyTime: '2026-09-23T00:30:00Z',
+      },
+    },
+  };
+  const { result, calls } = await withMockFetch(
+    (url) =>
+      url === 'https://indexing.googleapis.com/v3/urlNotifications:publish'
+        ? json(200, mockResult)
+        : Promise.resolve(new Response('gone', { status: 410 })),
+    () => requestIndexingRemoval('at', targetUrl),
+  );
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, targetUrl);
+  assert.equal(calls[0].init?.redirect, 'manual');
+  assert.equal(calls[1].url, 'https://indexing.googleapis.com/v3/urlNotifications:publish');
+  assert.equal(calls[1].init?.method, 'POST');
+  assert.deepEqual(JSON.parse(calls[1].init?.body as string), {
+    url: targetUrl,
+    type: 'URL_DELETED',
+  });
   assert.deepEqual(result, mockResult);
 });
 

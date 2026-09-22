@@ -243,6 +243,7 @@ describe('Worker orchestration', () => {
         'sitemaps.delete',
         'indexing.status',
         'indexing.request',
+        'indexing.remove',
       ]),
     );
     expect(tools['analytics.query'].inputSchema).toBeDefined();
@@ -264,6 +265,11 @@ describe('Worker orchestration', () => {
       idempotentHint: true,
     });
     expect(tools['indexing.request'].annotations).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+      idempotentHint: false,
+    });
+    expect(tools['indexing.remove'].annotations).toMatchObject({
       readOnlyHint: false,
       destructiveHint: true,
       idempotentHint: false,

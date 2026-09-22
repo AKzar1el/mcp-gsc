@@ -32,9 +32,10 @@ Notes:
 - With `GSC_ACCESS_MODE=readonly`, the server requests only `openid`, `email`,
   and `https://www.googleapis.com/auth/webmasters.readonly`. It does not
   register `sites.add`, `sites.delete`, `sitemaps.submit`, `sitemaps.delete`,
-  or `indexing.request`; the remaining tool suite uses APIs that accept the
+  `indexing.request`, or `indexing.remove`; the remaining tool suite uses APIs that accept the
   read-only Search Console scope.
-- The Indexing API is requested only in read-write mode for `indexing.request`.
+- The Indexing API is requested only in read-write mode for `indexing.request`,
+  `indexing.remove`, and the otherwise read-only `indexing.status` lookup.
   Google restricts that API to `JobPosting` pages or livestream pages with a
   `BroadcastEvent` inside a `VideoObject`; it is not a general page-submission
   API.
@@ -60,7 +61,7 @@ delay and does not disclose another user's usage.
 | Search Analytics | `analytics.query`, `insights.quick_wins`, `insights.cannibalization`, `insights.content_decay`, `indexing.list_pages`, `analytics.compare` | 30 per user / 10 minutes |
 | URL inspection | `urls.inspect`, `urls.inspect_many` | 20 inspected URLs per user / 24 hours; batch requests reserve one unit per URL and run at most 3 inspections concurrently |
 | Search Console writes | `sites.add`, `sites.delete`, `sitemaps.submit`, `sitemaps.delete` | 10 per user / hour |
-| Indexing publish | `indexing.request` | 2 per user / 24 hours; 200 per deployment / 24 hours |
+| Indexing publish | `indexing.request`, `indexing.remove` | 2 per user / 24 hours; 200 per deployment / 24 hours |
 | Indexing metadata | `indexing.status` | 30 per user / minute; 180 per deployment / minute |
 | Weekly digest | `reports.weekly_digest` | 6 per user / hour |
 

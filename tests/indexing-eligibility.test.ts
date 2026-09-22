@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   checkIndexingEligibility,
+  checkIndexingRemovalEligibility,
   INDEXING_ELIGIBILITY_MAX_RESPONSE_BYTES,
   INDEXING_ELIGIBILITY_TIMEOUT_MS,
 } from '../src/google';
@@ -203,4 +204,36 @@ test('eligibility fetch rejects malformed and non-HTTP URLs without fetching', a
   assert.equal(result.eligible, false);
   assert.match(result.reason ?? '', /valid HTTP or HTTPS URL/);
   assert.equal(calls, 0);
+});
+
+test('removal eligibility accepts HTTP 404 and 410 without reading a body', async () => {
+  for (const status of [404, 410]) {
+    const result = await withMockFetch(
+      async () => new Response('gone', { status }),
+      () => checkIndexingRemovalEligibility('https://example.com/jobs/old-role'),
+    );
+    assert.deepEqual(result, { eligible: true });
+  }
+});
+
+test('removal eligibility accepts a robots noindex meta directive in the document head', async () => {
+  const result = await withMockFetch(
+    async () => htmlResponse('<html><head><meta name="robots" content="nofollow, noindex"></head><body>Retired job</body></html>'),
+    () => checkIndexingRemovalEligibility('https://example.com/jobs/old-role'),
+  );
+  assert.deepEqual(result, { eligible: true });
+});
+
+test('removal eligibility rejects an ordinary live page and noindex outside the document head', async () => {
+  for (const html of [
+    '<html><head><title>Live</title></head><body>Still live</body></html>',
+    '<html><head><title>Live</title></head><body><meta name="robots" content="noindex"></body></html>',
+  ]) {
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingRemovalEligibility('https://example.com/jobs/old-role'),
+    );
+    assert.equal(result.eligible, false);
+    assert.match(result.reason ?? '', /404\/410|robots noindex/);
+  }
 });
