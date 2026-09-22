@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Access-mode onboarding and Official MCP Registry metadata now identify all six read-write mutation tools after `indexing.remove` became part of the public tool surface.
+
 ## [0.4.24] - 2026-09-23
 
 ### Added

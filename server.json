@@ -97,7 +97,7 @@
       "description": "Generate a plain-language weekly SEO report with movers, top pages, and a recommended action."
     }
   ],
-    "version": "0.4.24-registry.1",
+  "version": "0.4.24-registry.2",
   "repository": {
     "url": "https://github.com/AKzar1el/mcp-gsc",
     "source": "github"
@@ -124,7 +124,7 @@
         },
         {
           "name": "GSC_ACCESS_MODE",
-          "description": "Google/Search Console access mode for the local launcher. Use readonly for least privilege or readwrite for the five mutation tools.",
+          "description": "Google/Search Console access mode for the local launcher. Use readonly for least privilege or readwrite for the six mutation tools.",
           "isRequired": false,
           "isSecret": false,
           "format": "string",

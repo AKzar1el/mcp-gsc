@@ -63,7 +63,7 @@ After pasting the two ids, choose the deployment access mode in the existing `va
 }
 ```
 
-Keep `"GSC_ACCESS_MODE": "readwrite"` only when the user explicitly needs the five mutation tools for property, sitemap, or eligible Indexing API operations. This choice also determines which Google OAuth scopes to add in Step 5; changing it later requires affected users to reconnect so Google grants the matching scope set.
+Keep `"GSC_ACCESS_MODE": "readwrite"` only when the user explicitly needs the six mutation tools for property, sitemap, or eligible Indexing API operations. This choice also determines which Google OAuth scopes to add in Step 5; changing it later requires affected users to reconnect so Google grants the matching scope set.
 
 Do not rename the `OAUTH_KV`/`USER_KV` bindings, the Durable Object bindings `MCP_OBJECT` with class `GscMcpAgent` or `PENDING_AUTH_STATE` with class `PendingAuthState`, or the migrations (`v1` for `GscMcpAgent` and `v2` for `PendingAuthState`). The MCP endpoint itself is stateless; `GscMcpAgent` is retained as a compatibility shell so existing deployments do not need a destructive Durable Object migration. The remaining bindings are used by OAuth state and tool-rate-limit coordination.
 
