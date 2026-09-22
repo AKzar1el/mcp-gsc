@@ -2055,7 +2055,44 @@ export async function createGscMcpServer(
 }
 
 export const mcpApiHandler = {
-  fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    if (
+      request.method === 'POST' &&
+      request.headers.has('Mcp-Method') &&
+      !request.headers.has('MCP-Protocol-Version')
+    ) {
+      let id: string | number | null = null;
+      let isRequest = false;
+      try {
+        const body = (await request.clone().json()) as { id?: unknown };
+        if (Object.prototype.hasOwnProperty.call(body, 'id')) {
+          isRequest = true;
+          if (typeof body.id === 'string' || typeof body.id === 'number') {
+            id = body.id;
+          }
+        }
+      } catch {
+        // Let the SDK handle malformed bodies; this guard targets valid modern requests.
+      }
+
+      if (isRequest) {
+        return new Response(
+          JSON.stringify({
+            jsonrpc: '2.0',
+            id,
+            error: {
+              code: -32020,
+              message: 'HeaderMismatch: MCP-Protocol-Version header is required for modern MCP requests.',
+            },
+          }),
+          {
+            status: 400,
+            headers: { 'content-type': 'application/json; charset=utf-8' },
+          },
+        );
+      }
+    }
+
     const handler = createMcpHandler(() => createGscMcpServer(env), {
       route: '/mcp',
     });
