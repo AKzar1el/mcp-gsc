@@ -25,6 +25,13 @@ export const WRITE_TOOL_NAMES = [
   'indexing.request',
 ] as const;
 
+const INDEXING_SCOPE_READ_TOOL_NAMES = ['indexing.status'] as const;
+
+const READWRITE_ONLY_TOOL_NAMES = [
+  ...WRITE_TOOL_NAMES,
+  ...INDEXING_SCOPE_READ_TOOL_NAMES,
+] as const;
+
 export function resolveGscAccessMode(value: string | undefined): GscAccessMode {
   if (value === undefined || value === '') {
     return DEFAULT_GSC_ACCESS_MODE;
@@ -54,6 +61,6 @@ export function getToolCatalogForAccessMode<T extends { name: string }>(
   }
 
   return tools.filter(
-    (tool) => !(WRITE_TOOL_NAMES as readonly string[]).includes(tool.name),
+    (tool) => !(READWRITE_ONLY_TOOL_NAMES as readonly string[]).includes(tool.name),
   );
 }

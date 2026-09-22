@@ -67,6 +67,15 @@ export const TOOL_RATE_LIMIT_POLICIES = {
     userLimit: 2,
     projectLimit: 200,
   },
+  indexing_metadata: {
+    category: 'indexing-metadata',
+    tools: ['indexing.status'],
+    // Google publishes a default metadata-read quota of 180 requests per
+    // minute per project. Keep per-user headroom inside that shared ceiling.
+    windowMs: MINUTE_MS,
+    userLimit: 30,
+    projectLimit: 180,
+  },
   weekly_digest: {
     category: 'weekly-digest',
     tools: ['reports.weekly_digest'],

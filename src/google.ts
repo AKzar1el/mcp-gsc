@@ -1475,6 +1475,42 @@ export async function requestIndexing(
   return await resp.json();
 }
 
+export interface IndexingNotification {
+  url?: string;
+  type?: 'URL_UPDATED' | 'URL_DELETED' | string;
+  notifyTime?: string;
+}
+
+export interface IndexingNotificationMetadata {
+  url?: string;
+  latestUpdate?: IndexingNotification;
+  latestRemove?: IndexingNotification;
+}
+
+export async function getIndexingNotificationMetadata(
+  accessToken: string,
+  url: string,
+): Promise<IndexingNotificationMetadata> {
+  const endpoint = new URL(
+    'https://indexing.googleapis.com/v3/urlNotifications/metadata',
+  );
+  endpoint.searchParams.set('url', url);
+
+  const resp = await fetchGoogleRead(endpoint.toString(), {
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  if (resp.status === 401) {
+    throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
+  }
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(
+      `Get indexing notification status failed: ${resp.status} ${text}`,
+    );
+  }
+  return (await resp.json()) as IndexingNotificationMetadata;
+}
+
 export interface PerformanceComparisonRow {
   key: string;
   period_a: { clicks: number; impressions: number; ctr: number; position: number };

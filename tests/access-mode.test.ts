@@ -26,6 +26,7 @@ const ALL_TOOL_NAMES = [
   'insights.quick_wins',
   'insights.cannibalization',
   'insights.content_decay',
+  'indexing.status',
   'indexing.request',
   'indexing.list_pages',
   'analytics.compare',
@@ -109,4 +110,9 @@ test('read-only mode excludes every mutation while readwrite preserves the full 
   for (const writeTool of WRITE_TOOL_NAMES) {
     assert.equal(readonlyToolNames.includes(writeTool), false, writeTool);
   }
+  assert.equal(
+    readonlyToolNames.includes('indexing.status'),
+    false,
+    'indexing.status requires the Indexing API OAuth scope omitted by readonly mode',
+  );
 });

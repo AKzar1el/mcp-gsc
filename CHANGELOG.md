@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `indexing.status` reads Google's latest successful Indexing API update/remove notification receipts for a previously submitted URL while explicitly distinguishing notification receipt from crawl, index coverage, indexing completion, or removal completion.
+
+### Fixed
+- `sites.delete` now describes and reports Google's actual account-scoped effect: it removes the property from the connected user's Search Console site set rather than implying that the website itself or a global Search Console property is deleted.
+
 ## [0.4.16] - 2026-09-22
 
 ### Fixed

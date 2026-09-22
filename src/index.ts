@@ -28,6 +28,7 @@ import {
   processCannibalization,
   processContentDecay,
   requestIndexing,
+  getIndexingNotificationMetadata,
   processPerformanceComparison,
   type PaginatedSearchAnalyticsResult,
 } from './google';
@@ -301,6 +302,13 @@ const SITE_ADD_OUTPUT_SCHEMA = {
   ownership_verification_note: z.string(),
 };
 
+const SITE_DELETE_OUTPUT_SCHEMA = {
+  message: z.string(),
+  removed_from_connected_account_site_set: z.literal(true),
+  website_content_deleted: z.literal(false),
+  provider_scope_note: z.string(),
+};
+
 const SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA = z.object({
   rows_fetched: z.number().int().nonnegative(),
   pages_fetched: z.number().int().positive(),
@@ -451,6 +459,24 @@ const INDEXING_OUTPUT_SCHEMA = {
   provider_usage_approval_required: z.literal(true),
   provider_spam_detection_applies: z.literal(true),
   provider_usage_note: z.string(),
+};
+
+const INDEXING_NOTIFICATION_SCHEMA = z.object({
+  url: z.string().optional(),
+  type: z.string().optional(),
+  notifyTime: z.string().optional(),
+});
+
+const INDEXING_STATUS_OUTPUT_SCHEMA = {
+  notification_metadata: z.object({
+    url: z.string().optional(),
+    latestUpdate: INDEXING_NOTIFICATION_SCHEMA.optional(),
+    latestRemove: INDEXING_NOTIFICATION_SCHEMA.optional(),
+  }),
+  notification_receipt_only: z.literal(true),
+  index_coverage_report: z.literal(false),
+  indexing_or_removal_completion_proven: z.literal(false),
+  note: z.string(),
 };
 
 const INDEXED_PAGES_OUTPUT_SCHEMA = {
@@ -604,7 +630,7 @@ const TOOL_CATALOG = [
   {
     name: 'sites.delete',
     description:
-      'Remove an existing website property from your Google Search Console account.',
+      "Remove an existing website property from the connected Google account's Search Console site set. This changes that account's Search Console membership for the property; it does not delete the website itself.",
   },
   {
     name: 'analytics.query',
@@ -670,6 +696,11 @@ const TOOL_CATALOG = [
     name: 'indexing.request',
     description:
       'Request an eligible JobPosting or livestream URL update through Google\'s restricted Indexing API; this is not a general webpage submission tool. Google treats the default publish quota as onboarding/testing capacity, requires approval for ongoing usage/resource provisioning, and spam-screens submissions.',
+  },
+  {
+    name: 'indexing.status',
+    description:
+      'Read the latest successful Indexing API update/remove notifications Google received for a previously submitted URL. This reports notification receipt only, not crawl, index coverage, indexing completion, or removal completion.',
   },
   {
     name: 'indexing.list_pages',
@@ -1413,12 +1444,12 @@ class GscMcpRuntime {
       this.server.registerTool(
       'sites.delete',
       {
-        title: 'Delete Search Console property',
-        description: 'Remove an existing website property from your Google Search Console account.',
+        title: 'Remove Search Console property from account',
+        description: "Remove an existing website property from the connected Google account's Search Console site set. Google documents this operation as removing the site from the user's Search Console sites; it does not delete website content.",
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
         },
-        outputSchema: MESSAGE_OUTPUT_SCHEMA,
+        outputSchema: SITE_DELETE_OUTPUT_SCHEMA,
         annotations: WRITE_TOOL_ANNOTATIONS['sites.delete'],
       },
       async ({ site_url }) => {
@@ -1427,8 +1458,14 @@ class GscMcpRuntime {
         if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
         await deleteSite(accessToken, site_url);
-        const message = `Successfully deleted site property: ${site_url}`;
-        return toolResponse(message, { message });
+        const message = `Successfully removed site property from the connected account's Search Console site set: ${site_url}`;
+        const payload = {
+          message,
+          removed_from_connected_account_site_set: true as const,
+          website_content_deleted: false as const,
+          provider_scope_note: "Google's Sites.delete method removes the property from the connected user's Search Console site set. It does not delete the website itself.",
+        };
+        return toolResponse(`${message}\n\n${payload.provider_scope_note}`, payload);
       },
     );
 
@@ -1667,6 +1704,49 @@ class GscMcpRuntime {
     );
 
     if (accessMode === 'readwrite') {
+      this.server.registerTool(
+      'indexing.status',
+      {
+        title: 'Get Indexing API notification status',
+        description: "Read the latest successful Indexing API URL_UPDATED and URL_DELETED notifications Google received for a previously submitted URL within an owner-level Search Console property accessible to the connected Google account. This is a read-only notification-receipt lookup, not an index-coverage report and not proof that Google crawled, indexed, or removed the URL. It is available only in readwrite access mode because Google's metadata endpoint requires the Indexing API OAuth scope.",
+        inputSchema: {
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe(`${SEARCH_CONSOLE_PROPERTY_DESCRIPTION} The connected Google account must be an owner of this property.`),
+          url: z.string().superRefine((value, ctx) => {
+            try {
+              assertIndexingRequestUrl(value);
+            } catch (error) {
+              ctx.addIssue({
+                code: 'custom',
+                message: (error as Error).message,
+              });
+            }
+          }).describe('A fully qualified HTTP/HTTPS URL previously submitted successfully through the Google Indexing API. It must fall within site_url.'),
+        },
+        outputSchema: INDEXING_STATUS_OUTPUT_SCHEMA,
+        annotations: READ_ONLY_ANNOTATIONS,
+      },
+      async ({ site_url, url }) => {
+        const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'indexing.status');
+        if (rateLimitError) return rateLimitError;
+        const accessToken = await this.getAccessToken(googleId);
+        const sites = await listSites(accessToken);
+        assertIndexingUrlAuthorized(url, site_url, sites);
+        const notificationMetadata = await getIndexingNotificationMetadata(
+          accessToken,
+          url,
+        );
+        const payload = {
+          notification_metadata: notificationMetadata,
+          notification_receipt_only: true as const,
+          index_coverage_report: false as const,
+          indexing_or_removal_completion_proven: false as const,
+          note: "This reports the latest successful Indexing API notification receipt(s) Google recorded for the URL. It does not report whether Google crawled, indexed, or removed the URL; use URL Inspection for indexed-state evidence.",
+        };
+        return toolResponse(JSON.stringify(payload, null, 2), payload);
+      },
+      );
+
       this.server.registerTool(
       'indexing.request',
       {

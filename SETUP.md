@@ -155,7 +155,7 @@ The template also sets `GSC_ACCESS_MODE` to `readwrite`, preserving the historic
 }
 ```
 
-Read-only deployments request `webmasters.readonly`, omit the Indexing API scope, and do not register `sites.add`, `sites.delete`, `sitemaps.submit`, `sitemaps.delete`, or `indexing.request`. Changing modes affects OAuth grants for future connections; reconnect users after changing the mode so Google grants the matching scope set.
+Read-only deployments request `webmasters.readonly`, omit the Indexing API scope, and do not register `sites.add`, `sites.delete`, `sitemaps.submit`, `sitemaps.delete`, `indexing.request`, or the otherwise read-only `indexing.status` lookup. Changing modes affects OAuth grants for future connections; reconnect users after changing the mode so Google grants the matching scope set.
 
 `wrangler.jsonc` is gitignored because it contains your account's namespace ids. The `wrangler.example.jsonc` template stays in git.
 

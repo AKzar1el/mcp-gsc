@@ -51,8 +51,8 @@ Notes:
 ## Tool rate limits
 
 The server enforces the following fixed-window limits before making upstream
-requests. They are per authenticated user and tool category; `indexing.request`
-also has a deployment-wide project guard. A rejected invocation returns a retry
+requests. They are per authenticated user and tool category; the Indexing API
+publish and metadata-read categories also have deployment-wide project guards. A rejected invocation returns a retry
 delay and does not disclose another user's usage.
 
 | Category | Tools | Limit |
@@ -61,9 +61,11 @@ delay and does not disclose another user's usage.
 | URL inspection | `urls.inspect`, `urls.inspect_many` | 20 inspected URLs per user / 24 hours; batch requests reserve one unit per URL and run at most 3 inspections concurrently |
 | Search Console writes | `sites.add`, `sites.delete`, `sitemaps.submit`, `sitemaps.delete` | 10 per user / hour |
 | Indexing publish | `indexing.request` | 2 per user / 24 hours; 200 per deployment / 24 hours |
+| Indexing metadata | `indexing.status` | 30 per user / minute; 180 per deployment / minute |
 | Weekly digest | `reports.weekly_digest` | 6 per user / hour |
 
-The Indexing API's default publish quota is 200 requests per project per day.
+The Indexing API's default publish quota is 200 requests per project per day,
+and its default metadata-read quota is 180 requests per project per minute.
 Search Analytics and URL Inspection have separate load and per-site quotas, so
 these limits are intentionally conservative rather than a replacement for
 monitoring the Google Cloud project quota.
