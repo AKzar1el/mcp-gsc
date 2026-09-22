@@ -51,18 +51,17 @@ test('Indexing authorization accepts URLs within an owner URL-prefix property', 
   );
 });
 
-test('Indexing authorization enforces path boundaries for URL-prefix properties', () => {
+test('Indexing authorization follows Search Console literal URL-prefix semantics', () => {
   const prefixWithoutTrailingSlash: SearchConsoleSite = {
     siteUrl: 'https://example.com/jobs',
     permissionLevel: 'siteOwner',
   };
   assertAuthorized('https://example.com/jobs', prefixWithoutTrailingSlash.siteUrl, [prefixWithoutTrailingSlash]);
   assertAuthorized('https://example.com/jobs/engineer', prefixWithoutTrailingSlash.siteUrl, [prefixWithoutTrailingSlash]);
-  assertRejected(
+  assertAuthorized(
     'https://example.com/jobs-other/engineer',
     prefixWithoutTrailingSlash.siteUrl,
     [prefixWithoutTrailingSlash],
-    /must belong/,
   );
 });
 
