@@ -801,6 +801,12 @@ test('URL Inspection metadata preserves indexed-version-only semantics', () => {
     /not a live URL test/i,
     'README must preserve the indexed-version-only limitation for users',
   );
+
+  assert.equal(
+    (indexSource.match(/language_code: URL_INSPECTION_LANGUAGE_CODE_SCHEMA/g) ?? []).length,
+    2,
+    'urls.inspect and urls.inspect_many must share the provider-valid language-code schema',
+  );
 });
 
 test('quick-win metadata preserves average-position semantics and actual eligibility rules', () => {

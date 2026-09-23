@@ -66,6 +66,7 @@ import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from './content-decay-schema';
 import { resolveIndexedPagesDateRange } from './indexed-pages-range';
 import { createQuickWinsInputSchema } from './quick-wins-schema';
 import { SITEMAP_URL_SCHEMA } from './sitemap-url-schema';
+import { URL_INSPECTION_LANGUAGE_CODE_SCHEMA } from './url-inspection-language-schema';
 import {
   classifySearchConsolePropertyIdentifier,
   SEARCH_CONSOLE_PROPERTY_DESCRIPTION,
@@ -969,12 +970,7 @@ class GscMcpRuntime {
             .describe(
               'The fully-qualified URL to inspect. Must belong to the site_url property: same domain for sc-domain properties, same URL prefix for URL-prefix properties.',
             ),
-          language_code: z
-            .string()
-            .default('en-US')
-            .describe(
-              "BCP-47 language code for translatable strings in the result, e.g. 'en-US' or 'de-DE'.",
-            ),
+          language_code: URL_INSPECTION_LANGUAGE_CODE_SCHEMA,
         },
         outputSchema: INSPECTION_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
@@ -1019,12 +1015,7 @@ class GscMcpRuntime {
             .describe(
               'Between 1 and 10 unique fully-qualified URLs to inspect. Each URL must belong to the site_url property.',
             ),
-          language_code: z
-            .string()
-            .default('en-US')
-            .describe(
-              "BCP-47 language code for translatable strings in the results, e.g. 'en-US' or 'de-DE'.",
-            ),
+          language_code: URL_INSPECTION_LANGUAGE_CODE_SCHEMA,
         },
         outputSchema: INSPECTION_BATCH_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
