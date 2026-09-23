@@ -937,6 +937,28 @@ test('querySearchAnalytics: forwards News Showcase panel aggregation parameters'
   ]);
 });
 
+test('querySearchAnalytics: rejects byPage page grouping before calling Google', async () => {
+  const { calls } = await withMockFetch(
+    () => json(200, { rows: [] }),
+    async () => {
+      await assert.rejects(
+        () =>
+          querySearchAnalytics('at', 'https://example.com/', {
+            startDate: '2026-05-01',
+            endDate: '2026-05-31',
+            dimensions: ['page'],
+            rowLimit: 100,
+            type: 'web',
+            aggregationType: 'byPage',
+          }),
+        /byPage cannot be combined with page grouping or filtering; use auto instead/,
+      );
+    },
+  );
+
+  assert.equal(calls.length, 0);
+});
+
 test('Search Analytics request validation rejects documented invalid cross-field combinations', () => {
   const base = {
     startDate: '2026-05-01',
@@ -967,6 +989,43 @@ test('Search Analytics request validation rejects documented invalid cross-field
         aggregationType: 'byProperty',
       }),
     /byProperty cannot be combined with page grouping or filtering/,
+  );
+  assert.throws(
+    () =>
+      assertSearchAnalyticsQueryCompatible({
+        ...base,
+        dimensions: ['page'],
+        aggregationType: 'byPage',
+      }),
+    /byPage cannot be combined with page grouping or filtering; use auto instead/,
+  );
+  assert.throws(
+    () =>
+      assertSearchAnalyticsQueryCompatible({
+        ...base,
+        dimensions: ['country'],
+        aggregationType: 'byPage',
+        dimensionFilterGroups: [
+          {
+            groupType: 'and',
+            filters: [
+              {
+                dimension: 'page',
+                operator: 'equals',
+                expression: 'https://example.com/a',
+              },
+            ],
+          },
+        ],
+      }),
+    /byPage cannot be combined with page grouping or filtering; use auto instead/,
+  );
+  assert.doesNotThrow(() =>
+    assertSearchAnalyticsQueryCompatible({
+      ...base,
+      dimensions: ['country'],
+      aggregationType: 'byPage',
+    }),
   );
   assert.throws(
     () =>

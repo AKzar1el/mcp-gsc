@@ -1219,7 +1219,7 @@ class GscMcpRuntime {
             .enum(['auto', 'byNewsShowcasePanel', 'byPage', 'byProperty'])
             .default('auto')
             .describe(
-              "How Google aggregates metrics. Leave as 'auto' unless specific semantics are needed. 'byProperty' cannot be used with page grouping/filtering or search_type discover/googleNews. 'byNewsShowcasePanel' requires search_type discover/googleNews plus a searchAppearance equals NEWS_SHOWCASE filter, and cannot be combined with page grouping/filtering or another searchAppearance filter.",
+              "How Google aggregates metrics. Leave as 'auto' unless specific semantics are needed. When grouping/filtering by page, use 'auto'; explicit 'byPage' and 'byProperty' are rejected for that request shape. 'byProperty' is also unavailable for search_type discover/googleNews. 'byNewsShowcasePanel' requires search_type discover/googleNews plus a searchAppearance equals NEWS_SHOWCASE filter, and cannot be combined with page grouping/filtering or another searchAppearance filter.",
             ),
           dimension_filter_groups: z
             .array(
