@@ -62,6 +62,19 @@ const GOOGLE_READ_MAX_ATTEMPTS = 3;
 const GOOGLE_READ_BASE_DELAY_MS = 1_000;
 const GOOGLE_READ_MAX_DELAY_MS = 5_000;
 
+function googleErrorReasonsFromText(text: string): string[] {
+  try {
+    const data = JSON.parse(text) as {
+      error?: { errors?: Array<{ reason?: unknown }> };
+    };
+    return (data.error?.errors ?? [])
+      .map((entry) => entry.reason)
+      .filter((reason): reason is string => typeof reason === 'string');
+  } catch {
+    return [];
+  }
+}
+
 async function isGoogleReadRetryableResponse(response: Response): Promise<boolean> {
   if (GOOGLE_READ_RETRYABLE_STATUSES.has(response.status)) return true;
   if (response.status !== 403) return false;
@@ -645,6 +658,12 @@ export async function querySearchAnalytics(
   }
   if (!resp.ok) {
     const text = await resp.text();
+    const reasons = googleErrorReasonsFromText(text);
+    if (resp.status === 403 && reasons.includes('quotaExceeded')) {
+      throw new Error(
+        'Search Analytics load quota exceeded. Google recommends waiting about 15 minutes before retrying a short-term load-quota failure. If the error persists, reduce expensive page/query grouping or filtering, shorten the date range, and avoid repeatedly requesting the same data.',
+      );
+    }
     throw new Error(`Search analytics query failed: ${resp.status} ${text}`);
   }
   const data = (await resp.json()) as {

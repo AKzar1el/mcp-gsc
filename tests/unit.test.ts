@@ -1222,6 +1222,44 @@ test('Search Analytics request validation accepts a valid News Showcase panel re
   );
 });
 
+test('querySearchAnalytics: gives actionable guidance for non-retryable Search Analytics load quota exhaustion', async () => {
+  const { calls } = await withMockFetch(
+    () =>
+      json(403, {
+        error: {
+          code: 403,
+          message: 'Quota exceeded for quota metric SearchAnalyticsLoad',
+          errors: [
+            {
+              domain: 'usageLimits',
+              reason: 'quotaExceeded',
+              message: 'Quota exceeded',
+            },
+          ],
+        },
+      }),
+    async () => {
+      await assert.rejects(
+        querySearchAnalytics('at', 'sc-domain:example.com', {
+          startDate: '2026-05-01',
+          endDate: '2026-05-31',
+          dimensions: ['query', 'page'],
+          rowLimit: 100,
+        }),
+        (error: Error) => {
+          assert.match(error.message, /load quota exceeded/i);
+          assert.match(error.message, /15 minutes/i);
+          assert.match(error.message, /page\/query grouping or filtering/i);
+          assert.match(error.message, /shorten the date range/i);
+          return true;
+        },
+      );
+    },
+  );
+
+  assert.equal(calls.length, 1, 'quotaExceeded should not use the short transient retry loop');
+});
+
 test('querySearchAnalytics: missing rows field returns an empty rows array (no data, not an error)', async () => {
   const { result } = await withMockFetch(
     () => json(200, {}),
