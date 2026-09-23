@@ -97,6 +97,14 @@ describe('Glama inspection mode', () => {
     expect(initialized.headers.get('mcp-session-id')).toBeNull();
     const initializeEnvelope = await readJsonRpc(initialized);
     expect(initializeEnvelope).toHaveProperty('result');
+    const instructions = (initializeEnvelope.result as { instructions?: string }).instructions;
+    expect(instructions).toBeDefined();
+    expect(instructions!.length).toBeLessThanOrEqual(512);
+    expect(instructions).toContain('sites.list');
+    expect(instructions).toContain('has_more');
+    expect(instructions).toContain('indexing.list_pages');
+    expect(instructions).toContain('urls.inspect');
+    expect(instructions).toContain('JobPosting');
 
     const listed = await callWorker(
       request({ jsonrpc: '2.0', id: 2, method: 'tools/list' }),

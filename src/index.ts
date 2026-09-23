@@ -111,6 +111,8 @@ export interface AgentProps extends Record<string, unknown> {
 
 const SERVER_NAME = 'mcp-gsc';
 const SERVER_VERSION = pkg.version;
+const SERVER_INSTRUCTIONS =
+  'If the exact Search Console site_url is unknown, call sites.list before property-scoped tools. Search Analytics can omit rows: page while has_more is true, and never treat a row missing from one bounded period as zero traffic. indexing.list_pages reports Search performance visibility, not index coverage; use urls.inspect or urls.inspect_many for indexed-state evidence. The Indexing API is restricted to eligible JobPosting/livestream pages; a receipt is not proof of indexing or removal.';
 
 const NOT_AUTHENTICATED_MESSAGE =
   `Not authenticated. ${MCP_RECONNECT_INSTRUCTION}`;
@@ -765,10 +767,15 @@ const TOOL_CATALOG = [
 ] as const;
 
 class GscMcpRuntime {
-  server = new McpServer({
-    name: SERVER_NAME,
-    version: SERVER_VERSION,
-  });
+  server = new McpServer(
+    {
+      name: SERVER_NAME,
+      version: SERVER_VERSION,
+    },
+    {
+      instructions: SERVER_INSTRUCTIONS,
+    },
+  );
 
   constructor(
     private readonly env: Env,
