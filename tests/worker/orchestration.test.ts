@@ -280,6 +280,57 @@ describe('Worker orchestration', () => {
     });
   });
 
+  it('rejects duplicate urls.inspect_many inputs before provider work', async () => {
+    const originalFetch = globalThis.fetch;
+    let outboundRequests = 0;
+    globalThis.fetch = async () => {
+      outboundRequests += 1;
+      throw new Error('Duplicate inspection input must not reach a provider request.');
+    };
+
+    try {
+      const result = await mcpApiHandler.fetch(
+        new Request('https://worker.example/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'MCP-Protocol-Version': '2025-06-18',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 81,
+            method: 'tools/call',
+            params: {
+              name: 'urls.inspect_many',
+              arguments: {
+                site_url: 'sc-domain:example.com',
+                inspection_urls: [
+                  'https://example.com/page',
+                  'https://example.com/page',
+                ],
+              },
+            },
+          }),
+        }),
+        workerEnv,
+        {
+          props: {
+            google_id: 'duplicate-inspection-user',
+            email: 'duplicate-inspection@example.test',
+          },
+        } as unknown as ExecutionContext,
+      );
+
+      expect(result.status).toBe(200);
+      const serialized = JSON.stringify(await readMcpJsonRpc(result));
+      expect(serialized).toContain('inspection_urls must not contain duplicate URLs');
+      expect(outboundRequests).toBe(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('adds a Search Console property without implying ownership verification', async () => {
     await saveUser(
       workerEnv,
