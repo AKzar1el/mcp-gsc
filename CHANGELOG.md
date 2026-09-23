@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.25] - 2026-09-23
+
 ### Fixed
 - Access-mode onboarding and Official MCP Registry metadata now identify all six read-write mutation tools after `indexing.remove` became part of the public tool surface.
 - `analytics.query` now accepts provider-valid Discover and Google News rows with no `position` field instead of failing MCP structured-output validation; Search Console does not record average position for those surfaces.
