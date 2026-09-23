@@ -52,9 +52,33 @@ export class GoogleRefreshTokenRevokedError extends Error {
 }
 
 const GOOGLE_READ_RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
+const GOOGLE_READ_RETRYABLE_403_REASONS = new Set([
+  'concurrentLimitExceeded',
+  'rateLimitExceeded',
+  'servingLimitExceeded',
+  'userRateLimitExceeded',
+]);
 const GOOGLE_READ_MAX_ATTEMPTS = 3;
 const GOOGLE_READ_BASE_DELAY_MS = 1_000;
 const GOOGLE_READ_MAX_DELAY_MS = 5_000;
+
+async function isGoogleReadRetryableResponse(response: Response): Promise<boolean> {
+  if (GOOGLE_READ_RETRYABLE_STATUSES.has(response.status)) return true;
+  if (response.status !== 403) return false;
+
+  try {
+    const data = (await response.clone().json()) as {
+      error?: { errors?: Array<{ reason?: unknown }> };
+    };
+    return data.error?.errors?.some(
+      (entry) =>
+        typeof entry.reason === 'string' &&
+        GOOGLE_READ_RETRYABLE_403_REASONS.has(entry.reason),
+    ) ?? false;
+  } catch {
+    return false;
+  }
+}
 
 function googleReadRetryDelayMs(response: Response, retryNumber: number): number | null {
   const retryAfter = response.headers.get('retry-after')?.trim();
@@ -79,10 +103,8 @@ async function fetchGoogleRead(url: string, init?: RequestInit): Promise<Respons
   for (let attempt = 1; attempt <= GOOGLE_READ_MAX_ATTEMPTS; attempt += 1) {
     try {
       const response = await fetch(url, init);
-      if (
-        !GOOGLE_READ_RETRYABLE_STATUSES.has(response.status) ||
-        attempt === GOOGLE_READ_MAX_ATTEMPTS
-      ) {
+      const retryable = await isGoogleReadRetryableResponse(response);
+      if (!retryable || attempt === GOOGLE_READ_MAX_ATTEMPTS) {
         return response;
       }
 
