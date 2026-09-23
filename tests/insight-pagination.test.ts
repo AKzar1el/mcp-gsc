@@ -49,19 +49,27 @@ const baseQuery: PaginatedSearchAnalyticsQuery = {
   dimensions: ['query', 'page'],
 };
 
-test('paginator combines a full 25,000-row page and a partial page', async () => {
+test('paginator continues after a short non-empty page until an explicit empty page', async () => {
   const firstPage = makeRows(SEARCH_ANALYTICS_PAGE_SIZE);
   const secondPage = makeRows(2, SEARCH_ANALYTICS_PAGE_SIZE);
+  const thirdPage = makeRows(1, SEARCH_ANALYTICS_PAGE_SIZE * 2);
   await withMockAnalyticsPages(
     new Map([
       [0, firstPage],
       [SEARCH_ANALYTICS_PAGE_SIZE, secondPage],
+      [SEARCH_ANALYTICS_PAGE_SIZE * 2, thirdPage],
+      [SEARCH_ANALYTICS_PAGE_SIZE * 3, []],
     ]),
     async (startRows) => {
       const result = await querySearchAnalyticsPaginated('token', 'sc-domain:example.com', baseQuery);
-      assert.deepEqual(startRows, [0, SEARCH_ANALYTICS_PAGE_SIZE]);
-      assert.equal(result.rows.length, SEARCH_ANALYTICS_PAGE_SIZE + 2);
-      assert.equal(result.pagesFetched, 2);
+      assert.deepEqual(startRows, [
+        0,
+        SEARCH_ANALYTICS_PAGE_SIZE,
+        SEARCH_ANALYTICS_PAGE_SIZE * 2,
+        SEARCH_ANALYTICS_PAGE_SIZE * 3,
+      ]);
+      assert.equal(result.rows.length, SEARCH_ANALYTICS_PAGE_SIZE + 3);
+      assert.equal(result.pagesFetched, 4);
       assert.equal(result.localLimitReached, false);
     },
   );
@@ -120,7 +128,7 @@ test('paginator reports when its local safety ceiling is reached', async () => {
   );
 });
 
-test('paginator advances from a supplied startRow by the actual full page size', async () => {
+test('paginator advances from a supplied startRow by the requested page size until empty', async () => {
   const initialStartRow = 100;
   await withMockAnalyticsPages(
     new Map([
@@ -133,7 +141,11 @@ test('paginator advances from a supplied startRow by the actual full page size',
         'sc-domain:example.com',
         { ...baseQuery, startRow: initialStartRow },
       );
-      assert.deepEqual(startRows, [initialStartRow, initialStartRow + SEARCH_ANALYTICS_PAGE_SIZE]);
+      assert.deepEqual(startRows, [
+        initialStartRow,
+        initialStartRow + SEARCH_ANALYTICS_PAGE_SIZE,
+        initialStartRow + SEARCH_ANALYTICS_PAGE_SIZE * 2,
+      ]);
       assert.equal(result.rows.length, SEARCH_ANALYTICS_PAGE_SIZE + 1);
     },
   );

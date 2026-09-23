@@ -626,6 +626,9 @@ describe('Worker orchestration', () => {
         if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
           const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
           analyticsRequests.push(body);
+          if ((body.startRow as number | undefined ?? 0) > 0) {
+            return response({ rows: [] });
+          }
           const dimensions = body.dimensions as string[];
           return response({
             rows: dimensions[0] === 'query'
@@ -659,7 +662,13 @@ describe('Worker orchestration', () => {
         query: 'seo audit',
         pages: [{ page: 'https://example.com/seo-audit/' }],
       });
-      expect(analyticsRequests).toHaveLength(2);
+      expect(analyticsRequests).toHaveLength(4);
+      expect(analyticsRequests.map((request) => request.startRow ?? 0)).toEqual([
+        0,
+        100,
+        0,
+        100,
+      ]);
       expect(analyticsRequests[0]).toMatchObject({
         dimensions: ['query'],
         type: 'web',
@@ -668,7 +677,7 @@ describe('Worker orchestration', () => {
           filters: [{ dimension: 'page', operator: 'equals', expression: 'https://example.com/seo-audit/' }],
         }],
       });
-      expect(analyticsRequests[1]).toMatchObject({
+      expect(analyticsRequests[2]).toMatchObject({
         dimensions: ['page'],
         type: 'web',
         dimensionFilterGroups: [{
@@ -1120,7 +1129,11 @@ describe('Worker orchestration', () => {
           const body = JSON.parse(String(init?.body)) as {
             startDate: string;
             dimensions: string[];
+            startRow?: number;
           };
+          if ((body.startRow ?? 0) > 0) {
+            return response({ rows: [] });
+          }
           if (body.dimensions.length === 2) {
             return response({
               rows: Array.from({ length: 800 }, (_, index) => {
@@ -1257,9 +1270,11 @@ describe('Worker orchestration', () => {
           return response({ access_token: 'compare-access-token', expires_in: 3600 });
         }
         if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
-          analyticsRequests.push(
-            JSON.parse(String(init?.body)) as Record<string, unknown>,
-          );
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          analyticsRequests.push(body);
+          if ((body.startRow as number | undefined ?? 0) > 0) {
+            return response({ rows: [] });
+          }
           return response({
             rows: [
               {
@@ -1286,20 +1301,32 @@ describe('Worker orchestration', () => {
         dimension_filter_groups: filters,
       });
 
-      expect(analyticsRequests).toHaveLength(2);
+      expect(analyticsRequests).toHaveLength(4);
+      expect(analyticsRequests.map((request) => request.startRow ?? 0)).toEqual([
+        0,
+        25_000,
+        0,
+        25_000,
+      ]);
       expect(analyticsRequests.map((request) => request.type)).toEqual([
+        'web',
+        'web',
         'web',
         'web',
       ]);
       expect(
         analyticsRequests.map((request) => request.dimensionFilterGroups),
-      ).toEqual([filters, filters]);
+      ).toEqual([filters, filters, filters, filters]);
       expect(analyticsRequests.map((request) => request.dimensions)).toEqual([
+        ['query'],
+        ['query'],
         ['query'],
         ['query'],
       ]);
       expect(analyticsRequests.map((request) => request.startDate)).toEqual([
         '2026-09-01',
+        '2026-09-01',
+        '2026-08-25',
         '2026-08-25',
       ]);
     } finally {
