@@ -249,6 +249,74 @@ describe('Worker orchestration', () => {
     expect(tools['analytics.query'].inputSchema).toBeDefined();
     expect(tools['insights.page_queries'].inputSchema).toBeDefined();
     expect(tools['insights.query_pages'].inputSchema).toBeDefined();
+    const analyticsQuerySchema = tools['analytics.query'].inputSchema as {
+      safeParse: (value: unknown) => {
+        success: boolean;
+        data?: {
+          dimension_filter_groups?: Array<{
+            groupType: string;
+            filters: Array<{ operator: string; expression: string }>;
+          }>;
+        };
+      };
+    };
+    const analyticsCompareSchema = tools['analytics.compare']
+      .inputSchema as typeof analyticsQuerySchema;
+    const filterInput = {
+      dimension_filter_groups: [
+        {
+          filters: [{ dimension: 'country', expression: 'usa' }],
+        },
+      ],
+    };
+    for (const [schema, requiredInput] of [
+      [
+        analyticsQuerySchema,
+        {
+          site_url: 'sc-domain:example.com',
+          start_date: '2026-09-01',
+          end_date: '2026-09-07',
+        },
+      ],
+      [
+        analyticsCompareSchema,
+        {
+          site_url: 'sc-domain:example.com',
+          start_date_a: '2026-09-01',
+          end_date_a: '2026-09-07',
+          start_date_b: '2026-08-25',
+          end_date_b: '2026-08-31',
+        },
+      ],
+    ] as const) {
+      const parsed = schema.safeParse({ ...requiredInput, ...filterInput });
+      expect(parsed.success).toBe(true);
+      expect(parsed.data?.dimension_filter_groups?.[0]).toEqual({
+        groupType: 'and',
+        filters: [
+          {
+            dimension: 'country',
+            operator: 'equals',
+            expression: 'usa',
+          },
+        ],
+      });
+      expect(
+        schema.safeParse({
+          ...requiredInput,
+          dimension_filter_groups: [
+            {
+              filters: [
+                {
+                  dimension: 'country',
+                  expression: 'x'.repeat(4097),
+                },
+              ],
+            },
+          ],
+        }).success,
+      ).toBe(false);
+    }
     expect(tools['sites.add'].annotations).toMatchObject({
       readOnlyHint: false,
       destructiveHint: false,
