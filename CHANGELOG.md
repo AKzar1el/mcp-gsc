@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- GitHub Copilot CLI can now install this repository directly as a plugin, bundling the existing `gsc-weekly-review`, `gsc-indexing-triage`, and `gsc-search-opportunities` Agent Skills with the verified local loopback MCP configuration.
+
 ### Fixed
 - Direct Search Analytics-backed pagination in `analytics.query` and `indexing.list_pages` now treats short non-empty provider pages as potentially continuable and advances `next_start_row` by Google's requested page size, stopping only after an explicit empty provider page when no local response truncation remains.
 
