@@ -58,11 +58,19 @@ claude mcp add --transport http gsc http://127.0.0.1:8080/mcp
 
 When this repository is installed as a Cursor plugin, Cursor also auto-discovers three bundled Agent Skills that compose the MCP tools into evidence-safe workflows: `gsc-weekly-review`, `gsc-indexing-triage`, and `gsc-search-opportunities`. The **Add to Cursor** button above installs the MCP connection only; the bundled skills are part of the repository's Cursor plugin package.
 
+**GitHub Copilot CLI**
+
+```bash
+copilot plugin install AKzar1el/mcp-gsc
+```
+
+The Copilot plugin bundles the same three Agent Skills plus the local loopback MCP configuration. Start the npm launcher before using the plugin's MCP server; the plugin does not start or deploy mcp-gsc for you.
+
 **Kiro**
 
 [![Add to Kiro](https://kiro.dev/images/add-to-kiro.svg)](https://kiro.dev/launch/mcp/add?name=mcp-gsc&config=%7B%22url%22%3A%22http%3A%2F%2F127.0.0.1%3A8080%2Fmcp%22%2C%22disabled%22%3Afalse%2C%22autoApprove%22%3A%5B%5D%7D)
 
-Start the npm launcher before using either install button. Complete its Google OAuth flow on first use.
+Start the npm launcher before using either install button or the Copilot plugin. Complete its Google OAuth flow on first use.
 
 **ChatGPT** — ChatGPT cannot connect directly to this loopback `127.0.0.1` endpoint. Use OpenAI's **Secure MCP Tunnel** for the local launcher, or deploy your own remote Cloudflare Worker and add that `/mcp` URL as a custom MCP app in Developer mode; see [Connect in your AI client](#connect-in-your-ai-client) below.
 

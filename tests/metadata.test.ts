@@ -24,6 +24,7 @@ const serverJson = readJson('server.json');
 const manifestJson = readJson('manifest.json');
 const claudePlugin = readJson('.claude-plugin/plugin.json');
 const cursorPlugin = readJson('.cursor-plugin/plugin.json');
+const copilotPlugin = readJson('plugin.json');
 const indexSource = readFileSync(resolve(projectRoot, 'src/index.ts'), 'utf8');
 const quickWinsSource = readFileSync(resolve(projectRoot, 'src/quick-wins-schema.ts'), 'utf8');
 const npmLauncherSource = readFileSync(resolve(projectRoot, 'scripts/glama-start.mjs'), 'utf8');
@@ -92,6 +93,31 @@ test('package release versions remain aligned across machine-readable metadata',
   assert.equal(manifestJson.version, expectedVersion, 'manifest.json version must match package.json');
   assert.equal(claudePlugin.version, expectedVersion, 'Claude plugin version must match package.json');
   assert.equal(cursorPlugin.version, expectedVersion, 'Cursor plugin version must match package.json');
+  assert.equal(copilotPlugin.version, expectedVersion, 'Copilot plugin version must match package.json');
+});
+
+test('GitHub Copilot plugin bundles the existing MCP config and workflow skills', () => {
+  assert.equal(copilotPlugin.name, 'mcp-gsc');
+  assert.equal(
+    copilotPlugin.mcpServers,
+    '.mcp.json',
+    'Copilot plugin must reuse the verified local loopback MCP configuration',
+  );
+  assert.deepEqual(
+    copilotPlugin.skills,
+    ['skills/'],
+    'Copilot plugin must load the canonical bundled workflow-skill directory',
+  );
+  assert.match(
+    readmeSource,
+    /copilot plugin install AKzar1el\/mcp-gsc[\s\S]*same three Agent Skills[\s\S]*local loopback MCP configuration/i,
+    'README must document the direct Copilot plugin install path and bundled components',
+  );
+  assert.match(
+    readmeSource,
+    /Copilot plugin[\s\S]*does not start or deploy mcp-gsc for you/i,
+    'README must preserve the local-launcher boundary for Copilot users',
+  );
 });
 
 test('published Node requirement covers the strictest bundled runtime dependency', () => {
