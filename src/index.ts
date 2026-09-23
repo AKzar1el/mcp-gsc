@@ -1973,7 +1973,8 @@ class GscMcpRuntime {
           pages,
           start_row,
           row_limit,
-          response.rows.length === sourceRowLimit,
+          response.rows.length > 0,
+          start_row + sourceRowLimit,
         );
 
         const payload = {

@@ -1319,6 +1319,100 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('continues indexing.list_pages after a short non-empty Search Analytics page', async () => {
+    await saveUser(
+      workerEnv,
+      'short-list-user',
+      'short-list@example.test',
+      'short-list-refresh-token',
+    );
+    const server = await createGscMcpServer(
+      workerEnv,
+      {
+        google_id: 'short-list-user',
+        email: 'short-list@example.test',
+      },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        { handler: (args: Record<string, unknown>) => Promise<unknown> }
+      >;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'short-list-access-token', expires_in: 3600 });
+        }
+        if (
+          url ===
+          'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query'
+        ) {
+          const body = JSON.parse(String(init?.body)) as {
+            startRow?: number;
+            rowLimit: number;
+          };
+          expect(body.rowLimit).toBe(500);
+          if ((body.startRow ?? 0) === 500) {
+            return response({ rows: [] });
+          }
+          expect(body.startRow ?? 0).toBe(0);
+          return response({
+            rows: [
+              {
+                keys: ['https://example.com/short-provider-page/'],
+                clicks: 3,
+                impressions: 30,
+                ctr: 0.1,
+                position: 7,
+              },
+            ],
+          });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const first = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        row_limit: 1000,
+        start_row: 0,
+      })) as {
+        structuredContent: {
+          pages: Array<{ page: string }>;
+          result_page: { has_more: boolean; next_start_row?: number };
+        };
+      };
+      expect(first.structuredContent.pages[0]?.page).toBe(
+        'https://example.com/short-provider-page/',
+      );
+      expect(first.structuredContent.result_page).toMatchObject({
+        has_more: true,
+        next_start_row: 500,
+      });
+
+      const terminal = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        row_limit: 1000,
+        start_row: 500,
+      })) as {
+        structuredContent: {
+          result_page: { has_more: boolean; next_start_row?: number };
+        };
+      };
+      expect(terminal.structuredContent.result_page.has_more).toBe(false);
+      expect(terminal.structuredContent.result_page.next_start_row).toBeUndefined();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('applies the same Search Analytics segment to both comparison periods', async () => {
     await saveUser(
       workerEnv,
