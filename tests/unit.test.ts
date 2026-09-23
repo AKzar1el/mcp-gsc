@@ -24,6 +24,7 @@ import { resolveWeeklyDigestEndDate } from '../src/digest';
 import { resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
 import { createQuickWinsInputSchema } from '../src/quick-wins-schema';
 import { SITEMAP_URL_SCHEMA } from '../src/sitemap-url-schema';
+import { URL_INSPECTION_LANGUAGE_CODE_SCHEMA } from '../src/url-inspection-language-schema';
 import {
   classifySearchConsolePropertyIdentifier,
   SEARCH_CONSOLE_PROPERTY_SCHEMA,
@@ -72,6 +73,22 @@ test('Search Console date schema rejects malformed and impossible dates', () => 
   const invalidDates = ['2026-02-30', '2026-13-01', '2026-00-10', '2025-02-29', '2026-2-3'];
   for (const date of invalidDates) {
     assert.equal(SEARCH_CONSOLE_DATE_SCHEMA.safeParse(date).success, false, date);
+  }
+});
+
+test('URL Inspection language schema accepts useful BCP-47 tags and defaults to en-US', () => {
+  assert.equal(URL_INSPECTION_LANGUAGE_CODE_SCHEMA.parse(undefined), 'en-US');
+  assert.equal(URL_INSPECTION_LANGUAGE_CODE_SCHEMA.safeParse('de-CH').success, true);
+  assert.equal(URL_INSPECTION_LANGUAGE_CODE_SCHEMA.safeParse('zh-Hant-TW').success, true);
+});
+
+test('URL Inspection language schema rejects malformed language tags', () => {
+  for (const languageCode of ['', 'en_US', 'not a tag', '123']) {
+    assert.equal(
+      URL_INSPECTION_LANGUAGE_CODE_SCHEMA.safeParse(languageCode).success,
+      false,
+      languageCode,
+    );
   }
 });
 
