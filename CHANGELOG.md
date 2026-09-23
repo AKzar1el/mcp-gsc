@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.29] - 2026-09-23
+
 ### Fixed
 - `urls.inspect_many` now rejects exact duplicate URLs before reserving local safety-budget units or calling Google, preventing one batch from wasting URL Inspection quota on repeated identical requests.
 - `analytics.query` now rejects explicit `byPage` aggregation when the request also groups or filters by page, returning deterministic local guidance to use `auto` instead of forwarding a provider-invalid aggregation shape to Google.
