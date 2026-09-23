@@ -532,6 +532,81 @@ test('listSites: retries transient Google read failures and then succeeds', asyn
   ]);
 });
 
+test('listSites: retries documented transient Search Console 403 rate limits', async () => {
+  let attempts = 0;
+  const { result, calls } = await withMockFetch(
+    () => {
+      attempts += 1;
+      if (attempts === 1) {
+        return new Response(
+          JSON.stringify({
+            error: {
+              code: 403,
+              message: 'User Rate Limit Exceeded',
+              errors: [
+                {
+                  domain: 'usageLimits',
+                  reason: 'userRateLimitExceeded',
+                  message: 'User Rate Limit Exceeded',
+                },
+              ],
+            },
+          }),
+          {
+            status: 403,
+            headers: {
+              'content-type': 'application/json',
+              'retry-after': '0',
+            },
+          },
+        );
+      }
+      return json(200, {
+        siteEntry: [{ siteUrl: 'sc-domain:example.com', permissionLevel: 'siteOwner' }],
+      });
+    },
+    () => listSites('at'),
+  );
+
+  assert.equal(calls.length, 2);
+  assert.deepEqual(result, [
+    { siteUrl: 'sc-domain:example.com', permissionLevel: 'siteOwner' },
+  ]);
+});
+
+test('listSites: does not retry non-transient Google 403 permission errors', async () => {
+  const original = globalThis.fetch;
+  const calls: CapturedRequest[] = [];
+  globalThis.fetch = (async (input: unknown, init?: RequestInit) => {
+    calls.push({ url: String(input), init });
+    return new Response(
+      JSON.stringify({
+        error: {
+          code: 403,
+          message: 'Insufficient Permission',
+          errors: [
+            {
+              domain: 'global',
+              reason: 'insufficientPermissions',
+              message: 'Insufficient Permission',
+            },
+          ],
+        },
+      }),
+      { status: 403, headers: { 'content-type': 'application/json' } },
+    );
+  }) as typeof fetch;
+  try {
+    await assert.rejects(
+      listSites('at'),
+      /List sites failed: 403/,
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+  assert.equal(calls.length, 1);
+});
+
 test('listSites: does not retry when Retry-After exceeds the MCP retry budget', async () => {
   const original = globalThis.fetch;
   const calls: CapturedRequest[] = [];

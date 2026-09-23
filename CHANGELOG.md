@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Direct Search Analytics-backed pagination in `analytics.query` and `indexing.list_pages` now treats short non-empty provider pages as potentially continuable and advances `next_start_row` by Google's requested page size, stopping only after an explicit empty provider page when no local response truncation remains.
+- Idempotent Google read calls now apply the existing bounded retry policy when Search Console returns documented transient 403 rate-limit reasons, while permission/configuration 403 responses and write calls remain non-retried.
 
 ## [0.4.26] - 2026-09-23
 
