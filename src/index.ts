@@ -611,22 +611,30 @@ function windowSourceRows<T>(
   sourceStartRow: number,
   requestedLimit: number,
   sourceMayHaveMore: boolean,
+  sourceNextStartRow?: number,
 ) {
   const bounded = takeBoundedItems(items, requestedLimit);
   const returnedCount = bounded.items.length;
-  const hasMore =
-    bounded.byteLimitReached ||
-    returnedCount < items.length ||
-    sourceMayHaveMore;
+  const localContinuation =
+    bounded.byteLimitReached || returnedCount < items.length;
+  const hasMore = localContinuation || sourceMayHaveMore;
+  const resultPage = resultPageMetadata({
+    startRow: sourceStartRow,
+    limit: requestedLimit,
+    returnedCount,
+    hasMore,
+    byteLimitReached: bounded.byteLimitReached,
+  });
+  if (
+    !localContinuation &&
+    sourceMayHaveMore &&
+    sourceNextStartRow !== undefined
+  ) {
+    resultPage.next_start_row = sourceNextStartRow;
+  }
   return {
     items: bounded.items,
-    resultPage: resultPageMetadata({
-      startRow: sourceStartRow,
-      limit: requestedLimit,
-      returnedCount,
-      hasMore,
-      byteLimitReached: bounded.byteLimitReached,
-    }),
+    resultPage,
   };
 }
 
@@ -1268,13 +1276,17 @@ class GscMcpRuntime {
             ? { dimensionFilterGroups: dimension_filter_groups }
             : {}),
         });
+        // Search Analytics pagination is complete only after Google returns an
+        // explicit empty page. A short non-empty page can still be followed by
+        // later rows, so preserve a continuation for dimensioned queries.
         const sourceMayHaveMore =
-          dimensions.length > 0 && response.rows.length === sourceRowLimit;
+          dimensions.length > 0 && response.rows.length > 0;
         const bounded = windowSourceRows(
           response.rows,
           start_row,
           row_limit,
           sourceMayHaveMore,
+          start_row + sourceRowLimit,
         );
         const payload: Record<string, unknown> = {
           row_count: bounded.items.length,
