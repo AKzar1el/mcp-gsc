@@ -52,6 +52,14 @@ Self-hosted Cloudflare Worker deployments continue to use `https://<your-worker>
 claude mcp add --transport http gsc http://127.0.0.1:8080/mcp
 ```
 
+**OpenAI Codex CLI / IDE**
+
+```bash
+codex mcp add gsc --url http://127.0.0.1:8080/mcp
+```
+
+Codex CLI and the Codex IDE extension share MCP configuration, so registering the server once makes the same local connection available to both clients. Start the npm launcher before using the connection; Codex will open the server's OAuth flow when authentication is required.
+
 **Cursor**
 
 [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=gsc&config=eyJ1cmwiOiJodHRwOi8vMTI3LjAuMC4xOjgwODAvbWNwIn0%3D)

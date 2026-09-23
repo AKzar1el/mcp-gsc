@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - GitHub Copilot CLI users can now register this repository as the `digestseo` plugin marketplace, discover/install `mcp-gsc` through the marketplace workflow, and still use the supported direct-repository install path.
+- OpenAI Codex CLI and IDE users now have a verified one-command Streamable HTTP setup for the local `mcp-gsc` launcher.
 
 ## [0.4.27] - 2026-09-23
 
