@@ -955,7 +955,6 @@ describe('Worker orchestration', () => {
                 clicks: 12,
                 impressions: 340,
                 ctr: 0.035,
-                position: 0,
               },
             ],
           });
@@ -1034,7 +1033,6 @@ describe('Worker orchestration', () => {
                 clicks: 9,
                 impressions: 210,
                 ctr: 0.043,
-                position: 0,
               },
             ],
           });

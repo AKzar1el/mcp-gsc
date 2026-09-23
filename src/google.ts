@@ -399,7 +399,20 @@ export interface SearchAnalyticsRow {
   clicks: number;
   impressions: number;
   ctr: number;
-  position: number;
+  /**
+   * Average position when Google records it. Search Console does not record
+   * position for Discover or the Google News app/news.google.com, so those
+   * Search Analytics rows can legitimately omit this field.
+   */
+  position?: number;
+}
+
+export type PositionedSearchAnalyticsRow = SearchAnalyticsRow & { position: number };
+
+export function hasRecordedPosition(
+  row: SearchAnalyticsRow,
+): row is PositionedSearchAnalyticsRow {
+  return row.position !== undefined;
 }
 
 export interface SearchAnalyticsResponseMetadata {
@@ -812,6 +825,7 @@ export function processQuickWins(
   maxPosition: number,
 ): QuickWinResult[] {
   return rows
+    .filter(hasRecordedPosition)
     .filter(
       (row) =>
         (row.keys?.length ?? 0) >= 2 &&
@@ -860,7 +874,7 @@ export function processCannibalization(
 ): CannibalizationResult[] {
   const queryGroups = new Map<string, Array<{ page: string; clicks: number; impressions: number; ctr: number; position: number }>>();
   for (const row of rows) {
-    if ((row.keys?.length ?? 0) < 2) continue;
+    if ((row.keys?.length ?? 0) < 2 || row.position === undefined) continue;
     const query = row.keys![0];
     const page = row.keys![1];
     if (!queryGroups.has(query)) {
@@ -1010,7 +1024,7 @@ export function processContentDecay(
 ): DecayPageResult[] {
   const recentMap = new Map<string, { clicks: number; impressions: number; ctr: number; position: number }>();
   for (const row of recentRows) {
-    if ((row.keys?.length ?? 0) < 1) continue;
+    if ((row.keys?.length ?? 0) < 1 || row.position === undefined) continue;
     recentMap.set(row.keys![0], {
       clicks: row.clicks,
       impressions: row.impressions,
@@ -1022,7 +1036,7 @@ export function processContentDecay(
   const decayCandidates: DecayPageResult[] = [];
 
   for (const row of previousRows) {
-    if ((row.keys?.length ?? 0) < 1) continue;
+    if ((row.keys?.length ?? 0) < 1 || row.position === undefined) continue;
     const page = row.keys![0];
     const prevClicks = row.clicks;
     const prevImps = row.impressions;
@@ -1688,7 +1702,7 @@ export function processPerformanceComparison(
 ): PerformanceComparisonRow[] {
   const mapB = new Map<string, { clicks: number; impressions: number; ctr: number; position: number }>();
   for (const row of rowsB) {
-    if ((row.keys?.length ?? 0) < 1) continue;
+    if ((row.keys?.length ?? 0) < 1 || row.position === undefined) continue;
     mapB.set(row.keys![0], {
       clicks: row.clicks,
       impressions: row.impressions,
@@ -1700,7 +1714,7 @@ export function processPerformanceComparison(
   const comparison: PerformanceComparisonRow[] = [];
 
   for (const row of rowsA) {
-    if ((row.keys?.length ?? 0) < 1) continue;
+    if ((row.keys?.length ?? 0) < 1 || row.position === undefined) continue;
     const key = row.keys![0];
     const clicksA = row.clicks;
     const impsA = row.impressions;

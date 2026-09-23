@@ -24,6 +24,7 @@ import {
   submitSitemap,
   deleteSitemap,
   getSitemap,
+  hasRecordedPosition,
   processQuickWins,
   processCannibalization,
   processContentDecay,
@@ -134,7 +135,15 @@ const SEARCH_ROW_OUTPUT_SCHEMA = {
     .describe(
       'Dimension values returned by Google. Aggregate queries with dimensions: [] may legitimately omit this field.',
     ),
-  ...METRIC_OUTPUT_SCHEMA,
+  clicks: z.number(),
+  impressions: z.number(),
+  ctr: z.number(),
+  position: z
+    .number()
+    .optional()
+    .describe(
+      'Average position when Google records it. Omitted for Discover and Google News, where Search Console does not record position.',
+    ),
 };
 
 const SITE_OUTPUT_SCHEMA = {
@@ -1364,7 +1373,7 @@ class GscMcpRuntime {
           ],
         }, { maxRows: sourceRowLimit });
         const rows = source.rows
-          .filter((row) => (row.keys?.length ?? 0) > 0)
+          .filter((row) => (row.keys?.length ?? 0) > 0 && hasRecordedPosition(row))
           .map((row) => ({
             query: row.keys![0],
             clicks: row.clicks,
@@ -1448,7 +1457,7 @@ class GscMcpRuntime {
           ],
         }, { maxRows: sourceRowLimit });
         const rows = source.rows
-          .filter((row) => (row.keys?.length ?? 0) > 0)
+          .filter((row) => (row.keys?.length ?? 0) > 0 && hasRecordedPosition(row))
           .map((row) => ({
             page: row.keys![0],
             clicks: row.clicks,
@@ -1940,7 +1949,7 @@ class GscMcpRuntime {
         });
 
         const pages = response.rows
-          .filter((row) => (row.keys?.length ?? 0) > 0)
+          .filter((row) => (row.keys?.length ?? 0) > 0 && hasRecordedPosition(row))
           .map((row) => ({
             page: row.keys![0],
             clicks: row.clicks,

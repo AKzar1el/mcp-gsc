@@ -1,4 +1,8 @@
-import { querySearchAnalytics, type SearchAnalyticsRow } from './google';
+import {
+  hasRecordedPosition,
+  querySearchAnalytics,
+  type SearchAnalyticsRow,
+} from './google';
 import type { GoogleAccessTokenProvider } from './access-token-lifecycle';
 import { getSearchConsoleCalendarDate } from './date-validation';
 
@@ -180,13 +184,15 @@ function totalsFromRow(row: SearchAnalyticsRow | undefined): SiteTotals {
 }
 
 function rowsToQueries(rows: SearchAnalyticsRow[]): QueryRow[] {
-  return rows.map((r) => ({
-    query: r.keys?.[0] ?? '',
-    clicks: r.clicks,
-    impressions: r.impressions,
-    ctr: r.ctr,
-    position: r.position,
-  }));
+  return rows
+    .filter(hasRecordedPosition)
+    .map((r) => ({
+      query: r.keys?.[0] ?? '',
+      clicks: r.clicks,
+      impressions: r.impressions,
+      ctr: r.ctr,
+      position: r.position,
+    }));
 }
 
 function rowsToPages(rows: SearchAnalyticsRow[]): PageRow[] {
