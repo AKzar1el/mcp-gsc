@@ -987,8 +987,11 @@ class GscMcpRuntime {
             .array(z.string().url())
             .min(1)
             .max(10)
+            .refine((urls) => new Set(urls).size === urls.length, {
+              message: 'inspection_urls must not contain duplicate URLs.',
+            })
             .describe(
-              'Between 1 and 10 fully-qualified URLs to inspect. Each URL must belong to the site_url property.',
+              'Between 1 and 10 unique fully-qualified URLs to inspect. Each URL must belong to the site_url property.',
             ),
           language_code: z
             .string()

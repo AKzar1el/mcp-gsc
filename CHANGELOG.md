@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `urls.inspect_many` now rejects exact duplicate URLs before reserving local safety-budget units or calling Google, preventing one batch from wasting URL Inspection quota on repeated identical requests.
+
 ## [0.4.28] - 2026-09-23
 
 ### Added
