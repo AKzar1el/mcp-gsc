@@ -35,6 +35,7 @@ const testsReadmeSource = readFileSync(resolve(projectRoot, 'tests/README.md'), 
 const rootMcpConfig = readFileSync(resolve(projectRoot, '.mcp.json'), 'utf8');
 const cursorMcpConfig = readFileSync(resolve(projectRoot, 'mcp.json'), 'utf8');
 const windsurfSource = readFileSync(resolve(projectRoot, 'docs/windsurf.md'), 'utf8');
+const ciWorkflowSource = readFileSync(resolve(projectRoot, '.github/workflows/ci.yml'), 'utf8');
 const cursorSkills = [
   {
     path: 'skills/gsc-weekly-review/SKILL.md',
@@ -123,6 +124,24 @@ test('published Node requirement covers the strictest bundled runtime dependency
     llmsInstallSource,
     /Node\.js 22\.18\+ within the 22\.x line, or Node\.js 24\.11\+ with npm/,
     'llms-install.md must document the supported Node ranges',
+  );
+});
+
+test('protected CI covers both advertised minimum Node runtime floors', () => {
+  assert.equal(
+    packageJson.engines?.node,
+    '^22.18.0 || >=24.11.0',
+    'update CI floor coverage when the public Node support contract changes',
+  );
+  assert.match(
+    ciWorkflowSource,
+    /node-version:\s*\[22\.18\.0, 24\.11\.0\]/,
+    'CI must exercise both advertised minimum supported Node runtime floors',
+  );
+  assert.match(
+    ciWorkflowSource,
+    /node-version:\s*\$\{\{ matrix\.node-version \}\}/,
+    'setup-node must consume the Node support-floor matrix',
   );
 });
 
