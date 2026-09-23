@@ -78,7 +78,7 @@ The marketplace path makes the plugin discoverable and updateable through Copilo
 **Gemini CLI**
 
 ```bash
-gemini extensions install https://github.com/AKzar1el/mcp-gsc
+gemini extensions install https://github.com/AKzar1el/mcp-gsc --ref main
 ```
 
 The Gemini CLI extension bundles the verified local loopback MCP configuration plus the same three Agent Skills: `gsc-weekly-review`, `gsc-indexing-triage`, and `gsc-search-opportunities`. Start the npm launcher before using the extension; the extension does not start or deploy mcp-gsc for you.
