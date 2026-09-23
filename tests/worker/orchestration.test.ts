@@ -937,6 +937,97 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('continues analytics.query after a short non-empty provider page using the requested page size', async () => {
+    await saveUser(
+      workerEnv,
+      'short-page-user',
+      'short-page@example.test',
+      'short-page-refresh-token',
+    );
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'short-page-access-token', expires_in: 3600 });
+        }
+        if (
+          url ===
+          'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query'
+        ) {
+          const body = JSON.parse(String(init?.body)) as {
+            startRow?: number;
+            rowLimit: number;
+          };
+          expect(body.rowLimit).toBe(10);
+          if ((body.startRow ?? 0) === 10) {
+            return response({ rows: [] });
+          }
+          expect(body.startRow ?? 0).toBe(0);
+          return response({
+            rows: [
+              {
+                keys: ['short provider page'],
+                clicks: 2,
+                impressions: 20,
+                ctr: 0.1,
+                position: 5,
+              },
+            ],
+          });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const callAnalytics = async (startRow: number) =>
+        mcpApiHandler.fetch(
+          new Request('https://worker.example/mcp', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json, text/event-stream',
+              'MCP-Protocol-Version': '2025-06-18',
+            },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: 40 + startRow,
+              method: 'tools/call',
+              params: {
+                name: 'analytics.query',
+                arguments: {
+                  site_url: 'sc-domain:example.com',
+                  start_date: '2026-08-22',
+                  end_date: '2026-09-18',
+                  dimensions: ['query'],
+                  row_limit: 10,
+                  start_row: startRow,
+                },
+              },
+            }),
+          }),
+          workerEnv,
+          {
+            props: {
+              google_id: 'short-page-user',
+              email: 'short-page@example.test',
+            },
+          } as unknown as ExecutionContext,
+        );
+
+      const first = JSON.stringify(await readMcpJsonRpc(await callAnalytics(0)));
+      expect(first).toContain('short provider page');
+      expect(first).toContain('\\"has_more\\":true');
+      expect(first).toContain('\\"next_start_row\\":10');
+
+      const terminal = JSON.stringify(await readMcpJsonRpc(await callAnalytics(10)));
+      expect(terminal).toContain('\\"has_more\\":false');
+      expect(terminal).not.toContain('\\"next_start_row\\"');
+      expect(terminal).not.toContain('Output validation error');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('marks average position unavailable for Discover Search Analytics results', async () => {
     await saveUser(
       workerEnv,

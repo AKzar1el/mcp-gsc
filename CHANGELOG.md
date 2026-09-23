@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Direct `analytics.query` pagination now treats short non-empty Search Analytics pages as potentially continuable and advances `next_start_row` by Google's requested page size, stopping only after an explicit empty provider page when no local response truncation remains.
+
 ## [0.4.26] - 2026-09-23
 
 ### Fixed
