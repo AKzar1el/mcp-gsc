@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.30] - 2026-09-23
+
 ### Changed
 - Search Analytics filters now default an omitted operator to Google's documented `equals` behavior in both `analytics.query` and `analytics.compare`, while both tools enforce the provider's 4096-character filter-expression ceiling through one shared schema.
 - URL Inspection language codes are now validated as BCP-47 language tags before `urls.inspect` or `urls.inspect_many` can reserve local inspection budget, resolve Google credentials, or call the provider.
