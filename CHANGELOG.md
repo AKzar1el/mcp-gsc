@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.27] - 2026-09-23
+
 ### Added
 - GitHub Copilot CLI can now install this repository directly as a plugin, bundling the existing `gsc-weekly-review`, `gsc-indexing-triage`, and `gsc-search-opportunities` Agent Skills with the verified local loopback MCP configuration.
 

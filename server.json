@@ -97,7 +97,7 @@
       "description": "Generate a plain-language weekly SEO report with movers, top pages, and a recommended action."
     }
   ],
-  "version": "0.4.26-registry.1",
+  "version": "0.4.27-registry.1",
   "repository": {
     "url": "https://github.com/AKzar1el/mcp-gsc",
     "source": "github"
@@ -107,7 +107,7 @@
     {
       "registryType": "npm",
       "identifier": "@digestseo/mcp-gsc",
-      "version": "0.4.26",
+      "version": "0.4.27",
       "runtimeHint": "npx",
       "transport": {
         "type": "streamable-http",
