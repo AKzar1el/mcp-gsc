@@ -371,6 +371,12 @@ export function assertSearchAnalyticsQueryCompatible(body: SearchAnalyticsQuery)
     }
   }
 
+  if (body.aggregationType === 'byPage' && hasPageGroupingOrFilter) {
+    throw new Error(
+      'Search Analytics aggregationType byPage cannot be combined with page grouping or filtering; use auto instead.',
+    );
+  }
+
   if (body.aggregationType === 'byProperty') {
     if (hasPageGroupingOrFilter) {
       throw new Error(
