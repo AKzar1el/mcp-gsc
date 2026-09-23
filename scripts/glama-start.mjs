@@ -19,6 +19,19 @@ if (missingRequiredEnvironmentVariables.length > 0) {
   process.exit(1);
 }
 
+const tokenEncryptionKey = process.env.TOKEN_ENCRYPTION_KEY;
+const tokenEncryptionKeyPattern =
+  /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+if (
+  !tokenEncryptionKeyPattern.test(tokenEncryptionKey)
+  || Buffer.from(tokenEncryptionKey, 'base64').byteLength !== 32
+) {
+  console.error(
+    '[mcp-gsc] Invalid TOKEN_ENCRYPTION_KEY: expected a valid base64-encoded 32-byte (256-bit) AES key. See SETUP.md for local launcher configuration.',
+  );
+  process.exit(1);
+}
+
 const port = process.env.PORT || '8080';
 const localBaseUrl = `http://127.0.0.1:${port}`;
 const mcpUrl = `${localBaseUrl}/mcp`;

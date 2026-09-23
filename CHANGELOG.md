@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- The published `npx` launcher now rejects malformed `TOKEN_ENCRYPTION_KEY` values before starting Wrangler, requiring valid base64 that decodes to exactly the documented 32-byte AES-256 key without logging the secret value.
+
 ## [0.4.25] - 2026-09-23
 
 ### Fixed
