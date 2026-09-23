@@ -148,6 +148,32 @@ const SEARCH_ROW_OUTPUT_SCHEMA = {
     ),
 };
 
+const SEARCH_ANALYTICS_FILTER_SCHEMA = z.object({
+  dimension: z.enum([
+    'query',
+    'page',
+    'country',
+    'device',
+    'searchAppearance',
+  ]),
+  operator: z
+    .enum([
+      'equals',
+      'notEquals',
+      'contains',
+      'notContains',
+      'includingRegex',
+      'excludingRegex',
+    ])
+    .default('equals'),
+  expression: z.string().max(4096),
+});
+
+const SEARCH_ANALYTICS_FILTER_GROUP_SCHEMA = z.object({
+  groupType: z.literal('and').default('and'),
+  filters: z.array(SEARCH_ANALYTICS_FILTER_SCHEMA),
+});
+
 const SITE_OUTPUT_SCHEMA = {
   siteUrl: z.string(),
   permissionLevel: z.string(),
@@ -1222,34 +1248,10 @@ class GscMcpRuntime {
               "How Google aggregates metrics. Leave as 'auto' unless specific semantics are needed. When grouping/filtering by page, use 'auto'; explicit 'byPage' and 'byProperty' are rejected for that request shape. 'byProperty' is also unavailable for search_type discover/googleNews. 'byNewsShowcasePanel' requires search_type discover/googleNews plus a searchAppearance equals NEWS_SHOWCASE filter, and cannot be combined with page grouping/filtering or another searchAppearance filter.",
             ),
           dimension_filter_groups: z
-            .array(
-              z.object({
-                groupType: z.literal('and').default('and'),
-                filters: z.array(
-                  z.object({
-                    dimension: z.enum([
-                      'query',
-                      'page',
-                      'country',
-                      'device',
-                      'searchAppearance',
-                    ]),
-                    operator: z.enum([
-                      'equals',
-                      'notEquals',
-                      'contains',
-                      'notContains',
-                      'includingRegex',
-                      'excludingRegex',
-                    ]),
-                    expression: z.string().max(4096),
-                  }),
-                ),
-              }),
-            )
+            .array(SEARCH_ANALYTICS_FILTER_GROUP_SCHEMA)
             .optional()
             .describe(
-              "Optional filters ANDed together, e.g. [{ groupType: 'and', filters: [{ dimension: 'country', operator: 'equals', expression: 'usa' }] }]. Countries use ISO 3166-1 alpha-3 codes. Query filters are not supported when search_type is discover or googleNews.",
+              "Optional filters ANDed together, e.g. [{ groupType: 'and', filters: [{ dimension: 'country', expression: 'usa' }] }]. Filter operator defaults to 'equals' when omitted, matching Search Console. Expressions are limited to 4096 characters. Countries use ISO 3166-1 alpha-3 codes. Query filters are not supported when search_type is discover or googleNews.",
             ),
         },
         outputSchema: SEARCH_ANALYTICS_OUTPUT_SCHEMA,
@@ -2021,34 +2023,10 @@ class GscMcpRuntime {
             .default('web')
             .describe('Which Search Console search index to compare. The same search type is used for both periods. Discover and Google News are excluded because this tool returns average-position comparisons.'),
           dimension_filter_groups: z
-            .array(
-              z.object({
-                groupType: z.literal('and').default('and'),
-                filters: z.array(
-                  z.object({
-                    dimension: z.enum([
-                      'query',
-                      'page',
-                      'country',
-                      'device',
-                      'searchAppearance',
-                    ]),
-                    operator: z.enum([
-                      'equals',
-                      'notEquals',
-                      'contains',
-                      'notContains',
-                      'includingRegex',
-                      'excludingRegex',
-                    ]),
-                    expression: z.string(),
-                  }),
-                ),
-              }),
-            )
+            .array(SEARCH_ANALYTICS_FILTER_GROUP_SCHEMA)
             .optional()
             .describe(
-              "Optional Search Console filters applied identically to both periods. A caller-supplied query regex can approximate a manual brand/non-brand split, but it is not equivalent to Search Console's AI-assisted native Branded/Non-branded filter, which the Search Analytics API does not expose. Countries use ISO 3166-1 alpha-3 codes.",
+              "Optional Search Console filters applied identically to both periods. Filter operator defaults to 'equals' when omitted, and expressions are limited to 4096 characters. A caller-supplied query regex can approximate a manual brand/non-brand split, but it is not equivalent to Search Console's AI-assisted native Branded/Non-branded filter, which the Search Analytics API does not expose. Countries use ISO 3166-1 alpha-3 codes.",
             ),
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,
