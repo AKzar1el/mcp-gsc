@@ -173,7 +173,7 @@ test('registry package identity remains aligned', () => {
   );
   assert.match(
     llmsInstallSource,
-    /readwrite` only when the user explicitly needs the six mutation tools/i,
+    /`"GSC_ACCESS_MODE": "readwrite"` only when the user explicitly needs the six mutation tools/i,
     'llms-install access-mode guidance must match the canonical write-tool count',
   );
   assert.equal(environmentVariables.get('MCP_GSC_STATE_DIR')?.isRequired, false);
