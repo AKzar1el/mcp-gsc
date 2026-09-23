@@ -1165,6 +1165,63 @@ test('Search Analytics request validation rejects documented invalid cross-field
     () =>
       assertSearchAnalyticsQueryCompatible({
         ...base,
+        dimensionFilterGroups: [
+          {
+            groupType: 'and',
+            filters: [
+              {
+                dimension: 'country',
+                operator: 'equals',
+                expression: 'us',
+              },
+            ],
+          },
+        ],
+      }),
+    /exact country filters must use a three-letter ISO 3166-1 alpha-3 code/,
+  );
+  assert.throws(
+    () =>
+      assertSearchAnalyticsQueryCompatible({
+        ...base,
+        dimensionFilterGroups: [
+          {
+            groupType: 'and',
+            filters: [
+              {
+                dimension: 'device',
+                operator: 'notEquals',
+                expression: 'PHONE',
+              },
+            ],
+          },
+        ],
+      }),
+    /exact device filters must use DESKTOP, MOBILE, or TABLET/,
+  );
+  assert.doesNotThrow(() =>
+    assertSearchAnalyticsQueryCompatible({
+      ...base,
+      dimensionFilterGroups: [
+        {
+          groupType: 'and',
+          filters: [
+            { dimension: 'country', operator: 'equals', expression: 'usa' },
+            { dimension: 'device', operator: 'equals', expression: 'mobile' },
+            {
+              dimension: 'device',
+              operator: 'includingRegex',
+              expression: 'MOB.*',
+            },
+          ],
+        },
+      ],
+    }),
+  );
+  assert.throws(
+    () =>
+      assertSearchAnalyticsQueryCompatible({
+        ...base,
         dimensions: ['hour'],
         dataState: 'all',
       }),

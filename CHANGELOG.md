@@ -201,6 +201,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.2] - 2026-09-21
 
 ### Fixed
+- Search Analytics now rejects malformed exact-match country/device filters during MCP input validation, before local rate-limit, credential, or Google API work, while preserving contains and regex filter semantics.
 - Cannibalization totals and impression shares now expose their query/page-row aggregation scope explicitly so clients do not mistake summed page impressions for a true query-level Search Console total.
 - Discover Search Analytics calls now reject unsupported query grouping/filtering before reaching Google, and query-centric/comparison tools no longer advertise Discover where their contracts depend on query or average-position data that Discover does not provide.
 - Quick-win guidance now treats Search Console position as an aggregate average-position metric rather than a literal current rank, and metadata no longer implies CTR is an eligibility filter when the implementation does not filter on CTR.

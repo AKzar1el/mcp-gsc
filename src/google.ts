@@ -314,6 +314,27 @@ export interface DimensionFilter {
   expression: string;
 }
 
+export function assertSearchAnalyticsFilterCompatible(
+  filter: DimensionFilter,
+): void {
+  if (filter.operator !== 'equals' && filter.operator !== 'notEquals') return;
+
+  if (filter.dimension === 'country' && !/^[A-Za-z]{3}$/.test(filter.expression)) {
+    throw new Error(
+      'Search Analytics exact country filters must use a three-letter ISO 3166-1 alpha-3 code.',
+    );
+  }
+
+  if (
+    filter.dimension === 'device' &&
+    !['DESKTOP', 'MOBILE', 'TABLET'].includes(filter.expression.toUpperCase())
+  ) {
+    throw new Error(
+      'Search Analytics exact device filters must use DESKTOP, MOBILE, or TABLET.',
+    );
+  }
+}
+
 export interface DimensionFilterGroup {
   groupType: 'and';
   filters: DimensionFilter[];
@@ -369,6 +390,7 @@ export function assertSearchAnalyticsQueryCompatible(body: SearchAnalyticsQuery)
     if (filter.expression.length > 4096) {
       throw new Error('Search Analytics filter expressions must be at most 4096 characters.');
     }
+    assertSearchAnalyticsFilterCompatible(filter);
   }
 
   if (body.aggregationType === 'byPage' && hasPageGroupingOrFilter) {

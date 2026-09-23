@@ -32,6 +32,7 @@ import {
   requestIndexingRemoval,
   getIndexingNotificationMetadata,
   processPerformanceComparison,
+  assertSearchAnalyticsFilterCompatible,
   type PaginatedSearchAnalyticsResult,
 } from './google';
 import {
@@ -149,26 +150,38 @@ const SEARCH_ROW_OUTPUT_SCHEMA = {
     ),
 };
 
-const SEARCH_ANALYTICS_FILTER_SCHEMA = z.object({
-  dimension: z.enum([
-    'query',
-    'page',
-    'country',
-    'device',
-    'searchAppearance',
-  ]),
-  operator: z
-    .enum([
-      'equals',
-      'notEquals',
-      'contains',
-      'notContains',
-      'includingRegex',
-      'excludingRegex',
-    ])
-    .default('equals'),
-  expression: z.string().max(4096),
-});
+const SEARCH_ANALYTICS_FILTER_SCHEMA = z
+  .object({
+    dimension: z.enum([
+      'query',
+      'page',
+      'country',
+      'device',
+      'searchAppearance',
+    ]),
+    operator: z
+      .enum([
+        'equals',
+        'notEquals',
+        'contains',
+        'notContains',
+        'includingRegex',
+        'excludingRegex',
+      ])
+      .default('equals'),
+    expression: z.string().max(4096),
+  })
+  .superRefine((filter, ctx) => {
+    try {
+      assertSearchAnalyticsFilterCompatible(filter);
+    } catch (error) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['expression'],
+        message: (error as Error).message,
+      });
+    }
+  });
 
 const SEARCH_ANALYTICS_FILTER_GROUP_SCHEMA = z.object({
   groupType: z.literal('and').default('and'),

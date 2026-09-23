@@ -316,6 +316,54 @@ describe('Worker orchestration', () => {
           ],
         }).success,
       ).toBe(false);
+      expect(
+        schema.safeParse({
+          ...requiredInput,
+          dimension_filter_groups: [
+            {
+              filters: [
+                {
+                  dimension: 'country',
+                  operator: 'equals',
+                  expression: 'us',
+                },
+              ],
+            },
+          ],
+        }).success,
+      ).toBe(false);
+      expect(
+        schema.safeParse({
+          ...requiredInput,
+          dimension_filter_groups: [
+            {
+              filters: [
+                {
+                  dimension: 'device',
+                  operator: 'equals',
+                  expression: 'PHONE',
+                },
+              ],
+            },
+          ],
+        }).success,
+      ).toBe(false);
+      expect(
+        schema.safeParse({
+          ...requiredInput,
+          dimension_filter_groups: [
+            {
+              filters: [
+                {
+                  dimension: 'device',
+                  operator: 'includingRegex',
+                  expression: 'MOB.*',
+                },
+              ],
+            },
+          ],
+        }).success,
+      ).toBe(true);
     }
     expect(tools['sites.add'].annotations).toMatchObject({
       readOnlyHint: false,
