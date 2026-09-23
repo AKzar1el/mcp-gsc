@@ -61,10 +61,11 @@ When this repository is installed as a Cursor plugin, Cursor also auto-discovers
 **GitHub Copilot CLI**
 
 ```bash
-copilot plugin install AKzar1el/mcp-gsc
+copilot plugin marketplace add AKzar1el/mcp-gsc
+copilot plugin install mcp-gsc@digestseo
 ```
 
-The Copilot plugin bundles the same three Agent Skills plus the local loopback MCP configuration. Start the npm launcher before using the plugin's MCP server; the plugin does not start or deploy mcp-gsc for you.
+The marketplace path makes the plugin discoverable and updateable through Copilot's marketplace workflow. Direct repository install also remains supported with `copilot plugin install AKzar1el/mcp-gsc`. The Copilot plugin bundles the same three Agent Skills plus the local loopback MCP configuration. Start the npm launcher before using the plugin's MCP server; the plugin does not start or deploy mcp-gsc for you.
 
 **Kiro**
 

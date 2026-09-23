@@ -25,6 +25,7 @@ const manifestJson = readJson('manifest.json');
 const claudePlugin = readJson('.claude-plugin/plugin.json');
 const cursorPlugin = readJson('.cursor-plugin/plugin.json');
 const copilotPlugin = readJson('plugin.json');
+const copilotMarketplace = readJson('.github/plugin/marketplace.json');
 const indexSource = readFileSync(resolve(projectRoot, 'src/index.ts'), 'utf8');
 const quickWinsSource = readFileSync(resolve(projectRoot, 'src/quick-wins-schema.ts'), 'utf8');
 const npmLauncherSource = readFileSync(resolve(projectRoot, 'scripts/glama-start.mjs'), 'utf8');
@@ -110,14 +111,31 @@ test('GitHub Copilot plugin bundles the existing MCP config and workflow skills'
   );
   assert.match(
     readmeSource,
-    /copilot plugin install AKzar1el\/mcp-gsc[\s\S]*same three Agent Skills[\s\S]*local loopback MCP configuration/i,
-    'README must document the direct Copilot plugin install path and bundled components',
+    /copilot plugin marketplace add AKzar1el\/mcp-gsc[\s\S]*copilot plugin install mcp-gsc@digestseo[\s\S]*direct repository install[\s\S]*copilot plugin install AKzar1el\/mcp-gsc[\s\S]*same three Agent Skills[\s\S]*local loopback MCP configuration/i,
+    'README must document marketplace and direct Copilot install paths plus bundled components',
   );
   assert.match(
     readmeSource,
     /Copilot plugin[\s\S]*does not start or deploy mcp-gsc for you/i,
     'README must preserve the local-launcher boundary for Copilot users',
   );
+});
+
+test('GitHub Copilot marketplace exposes the canonical plugin from this repository', () => {
+  assert.equal(copilotMarketplace.name, 'digestseo');
+  assert.equal(copilotMarketplace.owner?.name, 'DigestSEO');
+  assert.equal(copilotMarketplace.plugins.length, 1, 'marketplace should expose exactly the mcp-gsc plugin');
+
+  const marketplacePlugin = copilotMarketplace.plugins[0];
+  assert.equal(marketplacePlugin.name, copilotPlugin.name);
+  assert.equal(marketplacePlugin.version, copilotPlugin.version);
+  assert.equal(marketplacePlugin.description, copilotPlugin.description);
+  assert.equal(marketplacePlugin.source, '.', 'marketplace plugin source must remain the repository root');
+  assert.deepEqual(marketplacePlugin.author, copilotPlugin.author);
+  assert.equal(marketplacePlugin.homepage, copilotPlugin.homepage);
+  assert.equal(marketplacePlugin.repository, copilotPlugin.repository);
+  assert.equal(marketplacePlugin.license, copilotPlugin.license);
+  assert.deepEqual(marketplacePlugin.keywords, copilotPlugin.keywords);
 });
 
 test('published Node requirement covers the strictest bundled runtime dependency', () => {
