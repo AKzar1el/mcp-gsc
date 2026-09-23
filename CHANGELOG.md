@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Gemini CLI can now install this repository as a native extension, bundling the verified local Streamable HTTP MCP connection with the existing `gsc-weekly-review`, `gsc-indexing-triage`, and `gsc-search-opportunities` Agent Skills.
+
 ## [0.4.30] - 2026-09-23
 
 ### Changed

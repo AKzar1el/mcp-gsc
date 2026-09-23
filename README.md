@@ -75,6 +75,14 @@ copilot plugin install mcp-gsc@digestseo
 
 The marketplace path makes the plugin discoverable and updateable through Copilot's marketplace workflow. Direct repository install also remains supported with `copilot plugin install AKzar1el/mcp-gsc`. The Copilot plugin bundles the same three Agent Skills plus the local loopback MCP configuration. Start the npm launcher before using the plugin's MCP server; the plugin does not start or deploy mcp-gsc for you.
 
+**Gemini CLI**
+
+```bash
+gemini extensions install https://github.com/AKzar1el/mcp-gsc
+```
+
+The Gemini CLI extension bundles the verified local loopback MCP configuration plus the same three Agent Skills: `gsc-weekly-review`, `gsc-indexing-triage`, and `gsc-search-opportunities`. Start the npm launcher before using the extension; the extension does not start or deploy mcp-gsc for you.
+
 **Kiro**
 
 [![Add to Kiro](https://kiro.dev/images/add-to-kiro.svg)](https://kiro.dev/launch/mcp/add?name=mcp-gsc&config=%7B%22url%22%3A%22http%3A%2F%2F127.0.0.1%3A8080%2Fmcp%22%2C%22disabled%22%3Afalse%2C%22autoApprove%22%3A%5B%5D%7D)

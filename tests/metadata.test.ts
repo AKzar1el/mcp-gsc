@@ -26,6 +26,7 @@ const claudePlugin = readJson('.claude-plugin/plugin.json');
 const cursorPlugin = readJson('.cursor-plugin/plugin.json');
 const copilotPlugin = readJson('plugin.json');
 const copilotMarketplace = readJson('.github/plugin/marketplace.json');
+const geminiExtension = readJson('gemini-extension.json');
 const indexSource = readFileSync(resolve(projectRoot, 'src/index.ts'), 'utf8');
 const quickWinsSource = readFileSync(resolve(projectRoot, 'src/quick-wins-schema.ts'), 'utf8');
 const npmLauncherSource = readFileSync(resolve(projectRoot, 'scripts/glama-start.mjs'), 'utf8');
@@ -95,6 +96,31 @@ test('package release versions remain aligned across machine-readable metadata',
   assert.equal(claudePlugin.version, expectedVersion, 'Claude plugin version must match package.json');
   assert.equal(cursorPlugin.version, expectedVersion, 'Cursor plugin version must match package.json');
   assert.equal(copilotPlugin.version, expectedVersion, 'Copilot plugin version must match package.json');
+  assert.equal(geminiExtension.version, expectedVersion, 'Gemini extension version must match package.json');
+});
+
+test('Gemini CLI extension bundles the verified MCP endpoint and workflow skills', () => {
+  assert.equal(geminiExtension.name, 'mcp-gsc');
+  assert.equal(
+    geminiExtension.mcpServers?.gsc?.type,
+    'http',
+    'Gemini extension must use Streamable HTTP for the local launcher',
+  );
+  assert.equal(
+    geminiExtension.mcpServers?.gsc?.url,
+    'http://127.0.0.1:8080/mcp',
+    'Gemini extension must reuse the verified loopback launcher endpoint',
+  );
+  assert.match(
+    readmeSource,
+    /gemini extensions install https:\/\/github\.com\/AKzar1el\/mcp-gsc[\s\S]*Gemini CLI extension[\s\S]*gsc-weekly-review[\s\S]*gsc-indexing-triage[\s\S]*gsc-search-opportunities/i,
+    'README must document Gemini extension installation plus bundled workflow skills',
+  );
+  assert.match(
+    readmeSource,
+    /Gemini CLI extension[\s\S]*does not start or deploy mcp-gsc for you/i,
+    'README must preserve the local-launcher boundary for Gemini users',
+  );
 });
 
 test('GitHub Copilot plugin bundles the existing MCP config and workflow skills', () => {

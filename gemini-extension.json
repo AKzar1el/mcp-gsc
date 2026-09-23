@@ -1,0 +1,11 @@
+{
+  "name": "mcp-gsc",
+  "version": "0.4.30",
+  "description": "Connect Gemini CLI to Google Search Console with MCP tools and evidence-safe SEO workflow skills.",
+  "mcpServers": {
+    "gsc": {
+      "type": "http",
+      "url": "http://127.0.0.1:8080/mcp"
+    }
+  }
+}
