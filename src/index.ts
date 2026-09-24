@@ -422,6 +422,22 @@ const SITE_DELETE_OUTPUT_SCHEMA = {
   provider_scope_note: z.string(),
 };
 
+const SITEMAP_SUBMIT_OUTPUT_SCHEMA = {
+  message: z.string(),
+  submitted_to_search_console: z.literal(true),
+  sitemap_processing_completion_proven: z.literal(false),
+  page_indexing_proven: z.literal(false),
+  provider_scope_note: z.string(),
+};
+
+const SITEMAP_DELETE_OUTPUT_SCHEMA = {
+  message: z.string(),
+  removed_from_search_console: z.literal(true),
+  sitemap_file_deleted: z.literal(false),
+  page_deindexing_proven: z.literal(false),
+  provider_scope_note: z.string(),
+};
+
 const SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA = z.object({
   rows_fetched: z.number().int().nonnegative(),
   pages_fetched: z.number().int().positive(),
@@ -791,12 +807,12 @@ const TOOL_CATALOG = [
   {
     name: 'sitemaps.submit',
     description:
-      'Submit a new sitemap to your Google Search Console account.',
+      'Submit a sitemap URL to a Search Console property. A successful API response proves the Search Console submission request succeeded; it does not prove sitemap processing completed or that any page was indexed.',
   },
   {
     name: 'sitemaps.delete',
     description:
-      'Remove/delete a submitted sitemap from your Google Search Console account.',
+      'Remove a submitted sitemap from a Search Console property. This removes the Search Console sitemap entry; it does not delete the remotely hosted sitemap file or prove that any page was deindexed.',
   },
   {
     name: 'sitemaps.get',
@@ -1631,12 +1647,12 @@ class GscMcpRuntime {
       'sitemaps.submit',
       {
         title: 'Submit sitemap',
-        description: 'Submit a new sitemap to your Google Search Console account.',
+        description: 'Submit a sitemap URL to a Search Console property. A successful API response means the Search Console submission request succeeded; it does not prove sitemap processing completed or that any page was indexed.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           feedpath: SITEMAP_URL_SCHEMA.describe('The full HTTP/HTTPS URL of the sitemap file to submit, e.g. https://example.com/sitemap.xml'),
         },
-        outputSchema: MESSAGE_OUTPUT_SCHEMA,
+        outputSchema: SITEMAP_SUBMIT_OUTPUT_SCHEMA,
         annotations: WRITE_TOOL_ANNOTATIONS['sitemaps.submit'],
       },
       async ({ site_url, feedpath }) => {
@@ -1645,8 +1661,15 @@ class GscMcpRuntime {
         if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
         await submitSitemap(accessToken, site_url, feedpath);
-        const message = `Successfully submitted sitemap: ${feedpath} for site: ${site_url}`;
-        return toolResponse(message, { message });
+        const message = `Successfully submitted sitemap to Search Console: ${feedpath} for site: ${site_url}`;
+        const payload = {
+          message,
+          submitted_to_search_console: true as const,
+          sitemap_processing_completion_proven: false as const,
+          page_indexing_proven: false as const,
+          provider_scope_note: "Google's Sitemaps.submit method returns an empty body on success. That success confirms the Search Console submission operation, not completed sitemap processing or page indexing.",
+        };
+        return toolResponse(`${message}\n\n${payload.provider_scope_note}`, payload);
       },
     );
 
@@ -1654,12 +1677,12 @@ class GscMcpRuntime {
       'sitemaps.delete',
       {
         title: 'Delete sitemap',
-        description: 'Remove/delete a submitted sitemap from your Google Search Console account.',
+        description: 'Remove a submitted sitemap from a Search Console property. This removes the Search Console sitemap entry; it does not delete the remotely hosted sitemap file or prove that any page was deindexed.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           feedpath: SITEMAP_URL_SCHEMA.describe('The full HTTP/HTTPS URL of the sitemap file to delete, e.g. https://example.com/sitemap.xml'),
         },
-        outputSchema: MESSAGE_OUTPUT_SCHEMA,
+        outputSchema: SITEMAP_DELETE_OUTPUT_SCHEMA,
         annotations: WRITE_TOOL_ANNOTATIONS['sitemaps.delete'],
       },
       async ({ site_url, feedpath }) => {
@@ -1668,8 +1691,15 @@ class GscMcpRuntime {
         if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
         await deleteSitemap(accessToken, site_url, feedpath);
-        const message = `Successfully deleted sitemap: ${feedpath} for site: ${site_url}`;
-        return toolResponse(message, { message });
+        const message = `Successfully removed sitemap from Search Console: ${feedpath} for site: ${site_url}`;
+        const payload = {
+          message,
+          removed_from_search_console: true as const,
+          sitemap_file_deleted: false as const,
+          page_deindexing_proven: false as const,
+          provider_scope_note: "Google's Sitemaps.delete method removes the submitted sitemap from the Search Console property. It does not delete the remotely hosted sitemap file or prove that any page was deindexed.",
+        };
+        return toolResponse(`${message}\n\n${payload.provider_scope_note}`, payload);
       },
       );
     }
