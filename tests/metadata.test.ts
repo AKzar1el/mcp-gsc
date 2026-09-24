@@ -669,7 +669,7 @@ test('Search Analytics metadata does not fabricate dedicated Generative AI API s
   assert.ok(manifestTool, 'manifest.json must describe analytics.query');
   assert.match(
     manifestTool.description,
-    /does not expose a dedicated Generative AI performance-report selector/i,
+    /does not expose dedicated Generative AI or web multimodal performance-report selectors/i,
     'manifest.json must preserve the current documented API boundary',
   );
 
@@ -687,6 +687,39 @@ test('Search Analytics metadata does not fabricate dedicated Generative AI API s
     readmeSource,
     /use the Search Console UI for the dedicated Generative AI report until Google documents API access/i,
     'README must route dedicated Generative AI reporting to the supported surface',
+  );
+});
+
+test('Search Analytics metadata does not fabricate the new web multimodal UI filter as API support', () => {
+  const manifestTool = manifestJson.tools.find(
+    (entry: { name: string }) => entry.name === 'analytics.query',
+  );
+  assert.ok(manifestTool, 'manifest.json must describe analytics.query');
+  assert.match(
+    manifestTool.description,
+    /web multimodal performance-report selector/i,
+    'manifest.json must preserve the UI-only multimodal boundary',
+  );
+
+  assert.match(
+    indexSource,
+    /multimodal_report_isolatable/,
+    'runtime structured output must expose the web multimodal isolation boundary',
+  );
+  assert.match(
+    indexSource,
+    /Do not pass search_type='multimodal' or guess a searchAppearance identifier/,
+    'runtime guidance must reject invented multimodal selectors',
+  );
+  assert.match(
+    readmeSource,
+    /Use the Search Console UI for isolated multimodal reporting until Google documents API access/i,
+    'README must route isolated multimodal reporting to the supported surface',
+  );
+  assert.doesNotMatch(
+    indexSource,
+    /\.enum\(\[[^\]]*['"]multimodal['"]/,
+    'runtime input schema must not add an undocumented multimodal search type',
   );
 });
 

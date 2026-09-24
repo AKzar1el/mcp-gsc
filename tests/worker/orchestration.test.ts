@@ -1415,6 +1415,9 @@ describe('Worker orchestration', () => {
       expect(serialized).toContain('"generative_ai_report_isolatable":false');
       expect(serialized).toContain('dedicated Generative AI performance reports');
       expect(serialized).toContain('overall web Search performance data');
+      expect(serialized).toContain('"multimodal_report_isolatable":false');
+      expect(serialized).toContain('web multimodal performance filter');
+      expect(serialized).toContain("search_type='multimodal'");
       expect(serialized).not.toContain('Output validation error');
       expect(serialized).not.toContain('\"keys\"');
     } finally {

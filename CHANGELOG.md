@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `analytics.query` now exposes an explicit `multimodal_report_isolatable: false` boundary and matching runtime guidance because Search Console's new web multimodal filter is currently UI-only; the documented Search Analytics API still exposes only web/image/video/news/discover/googleNews search types.
+
 ### Fixed
 - User-supplied Search Analytics ranges now reject future end dates against Search Console's Pacific calendar before reserving local safety budget, resolving Google credentials, or calling the provider; the same boundary now applies to explicit indexed-page ranges and weekly-digest input.
 
