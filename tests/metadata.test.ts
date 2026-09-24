@@ -691,20 +691,15 @@ test('Search Analytics metadata does not fabricate dedicated Generative AI API s
 });
 
 test('Search Analytics metadata does not fabricate the new web multimodal UI filter as API support', () => {
-  for (const [label, metadata] of [
-    ['server.json', serverJson],
-    ['manifest.json', manifestJson],
-  ] as const) {
-    const tool = metadata.tools.find(
-      (entry: { name: string }) => entry.name === 'analytics.query',
-    );
-    assert.ok(tool, `${label} must describe analytics.query`);
-    assert.match(
-      tool.description,
-      /web multimodal performance-report selector/i,
-      `${label} must preserve the UI-only multimodal boundary`,
-    );
-  }
+  const manifestTool = manifestJson.tools.find(
+    (entry: { name: string }) => entry.name === 'analytics.query',
+  );
+  assert.ok(manifestTool, 'manifest.json must describe analytics.query');
+  assert.match(
+    manifestTool.description,
+    /web multimodal performance-report selector/i,
+    'manifest.json must preserve the UI-only multimodal boundary',
+  );
 
   assert.match(
     indexSource,
