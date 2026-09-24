@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- User-supplied Search Analytics ranges now reject future end dates against Search Console's Pacific calendar before reserving local safety budget, resolving Google credentials, or calling the provider; the same boundary now applies to explicit indexed-page ranges and weekly-digest input.
+
 ## [0.4.35] - 2026-09-24
 
 ### Fixed

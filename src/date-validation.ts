@@ -81,10 +81,14 @@ export function assertDateRange(
   }
 }
 
-export function assertDateNotInFuture(date: string, today: string): void {
+export function assertDateNotInFuture(
+  date: string,
+  today: string,
+  dateName = 'End date',
+): void {
   if (date > today) {
     throw new Error(
-      'End date must be today or earlier. Google Search Console has no data for dates that have not happened yet.',
+      `${dateName} must be today or earlier (current Search Console Pacific date: ${today}). Google Search Console has no data for dates that have not happened yet.`,
     );
   }
 }
