@@ -402,6 +402,10 @@ const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
     'False because the current documented Search Analytics API exposes no dedicated Generative AI report search type or filter selector.',
   ),
   generative_ai_note: z.string(),
+  multimodal_report_isolatable: z.literal(false).describe(
+    'False because the current documented Search Analytics API exposes no dedicated web multimodal search type or filter selector.',
+  ),
+  multimodal_note: z.string(),
   next_start_row: z.number().int().nonnegative().optional(),
   has_more: z.boolean(),
   truncated: z.boolean(),
@@ -697,6 +701,9 @@ const SEARCH_ANALYTICS_PROVIDER_NOTE =
 
 const GENERATIVE_AI_REPORT_API_NOTE =
   "Search Console's dedicated Generative AI performance reports are not exposed by the current documented Search Analytics API as a dedicated search type or filter selector. AI Overviews and AI Mode remain included in overall web Search performance data. Do not infer isolated Generative AI metrics from analytics.query or guess a searchAppearance identifier.";
+
+const MULTIMODAL_REPORT_API_NOTE =
+  "Search Console's web multimodal performance filter is currently available in the Search Console UI, but the documented Search Analytics API does not expose a multimodal search type or filter selector. Current API search types remain web, image, video, news, discover, and googleNews. Do not pass search_type='multimodal' or guess a searchAppearance identifier to isolate Lens, Circle to Search, image-upload, or Chrome image-search traffic.";
 
 function paginationMetadata(result: PaginatedSearchAnalyticsResult) {
   return {
@@ -1279,6 +1286,13 @@ class GscMcpRuntime {
           '  included in overall web Search performance data. Do not guess a',
           '  searchAppearance identifier or claim analytics.query isolates the',
           '  dedicated Generative AI report.',
+          '- WEB MULTIMODAL REPORT: Search Console now has a web multimodal',
+          '  performance filter in its UI for searches such as Lens, Circle to',
+          '  Search, image uploads, and Chrome image search. The current',
+          '  documented Search Analytics API still exposes only web, image,',
+          '  video, news, discover, and googleNews search types, with no',
+          '  multimodal selector. Do not pass search_type="multimodal" or guess',
+          '  a searchAppearance identifier to isolate this UI report.',
           '- Use dimension_filter_groups to filter by country, device, query',
           '  content, page URL, or search feature. includingRegex and',
           '  excludingRegex use RE2 syntax. A query regex can provide a manual',
@@ -1358,7 +1372,7 @@ class GscMcpRuntime {
           search_type: z
             .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
             .default('web')
-            .describe('Which documented Search Analytics search index to query. Defaults to web. Google Discover and Google News do not support query grouping/filtering or average position. The current API does not expose a dedicated Generative AI performance-report search type.'),
+            .describe('Which documented Search Analytics search index to query. Defaults to web. Google Discover and Google News do not support query grouping/filtering or average position. The current API does not expose a dedicated Generative AI performance-report search type or the Search Console UI web multimodal filter as a search type.'),
           aggregation_type: z
             .enum(['auto', 'byNewsShowcasePanel', 'byPage', 'byProperty'])
             .default('auto')
@@ -1444,6 +1458,8 @@ class GscMcpRuntime {
           provider_note: SEARCH_ANALYTICS_PROVIDER_NOTE,
           generative_ai_report_isolatable: false,
           generative_ai_note: GENERATIVE_AI_REPORT_API_NOTE,
+          multimodal_report_isolatable: false,
+          multimodal_note: MULTIMODAL_REPORT_API_NOTE,
           has_more: bounded.resultPage.has_more,
           truncated: bounded.resultPage.truncated,
           byte_limit_reached: bounded.resultPage.byte_limit_reached,
