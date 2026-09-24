@@ -785,10 +785,9 @@ export async function querySearchAnalytics(
 
 /**
  * Fetches Search Analytics rows in 25,000-row pages for higher-level tools.
- * Google's documented pagination contract uses an explicit empty response as
- * the terminal page, so a short non-empty page is not treated as exhaustion.
- * A full final page conservatively reports localLimitReached because the API
- * can have more rows even when Search Console's own internal limits apply.
+ * Google's documented pagination contract treats a response shorter than the
+ * requested rowLimit as exhausted. An exactly full final page still requires
+ * a following empty-page probe unless the local safety ceiling is reached.
  */
 export async function querySearchAnalyticsPaginated(
   accessToken: string,
@@ -820,7 +819,7 @@ export async function querySearchAnalyticsPaginated(
 
     const acceptedRows = page.rows.slice(0, requestedRows);
     rows.push(...acceptedRows);
-    if (page.rows.length === 0) {
+    if (page.rows.length < requestedRows) {
       return { rows, pagesFetched, localLimitReached: false };
     }
     if (rows.length >= maximumRows || page.rows.length > requestedRows) {

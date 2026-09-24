@@ -1104,12 +1104,10 @@ describe('Worker orchestration', () => {
         query: 'seo audit',
         pages: [{ page: 'https://example.com/seo-audit/' }],
       });
-      expect(analyticsRequests).toHaveLength(4);
+      expect(analyticsRequests).toHaveLength(2);
       expect(analyticsRequests.map((request) => request.startRow ?? 0)).toEqual([
         0,
-        100,
         0,
-        100,
       ]);
       expect(analyticsRequests[0]).toMatchObject({
         dimensions: ['query'],
@@ -1119,7 +1117,7 @@ describe('Worker orchestration', () => {
           filters: [{ dimension: 'page', operator: 'equals', expression: 'https://example.com/seo-audit/' }],
         }],
       });
-      expect(analyticsRequests[2]).toMatchObject({
+      expect(analyticsRequests[1]).toMatchObject({
         dimensions: ['page'],
         type: 'web',
         dimensionFilterGroups: [{
@@ -1432,7 +1430,7 @@ describe('Worker orchestration', () => {
     }
   });
 
-  it('continues analytics.query after a short non-empty provider page using the requested page size', async () => {
+  it('marks analytics.query terminal after a short non-empty provider page', async () => {
     await saveUser(
       workerEnv,
       'short-page-user',
@@ -1511,13 +1509,9 @@ describe('Worker orchestration', () => {
 
       const first = JSON.stringify(await readMcpJsonRpc(await callAnalytics(0)));
       expect(first).toContain('short provider page');
-      expect(first).toContain('\\"has_more\\":true');
-      expect(first).toContain('\\"next_start_row\\":10');
-
-      const terminal = JSON.stringify(await readMcpJsonRpc(await callAnalytics(10)));
-      expect(terminal).toContain('\\"has_more\\":false');
-      expect(terminal).not.toContain('\\"next_start_row\\"');
-      expect(terminal).not.toContain('Output validation error');
+      expect(first).toContain('\\"has_more\\":false');
+      expect(first).not.toContain('\\"next_start_row\\"');
+      expect(first).not.toContain('Output validation error');
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -1814,7 +1808,7 @@ describe('Worker orchestration', () => {
     }
   });
 
-  it('continues indexing.list_pages after a short non-empty Search Analytics page', async () => {
+  it('marks indexing.list_pages terminal after a short non-empty Search Analytics page', async () => {
     await saveUser(
       workerEnv,
       'short-list-user',
@@ -1886,23 +1880,9 @@ describe('Worker orchestration', () => {
         'https://example.com/short-provider-page/',
       );
       expect(first.structuredContent.result_page).toMatchObject({
-        has_more: true,
-        next_start_row: 500,
+        has_more: false,
       });
-
-      const terminal = (await registered['indexing.list_pages'].handler({
-        site_url: 'sc-domain:example.com',
-        start_date: '2026-06-01',
-        end_date: '2026-06-30',
-        row_limit: 1000,
-        start_row: 500,
-      })) as {
-        structuredContent: {
-          result_page: { has_more: boolean; next_start_row?: number };
-        };
-      };
-      expect(terminal.structuredContent.result_page.has_more).toBe(false);
-      expect(terminal.structuredContent.result_page.next_start_row).toBeUndefined();
+      expect(first.structuredContent.result_page.next_start_row).toBeUndefined();
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -1981,32 +1961,24 @@ describe('Worker orchestration', () => {
         dimension_filter_groups: filters,
       });
 
-      expect(analyticsRequests).toHaveLength(4);
+      expect(analyticsRequests).toHaveLength(2);
       expect(analyticsRequests.map((request) => request.startRow ?? 0)).toEqual([
         0,
-        25_000,
         0,
-        25_000,
       ]);
       expect(analyticsRequests.map((request) => request.type)).toEqual([
-        'web',
-        'web',
         'web',
         'web',
       ]);
       expect(
         analyticsRequests.map((request) => request.dimensionFilterGroups),
-      ).toEqual([filters, filters, filters, filters]);
+      ).toEqual([filters, filters]);
       expect(analyticsRequests.map((request) => request.dimensions)).toEqual([
-        ['query'],
-        ['query'],
         ['query'],
         ['query'],
       ]);
       expect(analyticsRequests.map((request) => request.startDate)).toEqual([
         '2026-09-01',
-        '2026-09-01',
-        '2026-08-25',
         '2026-08-25',
       ]);
     } finally {
