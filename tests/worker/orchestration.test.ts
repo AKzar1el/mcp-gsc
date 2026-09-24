@@ -413,6 +413,60 @@ describe('Worker orchestration', () => {
     });
   });
 
+  it('rejects incompatible Search Analytics requests before budget or credential work', async () => {
+    const limiterIdFromName = vi.fn(() => {
+      throw new Error('rate limiter should not run');
+    });
+    const getAccessToken = vi.fn(async () => {
+      throw new Error('access-token lifecycle should not run');
+    });
+    const server = await createGscMcpServer(
+      {
+        GSC_ACCESS_MODE: 'readwrite',
+        TOOL_RATE_LIMITER: { idFromName: limiterIdFromName },
+      } as unknown as Env,
+      {
+        google_id: 'analytics-preflight-user',
+        email: 'analytics-preflight@example.test',
+      },
+      { getAccessToken } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const analyticsQuery = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        {
+          handler: (input: {
+            site_url: string;
+            start_date: string;
+            end_date: string;
+            dimensions: ['hour'];
+            row_limit: number;
+            start_row: number;
+            data_state: 'all';
+            search_type: 'web';
+            aggregation_type: 'auto';
+          }) => Promise<unknown>;
+        }
+      >;
+    })._registeredTools['analytics.query'];
+
+    await expect(
+      analyticsQuery.handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-09-01',
+        end_date: '2026-09-07',
+        dimensions: ['hour'],
+        row_limit: 100,
+        start_row: 0,
+        data_state: 'all',
+        search_type: 'web',
+        aggregation_type: 'auto',
+      }),
+    ).rejects.toThrow('Search Analytics hour dimension requires dataState hourly_all.');
+    expect(limiterIdFromName).not.toHaveBeenCalled();
+    expect(getAccessToken).not.toHaveBeenCalled();
+  });
+
   it('rejects duplicate urls.inspect_many inputs before provider work', async () => {
     const originalFetch = globalThis.fetch;
     let outboundRequests = 0;
