@@ -1,4 +1,4 @@
-import { assertDateRange } from './date-validation';
+import { assertDateNotInFuture, assertDateRange } from './date-validation';
 
 export interface IndexedPagesDateRange {
   startDate: string;
@@ -26,6 +26,7 @@ export function resolveIndexedPagesDateRange(
   }
 
   if (!startDate) {
+    assertDateNotInFuture(endDate!, today, 'end_date');
     return {
       startDate: addUtcDays(endDate!, -29),
       endDate: endDate!,
@@ -50,5 +51,6 @@ export function resolveIndexedPagesDateRange(
   }
 
   assertDateRange(startDate, endDate);
+  assertDateNotInFuture(endDate, today, 'end_date');
   return { startDate, endDate };
 }

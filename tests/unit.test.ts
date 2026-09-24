@@ -188,6 +188,10 @@ test('weekly digest end dates reject invalid dates and future dates', () => {
     () => assertDateNotInFuture('2026-08-19', '2026-08-18'),
     /End date must be today or earlier/,
   );
+  assert.throws(
+    () => assertDateNotInFuture('2026-08-19', '2026-08-18', 'end_date_a'),
+    /end_date_a must be today or earlier.*2026-08-18/,
+  );
 });
 
 test('weekly digest defaults to the latest usually-complete Search Console date', () => {
@@ -242,6 +246,14 @@ test('indexed page ranges preserve both supplied boundaries', () => {
   assert.deepEqual(
     resolveIndexedPagesDateRange('2025-12-31', '2026-01-02', '2026-01-15'),
     { startDate: '2025-12-31', endDate: '2026-01-02' },
+  );
+  assert.throws(
+    () => resolveIndexedPagesDateRange(undefined, '2026-01-16', '2026-01-15'),
+    /end_date must be today or earlier/,
+  );
+  assert.throws(
+    () => resolveIndexedPagesDateRange('2026-01-14', '2026-01-16', '2026-01-15'),
+    /end_date must be today or earlier/,
   );
 });
 

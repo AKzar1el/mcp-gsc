@@ -467,6 +467,60 @@ describe('Worker orchestration', () => {
     expect(getAccessToken).not.toHaveBeenCalled();
   });
 
+  it('rejects future Search Analytics ranges before budget or credential work', async () => {
+    const limiterIdFromName = vi.fn(() => {
+      throw new Error('rate limiter should not run');
+    });
+    const getAccessToken = vi.fn(async () => {
+      throw new Error('access-token lifecycle should not run');
+    });
+    const server = await createGscMcpServer(
+      {
+        GSC_ACCESS_MODE: 'readonly',
+        TOOL_RATE_LIMITER: { idFromName: limiterIdFromName },
+      } as unknown as Env,
+      {
+        google_id: 'analytics-future-date-user',
+        email: 'analytics-future-date@example.test',
+      },
+      { getAccessToken } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const analyticsQuery = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        {
+          handler: (input: {
+            site_url: string;
+            start_date: string;
+            end_date: string;
+            dimensions: ['query'];
+            row_limit: number;
+            start_row: number;
+            data_state: 'all';
+            search_type: 'web';
+            aggregation_type: 'auto';
+          }) => Promise<unknown>;
+        }
+      >;
+    })._registeredTools['analytics.query'];
+
+    await expect(
+      analyticsQuery.handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2999-01-01',
+        end_date: '2999-01-02',
+        dimensions: ['query'],
+        row_limit: 100,
+        start_row: 0,
+        data_state: 'all',
+        search_type: 'web',
+        aggregation_type: 'auto',
+      }),
+    ).rejects.toThrow('end_date must be today or earlier');
+    expect(limiterIdFromName).not.toHaveBeenCalled();
+    expect(getAccessToken).not.toHaveBeenCalled();
+  });
+
   it('rejects page-query URLs outside site_url before budget or credential work', async () => {
     const limiterIdFromName = vi.fn(() => {
       throw new Error('rate limiter should not run');
@@ -1815,7 +1869,7 @@ describe('Worker orchestration', () => {
       const comparison = (await registered['analytics.compare'].handler({
         site_url: 'sc-domain:example.com',
         start_date_a: '2026-09-01',
-        end_date_a: '2026-09-30',
+        end_date_a: '2026-09-23',
         start_date_b: '2026-08-01',
         end_date_b: '2026-08-31',
         dimension: 'page',

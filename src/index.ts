@@ -1388,6 +1388,11 @@ class GscMcpRuntime {
         dimension_filter_groups,
       }) => {
         assertDateRange(start_date, end_date);
+        assertDateNotInFuture(
+          end_date,
+          getSearchConsoleCalendarDate(),
+          'end_date',
+        );
         const sourceRowLimit = Math.min(row_limit, MAX_DIRECT_SOURCE_ROWS);
         const query = {
           startDate: start_date,
@@ -1497,6 +1502,11 @@ class GscMcpRuntime {
       },
       async ({ site_url, page_url, start_date, end_date, search_type, row_limit = 100, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
+        assertDateNotInFuture(
+          end_date,
+          getSearchConsoleCalendarDate(),
+          'end_date',
+        );
         assertUrlWithinSearchConsoleProperty(page_url, site_url, 'page_url');
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'insights.page_queries');
@@ -1582,6 +1592,11 @@ class GscMcpRuntime {
       },
       async ({ site_url, query, start_date, end_date, search_type, row_limit = 100, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
+        assertDateNotInFuture(
+          end_date,
+          getSearchConsoleCalendarDate(),
+          'end_date',
+        );
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'insights.query_pages');
         if (rateLimitError) return rateLimitError;
@@ -1776,6 +1791,11 @@ class GscMcpRuntime {
       },
       async ({ site_url, start_date, end_date, min_impressions, min_position, max_position, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
+        assertDateNotInFuture(
+          end_date,
+          getSearchConsoleCalendarDate(),
+          'end_date',
+        );
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'insights.quick_wins');
         if (rateLimitError) return rateLimitError;
@@ -1823,6 +1843,11 @@ class GscMcpRuntime {
       },
       async ({ site_url, start_date, end_date, min_impressions, min_page_percentage, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
+        assertDateNotInFuture(
+          end_date,
+          getSearchConsoleCalendarDate(),
+          'end_date',
+        );
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'insights.cannibalization');
         if (rateLimitError) return rateLimitError;
@@ -2187,6 +2212,9 @@ class GscMcpRuntime {
       }) => {
         assertDateRange(start_date_a, end_date_a, 'start_date_a', 'end_date_a');
         assertDateRange(start_date_b, end_date_b, 'start_date_b', 'end_date_b');
+        const today = getSearchConsoleCalendarDate();
+        assertDateNotInFuture(end_date_a, today, 'end_date_a');
+        assertDateNotInFuture(end_date_b, today, 'end_date_b');
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'analytics.compare');
         if (rateLimitError) return rateLimitError;
@@ -2248,12 +2276,12 @@ class GscMcpRuntime {
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url, end_date }) => {
+        const today = getSearchConsoleCalendarDate();
+        const resolvedEndDate = resolveWeeklyDigestEndDate(end_date, today);
+        assertDateNotInFuture(resolvedEndDate, today, 'end_date');
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'reports.weekly_digest');
         if (rateLimitError) return rateLimitError;
-        const today = getSearchConsoleCalendarDate();
-        const resolvedEndDate = resolveWeeklyDigestEndDate(end_date, today);
-        assertDateNotInFuture(resolvedEndDate, today);
 
         try {
           const markdown = await generateWeeklyDigest(
