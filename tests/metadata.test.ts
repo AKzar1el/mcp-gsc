@@ -113,7 +113,7 @@ test('Gemini CLI extension bundles the verified MCP endpoint and workflow skills
   );
   assert.match(
     readmeSource,
-    /gemini extensions install https:\/\/github\.com\/AKzar1el\/mcp-gsc --ref main[\s\S]*Gemini CLI extension[\s\S]*gsc-weekly-review[\s\S]*gsc-indexing-triage[\s\S]*gsc-search-opportunities/i,
+    /gemini extensions install https:\/\/github\.com\/AKzar1el\/mcp-gsc[\s\S]*Gemini CLI extension[\s\S]*gsc-weekly-review[\s\S]*gsc-indexing-triage[\s\S]*gsc-search-opportunities/i,
     'README must document Gemini extension installation plus bundled workflow skills',
   );
   assert.match(
