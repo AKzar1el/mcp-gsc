@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Search Analytics pagination now treats provider responses shorter than the requested page size as terminal, matching Google's documented contract and avoiding false continuations or unnecessary follow-up requests across direct and higher-level workflows.
+- `insights.page_queries` now rejects exact page URLs outside the supplied Search Console property before reserving local Search Analytics safety budget, resolving Google credentials, or calling the provider, preventing misleading empty cross-property drilldowns.
 
 ## [0.4.34] - 2026-09-24
 
