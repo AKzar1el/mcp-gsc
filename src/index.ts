@@ -1960,6 +1960,7 @@ class GscMcpRuntime {
         annotations: READ_ONLY_ANNOTATIONS,
       },
       async ({ site_url, url }) => {
+        assertUrlWithinSearchConsoleProperty(url, site_url);
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'indexing.status');
         if (rateLimitError) return rateLimitError;
@@ -2003,6 +2004,7 @@ class GscMcpRuntime {
         annotations: WRITE_TOOL_ANNOTATIONS['indexing.request'],
       },
       async ({ site_url, url }) => {
+        assertUrlWithinSearchConsoleProperty(url, site_url);
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'indexing.request');
         if (rateLimitError) return rateLimitError;
@@ -2044,6 +2046,7 @@ class GscMcpRuntime {
         annotations: WRITE_TOOL_ANNOTATIONS['indexing.remove'],
       },
       async ({ site_url, url }) => {
+        assertUrlWithinSearchConsoleProperty(url, site_url);
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'indexing.remove');
         if (rateLimitError) return rateLimitError;

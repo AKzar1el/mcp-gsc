@@ -467,6 +467,45 @@ describe('Worker orchestration', () => {
     expect(getAccessToken).not.toHaveBeenCalled();
   });
 
+  it('rejects Indexing API URLs outside site_url before budget or credential work', async () => {
+    const limiterIdFromName = vi.fn(() => {
+      throw new Error('rate limiter should not run');
+    });
+    const getAccessToken = vi.fn(async () => {
+      throw new Error('access-token lifecycle should not run');
+    });
+    const server = await createGscMcpServer(
+      {
+        GSC_ACCESS_MODE: 'readwrite',
+        TOOL_RATE_LIMITER: { idFromName: limiterIdFromName },
+      } as unknown as Env,
+      {
+        google_id: 'indexing-preflight-user',
+        email: 'indexing-preflight@example.test',
+      },
+      { getAccessToken } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        {
+          handler: (input: { site_url: string; url: string }) => Promise<unknown>;
+        }
+      >;
+    })._registeredTools;
+
+    for (const toolName of ['indexing.status', 'indexing.request', 'indexing.remove']) {
+      await expect(
+        tools[toolName].handler({
+          site_url: 'sc-domain:example.com',
+          url: 'https://outside.example.net/job',
+        }),
+      ).rejects.toThrow('url must belong to the site_url Search Console property.');
+    }
+    expect(limiterIdFromName).not.toHaveBeenCalled();
+    expect(getAccessToken).not.toHaveBeenCalled();
+  });
+
   it('rejects duplicate urls.inspect_many inputs before provider work', async () => {
     const originalFetch = globalThis.fetch;
     let outboundRequests = 0;
