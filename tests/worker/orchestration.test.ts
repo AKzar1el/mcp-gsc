@@ -657,6 +657,93 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('keeps sitemap write receipts scoped to Search Console effects', async () => {
+    await saveUser(
+      workerEnv,
+      'sitemap-write-user',
+      'sitemap-write@example.test',
+      'sitemap-write-refresh-token',
+    );
+    const server = await createGscMcpServer(
+      workerEnv,
+      {
+        google_id: 'sitemap-write-user',
+        email: 'sitemap-write@example.test',
+      },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        { handler: (args: Record<string, unknown>) => Promise<unknown> }
+      >;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const sitemapUrl = 'https://example.com/sitemap.xml';
+    const sitemapEndpoint =
+      'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/sitemaps/https%3A%2F%2Fexample.com%2Fsitemap.xml';
+
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({
+            access_token: 'sitemap-write-access-token',
+            expires_in: 3600,
+          });
+        }
+        if (url === sitemapEndpoint) {
+          expect(init?.method === 'PUT' || init?.method === 'DELETE').toBe(true);
+          return new Response(null, { status: 204 });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const submitResult = await tools['sitemaps.submit'].handler({
+        site_url: 'sc-domain:example.com',
+        feedpath: sitemapUrl,
+      }) as {
+        structuredContent: {
+          message: string;
+          submitted_to_search_console: boolean;
+          sitemap_processing_completion_proven: boolean;
+          page_indexing_proven: boolean;
+          provider_scope_note: string;
+        };
+      };
+      const deleteResult = await tools['sitemaps.delete'].handler({
+        site_url: 'sc-domain:example.com',
+        feedpath: sitemapUrl,
+      }) as {
+        structuredContent: {
+          message: string;
+          removed_from_search_console: boolean;
+          sitemap_file_deleted: boolean;
+          page_deindexing_proven: boolean;
+          provider_scope_note: string;
+        };
+      };
+
+      expect(submitResult.structuredContent.submitted_to_search_console).toBe(true);
+      expect(
+        submitResult.structuredContent.sitemap_processing_completion_proven,
+      ).toBe(false);
+      expect(submitResult.structuredContent.page_indexing_proven).toBe(false);
+      expect(submitResult.structuredContent.provider_scope_note).toContain(
+        'not completed sitemap processing or page indexing',
+      );
+
+      expect(deleteResult.structuredContent.removed_from_search_console).toBe(true);
+      expect(deleteResult.structuredContent.sitemap_file_deleted).toBe(false);
+      expect(deleteResult.structuredContent.page_deindexing_proven).toBe(false);
+      expect(deleteResult.structuredContent.provider_scope_note).toContain(
+        'does not delete the remotely hosted sitemap file',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('reads Indexing API notification metadata without implying index coverage', async () => {
     await saveUser(
       workerEnv,
