@@ -91,7 +91,9 @@ The Gemini CLI extension bundles the verified local loopback MCP configuration p
 
 Start the npm launcher before using either install button or the Copilot plugin. Complete its Google OAuth flow on first use.
 
-**ChatGPT** — ChatGPT cannot connect directly to this loopback `127.0.0.1` endpoint. Use OpenAI's **Secure MCP Tunnel** for the local launcher, or deploy your own remote Cloudflare Worker and add that `/mcp` URL as a custom MCP app in Developer mode; see [Connect in your AI client](#connect-in-your-ai-client) below.
+**ChatGPT** — ChatGPT cannot connect directly to this loopback `127.0.0.1` endpoint. For private/local use, create an OpenAI **Secure MCP Tunnel**, then run `tunnel-client` on the same machine as the launcher so it can reach `http://127.0.0.1:8080/mcp`; when creating the ChatGPT app, choose the **Tunnel** connection and select that tunnel. The tunnel setup requires an OpenAI `tunnel_id` and runtime API key; see OpenAI's [Secure MCP Tunnel guide](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels). The tunnel keeps the MCP server private and is intended for private/developer-mode connectivity, not public plugin distribution.
+
+Alternatively, deploy your own remote Cloudflare Worker and add its HTTPS `/mcp` URL as a custom MCP app in Developer mode; see [Connect in your AI client](#connect-in-your-ai-client) below.
 
 A self-hostable [Model Context Protocol](https://modelcontextprotocol.io) (MCP) server for **Google Search Console**. Connect it to Claude.ai, Cursor, ChatGPT, or any MCP-compatible client and ask your AI assistant about your site's organic search performance — impressions, clicks, top queries, index status, and sitemap health — straight from your own Google account.
 
