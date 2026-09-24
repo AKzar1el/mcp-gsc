@@ -34,6 +34,7 @@ import {
   getIndexingNotificationMetadata,
   processPerformanceComparison,
   assertSearchAnalyticsFilterCompatible,
+  assertSearchAnalyticsQueryCompatible,
   type PaginatedSearchAnalyticsResult,
 } from './google';
 import {
@@ -1387,12 +1388,8 @@ class GscMcpRuntime {
         dimension_filter_groups,
       }) => {
         assertDateRange(start_date, end_date);
-        const googleId = this.requireGoogleId();
-        const rateLimitError = await this.rateLimitError(googleId, 'analytics.query');
-        if (rateLimitError) return rateLimitError;
-        const accessToken = await this.getAccessToken(googleId);
         const sourceRowLimit = Math.min(row_limit, MAX_DIRECT_SOURCE_ROWS);
-        const response = await querySearchAnalytics(accessToken, site_url, {
+        const query = {
           startDate: start_date,
           endDate: end_date,
           dimensions,
@@ -1404,7 +1401,13 @@ class GscMcpRuntime {
           ...(dimension_filter_groups !== undefined
             ? { dimensionFilterGroups: dimension_filter_groups }
             : {}),
-        });
+        };
+        assertSearchAnalyticsQueryCompatible(query);
+        const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'analytics.query');
+        if (rateLimitError) return rateLimitError;
+        const accessToken = await this.getAccessToken(googleId);
+        const response = await querySearchAnalytics(accessToken, site_url, query);
         // Search Analytics pagination is complete only after Google returns an
         // explicit empty page. A short non-empty page can still be followed by
         // later rows, so preserve a continuation for dimensioned queries.
