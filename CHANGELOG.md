@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `analytics.query` responses now echo the ordered requested `dimensions` and `search_type`, so `rows[].keys` remain self-describing when responses are saved, forwarded, or consumed outside the original request context.
+
 ## [0.4.32] - 2026-09-24
 
 ### Added

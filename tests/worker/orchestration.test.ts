@@ -1197,6 +1197,8 @@ describe('Worker orchestration', () => {
       const envelope = await readMcpJsonRpc(result);
       const serialized = JSON.stringify(envelope);
       expect(serialized).toContain('121404');
+      expect(serialized).toContain('\"dimensions\":[]');
+      expect(serialized).toContain('\"search_type\":\"web\"');
       expect(serialized).toContain('"provider_exhaustiveness_guaranteed":false');
       expect(serialized).toContain('Google Search Analytics does not guarantee all data rows');
       expect(serialized).toContain('do not prove provider-level exhaustiveness');
@@ -1296,6 +1298,8 @@ describe('Worker orchestration', () => {
         await readMcpJsonRpc(queryResponse),
       );
       expect(querySerialized).toContain('gsc mcp');
+      expect(querySerialized).toContain('\"dimensions\":[\"query\"]');
+      expect(querySerialized).toContain('\"search_type\":\"web\"');
       expect(querySerialized).toContain('\"has_more\":true');
       expect(querySerialized).toContain('\"next_start_row\":1');
       expect(querySerialized).toContain('\"data_state\":\"all\"');
@@ -1306,6 +1310,8 @@ describe('Worker orchestration', () => {
       expect(pageResponse.status).toBe(200);
       const pageSerialized = JSON.stringify(await readMcpJsonRpc(pageResponse));
       expect(pageSerialized).toContain('https://example.com/gsc-mcp/');
+      expect(pageSerialized).toContain('\"dimensions\":[\"page\"]');
+      expect(pageSerialized).toContain('\"search_type\":\"web\"');
       expect(pageSerialized).toContain('\"has_more\":true');
       expect(pageSerialized).toContain('\"next_start_row\":11');
       expect(pageSerialized).toContain('\"data_state\":\"final\"');
