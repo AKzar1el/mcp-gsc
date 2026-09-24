@@ -262,6 +262,23 @@ describe('Worker orchestration', () => {
     };
     const analyticsCompareSchema = tools['analytics.compare']
       .inputSchema as typeof analyticsQuerySchema;
+    const requiredAnalyticsQueryInput = {
+      site_url: 'sc-domain:example.com',
+      start_date: '2026-09-01',
+      end_date: '2026-09-07',
+    };
+    expect(
+      analyticsQuerySchema.safeParse({
+        ...requiredAnalyticsQueryInput,
+        dimensions: ['query', 'query'],
+      }).success,
+    ).toBe(false);
+    expect(
+      analyticsQuerySchema.safeParse({
+        ...requiredAnalyticsQueryInput,
+        dimensions: ['searchAppearance', 'page'],
+      }).success,
+    ).toBe(false);
     const filterInput = {
       dimension_filter_groups: [
         {

@@ -1313,6 +1313,20 @@ class GscMcpRuntime {
                 'searchAppearance',
               ]),
             )
+            .superRefine((dimensions, ctx) => {
+              if (new Set(dimensions).size !== dimensions.length) {
+                ctx.addIssue({
+                  code: 'custom',
+                  message: 'Search Analytics dimensions must not contain duplicates.',
+                });
+              }
+              if (dimensions.includes('searchAppearance') && dimensions.length > 1) {
+                ctx.addIssue({
+                  code: 'custom',
+                  message: 'Search Analytics searchAppearance must be the only grouping dimension.',
+                });
+              }
+            })
             .default(['query'])
             .describe(
               "Dimensions to group rows by. Pass [] (empty array) to get a single row of true site-level totals. searchAppearance must be the only grouping dimension; discover an appearance value with ['searchAppearance'], then filter to that value in a separate query when grouping by another dimension. The 'hour' dimension requires data_state 'hourly_all' and an inclusive date range of at most 10 days. Google Discover and Google News do not support the query dimension.",
