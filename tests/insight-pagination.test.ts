@@ -49,7 +49,7 @@ const baseQuery: PaginatedSearchAnalyticsQuery = {
   dimensions: ['query', 'page'],
 };
 
-test('paginator continues after a short non-empty page until an explicit empty page', async () => {
+test('paginator stops after a short non-empty page', async () => {
   const firstPage = makeRows(SEARCH_ANALYTICS_PAGE_SIZE);
   const secondPage = makeRows(2, SEARCH_ANALYTICS_PAGE_SIZE);
   const thirdPage = makeRows(1, SEARCH_ANALYTICS_PAGE_SIZE * 2);
@@ -65,11 +65,9 @@ test('paginator continues after a short non-empty page until an explicit empty p
       assert.deepEqual(startRows, [
         0,
         SEARCH_ANALYTICS_PAGE_SIZE,
-        SEARCH_ANALYTICS_PAGE_SIZE * 2,
-        SEARCH_ANALYTICS_PAGE_SIZE * 3,
       ]);
-      assert.equal(result.rows.length, SEARCH_ANALYTICS_PAGE_SIZE + 3);
-      assert.equal(result.pagesFetched, 4);
+      assert.equal(result.rows.length, SEARCH_ANALYTICS_PAGE_SIZE + 2);
+      assert.equal(result.pagesFetched, 2);
       assert.equal(result.localLimitReached, false);
     },
   );
@@ -128,7 +126,7 @@ test('paginator reports when its local safety ceiling is reached', async () => {
   );
 });
 
-test('paginator advances from a supplied startRow by the requested page size until empty', async () => {
+test('paginator advances from a supplied startRow and stops on a short page', async () => {
   const initialStartRow = 100;
   await withMockAnalyticsPages(
     new Map([
@@ -144,9 +142,10 @@ test('paginator advances from a supplied startRow by the requested page size unt
       assert.deepEqual(startRows, [
         initialStartRow,
         initialStartRow + SEARCH_ANALYTICS_PAGE_SIZE,
-        initialStartRow + SEARCH_ANALYTICS_PAGE_SIZE * 2,
       ]);
       assert.equal(result.rows.length, SEARCH_ANALYTICS_PAGE_SIZE + 1);
+      assert.equal(result.pagesFetched, 2);
+      assert.equal(result.localLimitReached, false);
     },
   );
 });

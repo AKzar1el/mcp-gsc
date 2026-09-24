@@ -1408,11 +1408,10 @@ class GscMcpRuntime {
         if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
         const response = await querySearchAnalytics(accessToken, site_url, query);
-        // Search Analytics pagination is complete only after Google returns an
-        // explicit empty page. A short non-empty page can still be followed by
-        // later rows, so preserve a continuation for dimensioned queries.
+        // Google documents a short page as terminal. An exactly full page can
+        // still have a following page, so expose continuation only then.
         const sourceMayHaveMore =
-          dimensions.length > 0 && response.rows.length > 0;
+          dimensions.length > 0 && response.rows.length === sourceRowLimit;
         const bounded = windowSourceRows(
           response.rows,
           start_row,
@@ -2124,7 +2123,7 @@ class GscMcpRuntime {
           pages,
           start_row,
           row_limit,
-          response.rows.length > 0,
+          response.rows.length === sourceRowLimit,
           start_row + sourceRowLimit,
         );
 
