@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Local launcher setup now provides a cross-platform Node.js command for generating `TOKEN_ENCRYPTION_KEY`, and missing/invalid-key errors surface the same recovery command without logging secret values or requiring OpenSSL.
+
 ## [0.4.36] - 2026-09-24
 
 ### Changed
