@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.36] - 2026-09-24
+
 ### Changed
 - `analytics.query` now exposes an explicit `multimodal_report_isolatable: false` boundary and matching runtime guidance because Search Console's new web multimodal filter is currently UI-only; the documented Search Analytics API still exposes only web/image/video/news/discover/googleNews search types.
 
