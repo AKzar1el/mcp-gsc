@@ -66,6 +66,8 @@ Codex CLI and the Codex IDE extension share MCP configuration, so registering th
 
 When this repository is installed as a Cursor plugin, Cursor also auto-discovers three bundled Agent Skills that compose the MCP tools into evidence-safe workflows: `gsc-weekly-review`, `gsc-indexing-triage`, and `gsc-search-opportunities`. The **Add to Cursor** button above installs the MCP connection only; the bundled skills are part of the repository's Cursor plugin package.
 
+The button and plugin MCP configuration above are for Cursor running on the same machine as the npm launcher. **Cursor Cloud Agents run in isolated cloud VMs, so they cannot reach `127.0.0.1` on your computer.** For Cloud Agents, deploy your own externally reachable HTTPS Worker and add its `/mcp` URL from the MCP controls at [cursor.com/agents](https://cursor.com/agents); Cursor supports HTTP MCP servers and OAuth there. Do not reuse the loopback URL for a Cloud Agent.
+
 **GitHub Copilot CLI**
 
 ```bash
