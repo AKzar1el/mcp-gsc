@@ -4,6 +4,8 @@ import { constants, homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+const tokenEncryptionKeyGenerationCommand =
+  `node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"`;
 const requiredEnvironmentVariables = [
   'GOOGLE_CLIENT_ID',
   'GOOGLE_CLIENT_SECRET',
@@ -13,8 +15,13 @@ const missingRequiredEnvironmentVariables = requiredEnvironmentVariables.filter(
   (name) => !process.env[name]?.trim(),
 );
 if (missingRequiredEnvironmentVariables.length > 0) {
+  const tokenEncryptionKeyHint = missingRequiredEnvironmentVariables.includes(
+    'TOKEN_ENCRYPTION_KEY',
+  )
+    ? ` Generate one with: ${tokenEncryptionKeyGenerationCommand}`
+    : '';
   console.error(
-    `[mcp-gsc] Missing required environment variables: ${missingRequiredEnvironmentVariables.join(', ')}. See SETUP.md for local launcher configuration.`,
+    `[mcp-gsc] Missing required environment variables: ${missingRequiredEnvironmentVariables.join(', ')}. See SETUP.md for local launcher configuration.${tokenEncryptionKeyHint}`,
   );
   process.exit(1);
 }
@@ -27,7 +34,7 @@ if (
   || Buffer.from(tokenEncryptionKey, 'base64').byteLength !== 32
 ) {
   console.error(
-    '[mcp-gsc] Invalid TOKEN_ENCRYPTION_KEY: expected a valid base64-encoded 32-byte (256-bit) AES key. See SETUP.md for local launcher configuration.',
+    `[mcp-gsc] Invalid TOKEN_ENCRYPTION_KEY: expected a valid base64-encoded 32-byte (256-bit) AES key. See SETUP.md for local launcher configuration. Generate one with: ${tokenEncryptionKeyGenerationCommand}`,
   );
   process.exit(1);
 }

@@ -103,15 +103,17 @@ npx wrangler secret put TOKEN_ENCRYPTION_KEY
 # paste the key generated below
 ```
 
-`TOKEN_ENCRYPTION_KEY` is the **AES-256 key** used by `src/crypto.ts` to encrypt each user's Google refresh token before it's stored in KV. Generate a fresh 32-byte key, base64-encoded:
+`TOKEN_ENCRYPTION_KEY` is the **AES-256 key** used by `src/crypto.ts` to encrypt each user's Google refresh token before it's stored in KV. Generate a fresh 32-byte key, base64-encoded. Node.js is already required by this project, so this command works on Windows, macOS, and Linux without an extra OpenSSL install:
 
 ```bash
-openssl rand -base64 32
+node -e "console.log(require('node:crypto').randomBytes(32).toString('base64'))"
 ```
+
+If OpenSSL is already installed, `openssl rand -base64 32` is equivalent.
 
 Paste that value when prompted. Keep it safe — if you lose it, the refresh tokens already in KV become undecryptable and every user has to reconnect.
 
-The published `npx` launcher validates this exact key format before starting Wrangler. A malformed base64 value or a value that does not decode to exactly 32 bytes is rejected without printing the secret value.
+The published `npx` launcher validates this exact key format before starting Wrangler. A missing or malformed key is rejected without printing the secret value, and the error repeats the cross-platform Node.js generation command so local setup can recover without another tool dependency.
 
 For **local development**, put the same three values in `.dev.vars` instead — copy `.dev.vars.example` to `.dev.vars` (it's gitignored). The published npm launcher can also read them from the process environment; its bundled Wrangler config declares `GOOGLE_CLIENT_SECRET` and `TOKEN_ENCRYPTION_KEY` as required local secrets so those sensitive values do not need to be serialized into `--var` command-line arguments:
 
