@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- `indexing.status`, `indexing.request`, and `indexing.remove` now reject URLs outside the supplied Search Console property before reserving local safety budget, resolving Google credentials, or calling Search Console for owner authorization.
+
 ## [0.4.33] - 2026-09-24
 
 ### Changed
