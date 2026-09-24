@@ -188,9 +188,19 @@ const SEARCH_ANALYTICS_FILTER_GROUP_SCHEMA = z.object({
   filters: z.array(SEARCH_ANALYTICS_FILTER_SCHEMA),
 });
 
+const SITE_VERIFICATION_STATE_SCHEMA = z
+  .enum(['verified', 'unverified', 'unknown'])
+  .describe(
+    "Derived from Google's permissionLevel. siteOwner/siteFullUser/siteRestrictedUser are verified, siteUnverifiedUser is unverified, and any future undocumented permission level is reported as unknown.",
+  );
+
 const SITE_OUTPUT_SCHEMA = {
   siteUrl: z.string(),
   permissionLevel: z.string(),
+  verification_state: SITE_VERIFICATION_STATE_SCHEMA,
+  owner: z.boolean().describe(
+    "True only when Google returns permissionLevel 'siteOwner'. Restricted Indexing API workflows require owner-level Search Console access.",
+  ),
 };
 
 const LISTED_SITE_OUTPUT_SCHEMA = {
@@ -202,6 +212,26 @@ const LISTED_SITE_OUTPUT_SCHEMA = {
 
 const PLATFORM_PROPERTY_API_NOTE =
   "Google Search Console now has platform properties for social/video accounts in its UI, but the current Search Console API documentation still defines siteUrl using URL-prefix and sc-domain website-property forms. mcp-gsc preserves any other identifier returned by sites.list but will not pass an undocumented property identifier to API tools until Google publishes that contract.";
+
+function sitePermissionState(permissionLevel: string): {
+  verification_state: 'verified' | 'unverified' | 'unknown';
+  owner: boolean;
+} {
+  if (permissionLevel === 'siteUnverifiedUser') {
+    return { verification_state: 'unverified', owner: false };
+  }
+  if (
+    permissionLevel === 'siteOwner' ||
+    permissionLevel === 'siteFullUser' ||
+    permissionLevel === 'siteRestrictedUser'
+  ) {
+    return {
+      verification_state: 'verified',
+      owner: permissionLevel === 'siteOwner',
+    };
+  }
+  return { verification_state: 'unknown', owner: false };
+}
 
 const SITEMAP_PROVIDER_NOTE =
   "Google's lastSubmitted is the time the sitemap was submitted to Search Console; it is not the sitemap file's generation, deployment, or last-modified time. lastDownloaded is the time Google last downloaded the sitemap; it is not a page crawl or indexing timestamp.";
@@ -927,7 +957,7 @@ class GscMcpRuntime {
       {
         title: 'List Search Console properties',
         description:
-          "List the Google Search Console properties (sites) the connected Google account has access to. Each entry preserves Google's siteUrl and permissionLevel and adds api_identifier_kind plus mcp_site_url_accepted. Google now exposes platform properties for social/video accounts in the Search Console UI, but its current API documentation still defines siteUrl using URL-prefix and sc-domain website-property forms; identifiers outside those documented forms are preserved here but marked unsupported rather than guessed. Call this when the user asks 'what sites do I have?' or 'what properties are connected?', or before another tool that requires site_url.",
+          "List the Google Search Console properties (sites) the connected Google account has access to. Each entry preserves Google's siteUrl and permissionLevel, derives verification_state plus owner from Google's documented permission levels, and adds api_identifier_kind plus mcp_site_url_accepted. Treat verification_state='unverified' as not ready for normal property-scoped Search Console workflows; owner=true is required by this server's restricted Indexing API workflows. Google now exposes platform properties for social/video accounts in the Search Console UI, but its current API documentation still defines siteUrl using URL-prefix and sc-domain website-property forms; identifiers outside those documented forms are preserved here but marked unsupported rather than guessed. Call this when the user asks 'what sites do I have?' or 'what properties are connected?', or before another tool that requires site_url.",
         inputSchema: {},
         outputSchema: SITES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
@@ -940,6 +970,7 @@ class GscMcpRuntime {
           const mcpSiteUrlAccepted = apiIdentifierKind !== 'undocumented';
           return {
             ...site,
+            ...sitePermissionState(site.permissionLevel),
             api_identifier_kind: apiIdentifierKind,
             mcp_site_url_accepted: mcpSiteUrlAccepted,
             ...(!mcpSiteUrlAccepted
@@ -956,7 +987,7 @@ class GscMcpRuntime {
       {
         title: 'Get Search Console property',
         description:
-          "Retrieve one exact Google Search Console property and the connected account's permission level for it. Use this when the user has already named a property and you need to confirm that exact property or its access level without listing every property first.",
+          "Retrieve one exact Google Search Console property and its connected-account access state. The response preserves Google's permissionLevel and derives verification_state plus owner so callers can distinguish an unverified property and recognize owner-only Indexing API prerequisites without listing every property first.",
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
         },
@@ -967,7 +998,13 @@ class GscMcpRuntime {
         const googleId = this.requireGoogleId();
         const accessToken = await this.getAccessToken(googleId);
         const site = await getSite(accessToken, site_url);
-        return toolResponse(JSON.stringify(site, null, 2), { site });
+        const siteWithPermissionState = {
+          ...site,
+          ...sitePermissionState(site.permissionLevel),
+        };
+        return toolResponse(JSON.stringify(siteWithPermissionState, null, 2), {
+          site: siteWithPermissionState,
+        });
       },
     );
 

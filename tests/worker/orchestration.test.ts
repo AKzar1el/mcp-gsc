@@ -875,7 +875,17 @@ describe('Worker orchestration', () => {
           return response({
             siteEntry: [
               { siteUrl: 'sc-domain:example.com', permissionLevel: 'siteOwner' },
+              { siteUrl: 'https://pending.example.com/', permissionLevel: 'siteUnverifiedUser' },
             ],
+          });
+        }
+        if (
+          url ===
+          'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com'
+        ) {
+          return response({
+            siteUrl: 'sc-domain:example.com',
+            permissionLevel: 'siteOwner',
           });
         }
         throw new Error(`Unexpected outbound request: ${url}`);
@@ -907,10 +917,47 @@ describe('Worker orchestration', () => {
 
       expect(result.status).toBe(200);
       const envelope = await readMcpJsonRpc(result);
-      expect(JSON.stringify(envelope)).toContain('sc-domain:example.com');
-      expect(JSON.stringify(envelope)).toContain('api_identifier_kind');
-      expect(JSON.stringify(envelope)).toContain('mcp_site_url_accepted');
-      expect(JSON.stringify(envelope)).not.toContain('Not authenticated');
+      const serializedList = JSON.stringify(envelope);
+      expect(serializedList).toContain('sc-domain:example.com');
+      expect(serializedList).toContain('api_identifier_kind');
+      expect(serializedList).toContain('mcp_site_url_accepted');
+      expect(serializedList).toContain('"verification_state":"verified"');
+      expect(serializedList).toContain('"verification_state":"unverified"');
+      expect(serializedList).toContain('"owner":true');
+      expect(serializedList).toContain('"owner":false');
+      expect(serializedList).not.toContain('Not authenticated');
+
+      const detailResult = await mcpApiHandler.fetch(
+        new Request('https://worker.example/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'MCP-Protocol-Version': '2025-06-18',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0',
+            id: 2,
+            method: 'tools/call',
+            params: {
+              name: 'sites.get',
+              arguments: { site_url: 'sc-domain:example.com' },
+            },
+          }),
+        }),
+        workerEnv,
+        {
+          props: {
+            google_id: 'handler-user',
+            email: 'handler@example.test',
+          },
+        } as unknown as ExecutionContext,
+      );
+      expect(detailResult.status).toBe(200);
+      const detailEnvelope = await readMcpJsonRpc(detailResult);
+      const serializedDetail = JSON.stringify(detailEnvelope);
+      expect(serializedDetail).toContain('"verification_state":"verified"');
+      expect(serializedDetail).toContain('"owner":true');
     } finally {
       globalThis.fetch = originalFetch;
     }

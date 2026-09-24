@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Gemini CLI can now install this repository as a native extension, bundling the verified local Streamable HTTP MCP connection with the existing `gsc-weekly-review`, `gsc-indexing-triage`, and `gsc-search-opportunities` Agent Skills.
 
+### Changed
+- `sites.list` and `sites.get` now expose explicit `verification_state` and `owner` fields alongside Google's raw `permissionLevel`, so agents can distinguish unverified properties and owner-only Indexing API prerequisites before choosing a property workflow.
+
 ## [0.4.30] - 2026-09-23
 
 ### Changed
