@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - `analytics.query` responses now echo the ordered requested `dimensions` and `search_type`, so `rows[].keys` remain self-describing when responses are saved, forwarded, or consumed outside the original request context.
 
+### Fixed
+- `analytics.query` now rejects duplicate grouping dimensions and mixed `searchAppearance` grouping at MCP input validation, before local rate-limit, Google credential, or provider work.
+
 ## [0.4.32] - 2026-09-24
 
 ### Added
