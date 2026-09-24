@@ -447,6 +447,84 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('returns a schema-discoverable URL Inspection index-status summary alongside the raw provider result', async () => {
+    await saveUser(
+      workerEnv,
+      'inspection-summary-user',
+      'inspection-summary@example.test',
+      'inspection-summary-refresh-token',
+    );
+    const server = await createGscMcpServer(
+      workerEnv,
+      {
+        google_id: 'inspection-summary-user',
+        email: 'inspection-summary@example.test',
+      },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        { handler: (args: Record<string, unknown>) => Promise<unknown> }
+      >;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'inspection-summary-access-token', expires_in: 3600 });
+        }
+        if (url === 'https://searchconsole.googleapis.com/v1/urlInspection/index:inspect') {
+          return response({
+            inspectionResult: {
+              indexStatusResult: {
+                verdict: 'PASS',
+                coverageState: 'Submitted and indexed',
+                robotsTxtState: 'ALLOWED',
+                indexingState: 'INDEXING_ALLOWED',
+                pageFetchState: 'SUCCESSFUL',
+                googleCanonical: 'https://example.com/page',
+              },
+              richResultsResult: { verdict: 'PASS' },
+            },
+          });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const result = await tools['urls.inspect'].handler({
+        site_url: 'sc-domain:example.com',
+        inspection_url: 'https://example.com/page',
+        language_code: 'en-US',
+      }) as {
+        structuredContent: {
+          inspection_result: Record<string, unknown>;
+          index_status_summary: Record<string, unknown>;
+          note: string;
+        };
+      };
+
+      expect(result.structuredContent.index_status_summary).toEqual({
+        indexed_state: 'indexed',
+        verdict: 'PASS',
+        coverage_state: 'Submitted and indexed',
+        robots_txt_state: 'ALLOWED',
+        indexing_state: 'INDEXING_ALLOWED',
+        page_fetch_state: 'SUCCESSFUL',
+        google_canonical: 'https://example.com/page',
+      });
+      expect(result.structuredContent.inspection_result).toMatchObject({
+        indexStatusResult: { verdict: 'PASS' },
+        richResultsResult: { verdict: 'PASS' },
+      });
+      expect(result.structuredContent.note).toContain('does not run a live URL test');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('adds a Search Console property without implying ownership verification', async () => {
     await saveUser(
       workerEnv,

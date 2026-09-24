@@ -13,6 +13,7 @@ import {
   MCP_RECONNECT_INSTRUCTION,
   inspectUrl,
   inspectUrlsBoundedConcurrently,
+  summarizeUrlInspectionIndexStatus,
   URL_INSPECTION_BATCH_CONCURRENCY,
   listSitemaps,
   listSites,
@@ -319,8 +320,24 @@ const INDEXING_PROVIDER_USAGE_NOTE =
 const URL_INSPECTION_SCOPE_NOTE =
   "Google's URL Inspection API reports the version currently known in Google's index; it does not run a live URL test or prove current live-page indexability. The mobileUsabilityResult field is deprecated and may be absent.";
 
+const URL_INSPECTION_INDEX_STATUS_SUMMARY_SCHEMA = z.object({
+  indexed_state: z.enum(['indexed', 'not_indexed', 'unknown']).describe(
+    "Conservative state derived only from Google's indexStatusResult.verdict: PASS => indexed, FAIL/NEUTRAL => not_indexed, and missing/unknown/reserved verdicts => unknown.",
+  ),
+  verdict: z.string().optional(),
+  coverage_state: z.string().optional(),
+  robots_txt_state: z.string().optional(),
+  indexing_state: z.string().optional(),
+  last_crawl_time: z.string().optional(),
+  page_fetch_state: z.string().optional(),
+  google_canonical: z.string().optional(),
+  user_canonical: z.string().optional(),
+  crawled_as: z.string().optional(),
+});
+
 const INSPECTION_OUTPUT_SCHEMA = {
   inspection_result: z.unknown(),
+  index_status_summary: URL_INSPECTION_INDEX_STATUS_SUMMARY_SCHEMA,
   note: z.string(),
 };
 
@@ -333,6 +350,7 @@ const INSPECTION_BATCH_OUTPUT_SCHEMA = {
     z.object({
       inspection_url: z.string(),
       inspection_result: z.unknown().optional(),
+      index_status_summary: URL_INSPECTION_INDEX_STATUS_SUMMARY_SCHEMA.optional(),
       error: z.string().optional(),
     }),
   ),
@@ -758,12 +776,12 @@ const TOOL_CATALOG = [
   {
     name: 'urls.inspect',
     description:
-      "Inspect Google's indexed version of a single URL: index status, last crawl, page-fetch/indexing state, canonicals, and rich-results/AMP analysis where available. This is not a live URL test; mobile usability is a deprecated response field. Use urls.inspect_many for 2-10 URLs.",
+      "Inspect Google's indexed version of a single URL: a conservative normalized index-status summary plus Google's raw index status, last crawl, page-fetch/indexing state, canonicals, and rich-results/AMP analysis where available. This is not a live URL test; mobile usability is a deprecated response field. Use urls.inspect_many for 2-10 URLs.",
   },
   {
     name: 'urls.inspect_many',
     description:
-      `Inspect Google's indexed versions of up to 10 URLs with bounded concurrency of ${URL_INSPECTION_BATCH_CONCURRENCY} in one MCP call while charging the same URL Inspection safety budget per URL. This does not run live URL tests.`,
+      `Inspect Google's indexed versions of up to 10 URLs with a conservative normalized index-status summary per successful item and bounded concurrency of ${URL_INSPECTION_BATCH_CONCURRENCY} in one MCP call while charging the same URL Inspection safety budget per URL. This does not run live URL tests.`,
   },
   {
     name: 'sitemaps.list',
@@ -1012,7 +1030,7 @@ class GscMcpRuntime {
       'urls.inspect',
       {
         title: 'Inspect URL index status',
-        description: `Inspect the version of a single URL currently known in Google's index. Returns Google's index-status analysis, last crawl, page-fetch/indexing state, canonicals, and rich-results/AMP analysis where available. This API does not test the live URL or prove current live-page indexability, and its mobile-usability result is deprecated. Use this when the user asks 'is X indexed?' or wants Google's indexed-state evidence for one page. For a bounded group of 2-10 URLs, prefer urls.inspect_many; Google still processes one URL Inspection request per URL and applies the same quota semantics.`,
+        description: `Inspect the version of a single URL currently known in Google's index. Returns a conservative normalized index-status summary alongside Google's raw index-status analysis, last crawl, page-fetch/indexing state, canonicals, and rich-results/AMP analysis where available. This API does not test the live URL or prove current live-page indexability, and its mobile-usability result is deprecated. Use this when the user asks 'is X indexed?' or wants Google's indexed-state evidence for one page. For a bounded group of 2-10 URLs, prefer urls.inspect_many; Google still processes one URL Inspection request per URL and applies the same quota semantics.`,
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           inspection_url: z
@@ -1041,8 +1059,10 @@ class GscMcpRuntime {
           inspection_url,
           language_code,
         );
-        return toolResponse(JSON.stringify({ note: URL_INSPECTION_SCOPE_NOTE, inspection_result: result }, null, 2), {
+        const indexStatusSummary = summarizeUrlInspectionIndexStatus(result);
+        return toolResponse(JSON.stringify({ note: URL_INSPECTION_SCOPE_NOTE, index_status_summary: indexStatusSummary, inspection_result: result }, null, 2), {
           inspection_result: result,
+          index_status_summary: indexStatusSummary,
           note: URL_INSPECTION_SCOPE_NOTE,
         });
       },
@@ -1052,7 +1072,7 @@ class GscMcpRuntime {
       'urls.inspect_many',
       {
         title: 'Inspect multiple URLs',
-        description: `Inspect the versions of up to 10 URLs currently known in Google's index from one Search Console property. This API does not run live URL tests. Google still processes one URL Inspection request per URL, so every requested URL consumes one quota unit and one unit of this server's shared URL-inspection safety budget. Requests use bounded concurrency of ${URL_INSPECTION_BATCH_CONCURRENCY}; results preserve input order, and a Google-access revocation stops later chunks from starting. Use this for a small group of important or debugging-target URLs; do not use it to crawl an entire site.`,
+        description: `Inspect the versions of up to 10 URLs currently known in Google's index from one Search Console property. Each successful item includes a conservative normalized index-status summary alongside Google's raw response. This API does not run live URL tests. Google still processes one URL Inspection request per URL, so every requested URL consumes one quota unit and one unit of this server's shared URL-inspection safety budget. Requests use bounded concurrency of ${URL_INSPECTION_BATCH_CONCURRENCY}; results preserve input order, and a Google-access revocation stops later chunks from starting. Use this for a small group of important or debugging-target URLs; do not use it to crawl an entire site.`,
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           inspection_urls: z
@@ -1096,7 +1116,12 @@ class GscMcpRuntime {
         const results = batchResults.map((result) => ({
           inspection_url: result.inspectionUrl,
           ...(result.inspectionResult !== undefined
-            ? { inspection_result: result.inspectionResult }
+            ? {
+                inspection_result: result.inspectionResult,
+                index_status_summary: summarizeUrlInspectionIndexStatus(
+                  result.inspectionResult,
+                ),
+              }
             : {}),
           ...(result.error !== undefined ? { error: result.error } : {}),
         }));

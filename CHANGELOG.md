@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `urls.inspect` and successful `urls.inspect_many` items now include a conservative, schema-discoverable `index_status_summary` derived from Google's documented index-status verdict and key crawl/indexing fields while preserving the complete raw provider response.
+
 ## [0.4.31] - 2026-09-24
 
 ### Added
