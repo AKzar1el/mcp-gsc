@@ -18,7 +18,7 @@
     },
     {
       "name": "analytics.query",
-      "description": "Impressions, clicks, CTR, and average position over a date range. Google can return only top rows and does not guarantee every data row."
+      "description": "Impressions, clicks, CTR, and average position over a date range. Google can return only top rows and does not guarantee every data row. The current documented API does not expose dedicated Generative AI or web multimodal performance-report selectors."
     },
     {
       "name": "insights.page_queries",
@@ -97,7 +97,7 @@
       "description": "Generate a plain-language weekly SEO report with movers, top pages, and a recommended action."
     }
   ],
-  "version": "0.4.35-registry.1",
+  "version": "0.4.36-registry.1",
   "repository": {
     "url": "https://github.com/AKzar1el/mcp-gsc",
     "source": "github"
@@ -107,7 +107,7 @@
     {
       "registryType": "npm",
       "identifier": "@digestseo/mcp-gsc",
-      "version": "0.4.35",
+      "version": "0.4.36",
       "runtimeHint": "npx",
       "transport": {
         "type": "streamable-http",
