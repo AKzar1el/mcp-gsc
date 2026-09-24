@@ -548,6 +548,70 @@ export async function inspectUrl(
   return data.inspectionResult ?? null;
 }
 
+export type UrlInspectionIndexedState = 'indexed' | 'not_indexed' | 'unknown';
+
+export interface UrlInspectionIndexStatusSummary {
+  indexed_state: UrlInspectionIndexedState;
+  verdict?: string;
+  coverage_state?: string;
+  robots_txt_state?: string;
+  indexing_state?: string;
+  last_crawl_time?: string;
+  page_fetch_state?: string;
+  google_canonical?: string;
+  user_canonical?: string;
+  crawled_as?: string;
+}
+
+function asUnknownRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function optionalStringField(
+  record: Record<string, unknown> | undefined,
+  key: string,
+): string | undefined {
+  const value = record?.[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+export function summarizeUrlInspectionIndexStatus(
+  inspectionResult: unknown,
+): UrlInspectionIndexStatusSummary {
+  const result = asUnknownRecord(inspectionResult);
+  const indexStatus = asUnknownRecord(result?.indexStatusResult);
+  const verdict = optionalStringField(indexStatus, 'verdict');
+  const coverageState = optionalStringField(indexStatus, 'coverageState');
+  const robotsTxtState = optionalStringField(indexStatus, 'robotsTxtState');
+  const indexingState = optionalStringField(indexStatus, 'indexingState');
+  const lastCrawlTime = optionalStringField(indexStatus, 'lastCrawlTime');
+  const pageFetchState = optionalStringField(indexStatus, 'pageFetchState');
+  const googleCanonical = optionalStringField(indexStatus, 'googleCanonical');
+  const userCanonical = optionalStringField(indexStatus, 'userCanonical');
+  const crawledAs = optionalStringField(indexStatus, 'crawledAs');
+  const indexedState: UrlInspectionIndexedState =
+    verdict === 'PASS'
+      ? 'indexed'
+      : verdict === 'FAIL' || verdict === 'NEUTRAL'
+        ? 'not_indexed'
+        : 'unknown';
+
+  return {
+    indexed_state: indexedState,
+    ...(verdict !== undefined ? { verdict } : {}),
+    ...(coverageState !== undefined ? { coverage_state: coverageState } : {}),
+    ...(robotsTxtState !== undefined ? { robots_txt_state: robotsTxtState } : {}),
+    ...(indexingState !== undefined ? { indexing_state: indexingState } : {}),
+    ...(lastCrawlTime !== undefined ? { last_crawl_time: lastCrawlTime } : {}),
+    ...(pageFetchState !== undefined ? { page_fetch_state: pageFetchState } : {}),
+    ...(googleCanonical !== undefined ? { google_canonical: googleCanonical } : {}),
+    ...(userCanonical !== undefined ? { user_canonical: userCanonical } : {}),
+    ...(crawledAs !== undefined ? { crawled_as: crawledAs } : {}),
+  };
+}
+
 export interface UrlInspectionBatchResult {
   inspectionUrl: string;
   inspectionResult?: unknown;

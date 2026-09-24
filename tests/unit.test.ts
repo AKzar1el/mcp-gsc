@@ -41,6 +41,7 @@ import {
   getSite,
   listSitemaps,
   inspectUrlsBoundedConcurrently,
+  summarizeUrlInspectionIndexStatus,
   URL_INSPECTION_BATCH_CONCURRENCY,
   assertSearchAnalyticsQueryCompatible,
   querySearchAnalytics,
@@ -719,6 +720,52 @@ test('inspectUrlsBoundedConcurrently: preserves input order and returns per-URL 
       error: 'URL inspection failed: 400 invalid request',
     },
   ]);
+});
+
+test('summarizeUrlInspectionIndexStatus: exposes provider index-state evidence without changing the raw result', () => {
+  const inspectionResult = {
+    indexStatusResult: {
+      verdict: 'PASS',
+      coverageState: 'Submitted and indexed',
+      robotsTxtState: 'ALLOWED',
+      indexingState: 'INDEXING_ALLOWED',
+      lastCrawlTime: '2026-09-23T20:15:30Z',
+      pageFetchState: 'SUCCESSFUL',
+      googleCanonical: 'https://example.com/page',
+      userCanonical: 'https://example.com/page',
+      crawledAs: 'MOBILE',
+    },
+  };
+
+  assert.deepEqual(summarizeUrlInspectionIndexStatus(inspectionResult), {
+    indexed_state: 'indexed',
+    verdict: 'PASS',
+    coverage_state: 'Submitted and indexed',
+    robots_txt_state: 'ALLOWED',
+    indexing_state: 'INDEXING_ALLOWED',
+    last_crawl_time: '2026-09-23T20:15:30Z',
+    page_fetch_state: 'SUCCESSFUL',
+    google_canonical: 'https://example.com/page',
+    user_canonical: 'https://example.com/page',
+    crawled_as: 'MOBILE',
+  });
+  assert.equal(inspectionResult.indexStatusResult.verdict, 'PASS');
+});
+
+test('summarizeUrlInspectionIndexStatus: treats excluded/error verdicts as not indexed and unknown provider states conservatively', () => {
+  assert.deepEqual(
+    summarizeUrlInspectionIndexStatus({ indexStatusResult: { verdict: 'NEUTRAL' } }),
+    { indexed_state: 'not_indexed', verdict: 'NEUTRAL' },
+  );
+  assert.deepEqual(
+    summarizeUrlInspectionIndexStatus({ indexStatusResult: { verdict: 'FAIL' } }),
+    { indexed_state: 'not_indexed', verdict: 'FAIL' },
+  );
+  assert.deepEqual(
+    summarizeUrlInspectionIndexStatus({ indexStatusResult: { verdict: 'PARTIAL' } }),
+    { indexed_state: 'unknown', verdict: 'PARTIAL' },
+  );
+  assert.deepEqual(summarizeUrlInspectionIndexStatus(null), { indexed_state: 'unknown' });
 });
 
 test('inspectUrlsBoundedConcurrently: caps in-flight inspections at three', async () => {
