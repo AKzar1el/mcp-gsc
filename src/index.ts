@@ -365,6 +365,24 @@ const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
   row_count: z.number().int().nonnegative(),
   start_row: z.number().int().nonnegative(),
   rows: z.array(z.object(SEARCH_ROW_OUTPUT_SCHEMA)),
+  dimensions: z
+    .array(
+      z.enum([
+        'query',
+        'page',
+        'country',
+        'device',
+        'date',
+        'hour',
+        'searchAppearance',
+      ]),
+    )
+    .describe(
+      'Ordered labels for rows[].keys. Each key position corresponds to the dimension at the same index. Empty for aggregate dimensions: [] queries.',
+    ),
+  search_type: z
+    .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
+    .describe('The Search Analytics search type requested for this response.'),
   data_state: z.enum(['all', 'final', 'hourly_all']).describe(
     'The Search Analytics dataState requested from Google for this response.',
   ),
@@ -1188,10 +1206,13 @@ class GscMcpRuntime {
         title: 'Query search analytics',
         description: [
           'Query Google Search Console search analytics data. Returns',
-          '{ row_count, start_row, rows, provider_exhaustiveness_guaranteed,',
-          '  provider_note, has_more, truncated, byte_limit_reached }',
+          '{ row_count, start_row, rows, dimensions, search_type,',
+          '  provider_exhaustiveness_guaranteed, provider_note, has_more,',
+          '  truncated, byte_limit_reached }',
           'where dimensioned rows have keys plus clicks, impressions, ctr, and',
-          'position. Aggregate rows from dimensions: [] may omit keys because',
+          'position. The echoed dimensions array labels rows[].keys in order,',
+          'so saved or forwarded responses remain self-describing. Aggregate',
+          'rows from dimensions: [] may omit keys because',
           'Google itself omits that field. When has_more is true, the response',
           'includes next_start_row — pass it back as start_row to fetch the next',
           'safe page. Large requested row_limit values are automatically split',
@@ -1386,6 +1407,8 @@ class GscMcpRuntime {
           row_count: bounded.items.length,
           start_row,
           rows: bounded.items,
+          dimensions,
+          search_type,
           data_state,
           preliminary_data_possible: data_state !== 'final',
           position_supported:
