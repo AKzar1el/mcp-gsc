@@ -1462,10 +1462,10 @@ class GscMcpRuntime {
       'insights.page_queries',
       {
         title: 'Find queries for a page',
-        description: 'For one exact page URL, return the Search Console queries that produced impressions for it over a date range. This wraps an exact page dimension filter so agents do not need to construct analytics.query filter groups manually. Exact page matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results; Search Console can still omit anonymized queries. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
+        description: 'For one exact page URL within the supplied Search Console property, return the queries that produced impressions for it over a date range. This wraps an exact page dimension filter so agents do not need to construct analytics.query filter groups manually. Exact page matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results; Search Console can still omit anonymized queries. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
-          page_url: z.string().url().describe('Exact fully-qualified page URL to filter on, e.g. https://example.com/guides/seo/. Search Console exact page filters are case-sensitive.'),
+          page_url: z.string().url().describe('Exact fully-qualified page URL to filter on, e.g. https://example.com/guides/seo/. The URL must belong to site_url; Search Console exact page filters are case-sensitive.'),
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
             searchConsoleDateDescription('Start date (inclusive) in YYYY-MM-DD format.'),
           ),
@@ -1497,6 +1497,7 @@ class GscMcpRuntime {
       },
       async ({ site_url, page_url, start_date, end_date, search_type, row_limit = 100, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
+        assertUrlWithinSearchConsoleProperty(page_url, site_url, 'page_url');
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'insights.page_queries');
         if (rateLimitError) return rateLimitError;

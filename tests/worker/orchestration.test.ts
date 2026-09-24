@@ -467,6 +467,54 @@ describe('Worker orchestration', () => {
     expect(getAccessToken).not.toHaveBeenCalled();
   });
 
+  it('rejects page-query URLs outside site_url before budget or credential work', async () => {
+    const limiterIdFromName = vi.fn(() => {
+      throw new Error('rate limiter should not run');
+    });
+    const getAccessToken = vi.fn(async () => {
+      throw new Error('access-token lifecycle should not run');
+    });
+    const server = await createGscMcpServer(
+      {
+        GSC_ACCESS_MODE: 'readonly',
+        TOOL_RATE_LIMITER: { idFromName: limiterIdFromName },
+      } as unknown as Env,
+      {
+        google_id: 'page-query-preflight-user',
+        email: 'page-query-preflight@example.test',
+      },
+      { getAccessToken } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const pageQueries = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        {
+          handler: (input: {
+            site_url: string;
+            page_url: string;
+            start_date: string;
+            end_date: string;
+            search_type: 'web';
+          }) => Promise<unknown>;
+        }
+      >;
+    })._registeredTools['insights.page_queries'];
+
+    await expect(
+      pageQueries.handler({
+        site_url: 'https://example.com/docs/',
+        page_url: 'https://example.com/blog/outside-prefix/',
+        start_date: '2026-09-01',
+        end_date: '2026-09-07',
+        search_type: 'web',
+      }),
+    ).rejects.toThrow(
+      'page_url must belong to the site_url Search Console property.',
+    );
+    expect(limiterIdFromName).not.toHaveBeenCalled();
+    expect(getAccessToken).not.toHaveBeenCalled();
+  });
+
   it('rejects Indexing API URLs outside site_url before budget or credential work', async () => {
     const limiterIdFromName = vi.fn(() => {
       throw new Error('rate limiter should not run');
