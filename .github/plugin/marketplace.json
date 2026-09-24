@@ -11,7 +11,7 @@
     {
       "name": "mcp-gsc",
       "description": "Connect GitHub Copilot CLI to Google Search Console with MCP tools and evidence-safe SEO workflow skills.",
-      "version": "0.4.33",
+      "version": "0.4.34",
       "source": ".",
       "author": {
         "name": "DigestSEO"

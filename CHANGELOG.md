@@ -7,7 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.34] - 2026-09-24
+
 ### Fixed
+- `analytics.query` now rejects documented-invalid cross-field request combinations before reserving local Search Analytics safety budget or resolving Google credentials, while retaining the lower-level provider compatibility guard for internal callers.
 - `indexing.status`, `indexing.request`, and `indexing.remove` now reject URLs outside the supplied Search Console property before reserving local safety budget, resolving Google credentials, or calling Search Console for owner authorization.
 
 ## [0.4.33] - 2026-09-24

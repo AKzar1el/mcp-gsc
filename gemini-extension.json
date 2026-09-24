@@ -1,6 +1,6 @@
 {
   "name": "mcp-gsc",
-  "version": "0.4.33",
+  "version": "0.4.34",
   "description": "Connect Gemini CLI to Google Search Console with MCP tools and evidence-safe SEO workflow skills.",
   "mcpServers": {
     "gsc": {
