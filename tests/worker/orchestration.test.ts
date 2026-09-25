@@ -253,6 +253,7 @@ describe('Worker orchestration', () => {
       safeParse: (value: unknown) => {
         success: boolean;
         data?: {
+          data_state?: string;
           dimension_filter_groups?: Array<{
             groupType: string;
             filters: Array<{ operator: string; expression: string }>;
@@ -262,6 +263,25 @@ describe('Worker orchestration', () => {
     };
     const analyticsCompareSchema = tools['analytics.compare']
       .inputSchema as typeof analyticsQuerySchema;
+    const compareDefaults = analyticsCompareSchema.safeParse({
+      site_url: 'sc-domain:example.com',
+      start_date_a: '2026-09-01',
+      end_date_a: '2026-09-07',
+      start_date_b: '2026-08-25',
+      end_date_b: '2026-08-31',
+    });
+    expect(compareDefaults.success).toBe(true);
+    expect(compareDefaults.data?.data_state).toBe('final');
+    expect(
+      analyticsCompareSchema.safeParse({
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01',
+        end_date_a: '2026-09-07',
+        start_date_b: '2026-08-25',
+        end_date_b: '2026-08-31',
+        data_state: 'hourly_all',
+      }).success,
+    ).toBe(false);
     const requiredAnalyticsQueryInput = {
       site_url: 'sc-domain:example.com',
       start_date: '2026-09-01',
@@ -2055,7 +2075,7 @@ describe('Worker orchestration', () => {
         throw new Error(`Unexpected outbound request: ${url}`);
       };
 
-      await tools['analytics.compare'].handler({
+      const result = (await tools['analytics.compare'].handler({
         site_url: 'sc-domain:example.com',
         start_date_a: '2026-09-01',
         end_date_a: '2026-09-07',
@@ -2063,8 +2083,14 @@ describe('Worker orchestration', () => {
         end_date_b: '2026-08-31',
         dimension: 'query',
         search_type: 'web',
+        data_state: 'final',
         dimension_filter_groups: filters,
-      });
+      })) as {
+        structuredContent: {
+          data_state: string;
+          preliminary_data_possible: boolean;
+        };
+      };
 
       expect(analyticsRequests).toHaveLength(2);
       expect(analyticsRequests.map((request) => request.startRow ?? 0)).toEqual([
@@ -2074,6 +2100,10 @@ describe('Worker orchestration', () => {
       expect(analyticsRequests.map((request) => request.type)).toEqual([
         'web',
         'web',
+      ]);
+      expect(analyticsRequests.map((request) => request.dataState)).toEqual([
+        'final',
+        'final',
       ]);
       expect(
         analyticsRequests.map((request) => request.dimensionFilterGroups),
@@ -2086,6 +2116,10 @@ describe('Worker orchestration', () => {
         '2026-09-01',
         '2026-08-25',
       ]);
+      expect(result.structuredContent).toMatchObject({
+        data_state: 'final',
+        preliminary_data_possible: false,
+      });
     } finally {
       globalThis.fetch = originalFetch;
     }
