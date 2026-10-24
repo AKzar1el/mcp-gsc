@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- Refresh the Cloudflare Agents/MCP runtime peer set to patched MCP SDK, client, and server versions, and raise the minimum Zod version for current security advisories.
+
 ### Changed
 - Local launcher setup now provides a cross-platform Node.js command for generating `TOKEN_ENCRYPTION_KEY`, and missing/invalid-key errors surface the same recovery command without logging secret values or requiring OpenSSL.
 - `analytics.compare` now accepts one shared Search Analytics `data_state` for both periods while preserving Google's finalized-data default; callers can explicitly request `all` when they want recent preliminary-capable rows.
