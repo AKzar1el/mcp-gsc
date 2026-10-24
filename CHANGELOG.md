@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.37] - 2026-10-24
+
 ### Security
 - Refresh the Cloudflare Agents/MCP runtime peer set to patched MCP SDK, client, and server versions, and raise the minimum Zod version for current security advisories.
 
