@@ -654,6 +654,12 @@ const COMMON_RETURNED_ROWS_COMPARISON_NOTE =
 const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
   comparison_scope: z.literal('common_returned_rows_only'),
   comparison_note: z.string(),
+  data_state: z.enum(['all', 'final']).describe(
+    'The Search Analytics dataState applied identically to both comparison periods.',
+  ),
+  preliminary_data_possible: z.boolean().describe(
+    'True when data_state=all, because recent Search Analytics rows can still be incomplete and subject to change.',
+  ),
   comparisons: z.array(
     z.object({
       key: z.string(),
@@ -882,7 +888,7 @@ const TOOL_CATALOG = [
   {
     name: 'analytics.compare',
     description:
-      'Compare Search Console performance metrics between two date ranges for dimension keys returned in both Search Analytics responses; one-sided row absence is not treated as zero.',
+      'Compare Search Console performance metrics between two date ranges for dimension keys returned in both Search Analytics responses; one-sided row absence is not treated as zero. The same search type, optional finalized/all data state, and filters are applied to both periods.',
   },
   {
     name: 'reports.weekly_digest',
@@ -2182,7 +2188,7 @@ class GscMcpRuntime {
       'analytics.compare',
       {
         title: 'Compare Performance Between Periods',
-        description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device). Only dimension keys returned in both Search Analytics period responses are compared; a key missing from one response is not treated as zero because Google does not guarantee every data row. Apply the same search type and optional dimension filters to both periods. Results are ranked by largest absolute click change, then impression change, and safely paged with limit/start_row. Percentage change is null when an explicitly returned baseline row has zero and the comparison value differs. Discover and Google News are intentionally unavailable because this comparison contract includes average position, which those reports do not support.',
+        description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device). Only dimension keys returned in both Search Analytics period responses are compared; a key missing from one response is not treated as zero because Google does not guarantee every data row. Apply the same search type, data state, and optional dimension filters to both periods. data_state defaults to final, preserving Google\'s finalized-only behavior when dataState is omitted; use all explicitly when recent preliminary-capable rows are desired. Results are ranked by largest absolute click change, then impression change, and safely paged with limit/start_row. Percentage change is null when an explicitly returned baseline row has zero and the comparison value differs. Discover and Google News are intentionally unavailable because this comparison contract includes average position, which those reports do not support.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe(
@@ -2202,6 +2208,12 @@ class GscMcpRuntime {
             .enum(['web', 'image', 'video', 'news'])
             .default('web')
             .describe('Which Search Console search index to compare. The same search type is used for both periods. Discover and Google News are excluded because this tool returns average-position comparisons.'),
+          data_state: z
+            .enum(['all', 'final'])
+            .default('final')
+            .describe(
+              "'final' requests finalized data only and preserves Google's behavior when dataState is omitted; 'all' can include fresh preliminary Search Analytics data. The same state is applied to both comparison periods.",
+            ),
           dimension_filter_groups: z
             .array(SEARCH_ANALYTICS_FILTER_GROUP_SCHEMA)
             .optional()
@@ -2222,6 +2234,7 @@ class GscMcpRuntime {
         end_date_b,
         dimension,
         search_type,
+        data_state,
         dimension_filter_groups,
         limit = DEFAULT_ANALYSIS_RESULT_LIMIT,
         start_row = 0,
@@ -2241,6 +2254,7 @@ class GscMcpRuntime {
           endDate: end_date_a,
           dimensions: [dimension],
           type: search_type,
+          dataState: data_state,
           ...(dimension_filter_groups !== undefined
             ? { dimensionFilterGroups: dimension_filter_groups }
             : {}),
@@ -2251,6 +2265,7 @@ class GscMcpRuntime {
           endDate: end_date_b,
           dimensions: [dimension],
           type: search_type,
+          dataState: data_state,
           ...(dimension_filter_groups !== undefined
             ? { dimensionFilterGroups: dimension_filter_groups }
             : {}),
@@ -2261,6 +2276,8 @@ class GscMcpRuntime {
         const payload = {
           comparison_scope: 'common_returned_rows_only' as const,
           comparison_note: COMMON_RETURNED_ROWS_COMPARISON_NOTE,
+          data_state,
+          preliminary_data_possible: data_state !== 'final',
           comparisons: bounded.items,
           pagination: {
             period_a: paginationMetadata(sourceA),
