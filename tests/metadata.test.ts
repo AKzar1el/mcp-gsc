@@ -538,7 +538,7 @@ test('sites.delete metadata preserves the account-site-set boundary', () => {
   );
 });
 
-test('Indexing API metadata preserves eligibility and provider-approval boundaries', () => {
+test('Indexing API metadata preserves eligibility, current quota guidance, and spam boundaries', () => {
   for (const [label, metadata] of [
     ['server.json', serverJson],
     ['manifest.json', manifestJson],
@@ -546,54 +546,33 @@ test('Indexing API metadata preserves eligibility and provider-approval boundari
     const tool = metadata.tools.find(
       (entry: { name: string }) => entry.name === 'indexing.request',
     );
-    assert.ok(tool, `${label} must describe indexing.request`);
-    assert.match(
-      tool.description,
-      /JobPosting or livestream/i,
-      `${label} must identify the eligible content classes`,
-    );
-    assert.match(
-      tool.description,
-      /not a general webpage submission tool/i,
-      `${label} must reject general-purpose indexing semantics`,
-    );
-    assert.match(
-      tool.description,
-      /onboarding\/testing/i,
-      `${label} must identify the default quota as onboarding/testing capacity`,
-    );
-    assert.match(
-      tool.description,
-      /usage requires approval/i,
-      `${label} must preserve the provider approval boundary`,
-    );
-    assert.match(
-      tool.description,
-      /spam-screened/i,
-      `${label} must disclose provider spam screening`,
-    );
+    assert.ok(tool, label + ' must describe indexing.request');
+    assert.match(tool.description, /JobPosting or livestream/i);
+    assert.match(tool.description, /not a general webpage submission tool/i);
+    assert.match(tool.description, /200 publish requests\/day\/project/i);
+    assert.match(tool.description, /spam policies/i);
+    assert.doesNotMatch(tool.description, /ongoing usage requires approval|onboarding\/testing/i);
   }
 
   assert.match(
     indexSource,
-    /provider_default_quota_for_testing_only:[\s\S]*provider_usage_approval_required:[\s\S]*provider_spam_detection_applies:/,
-    'runtime structured output must expose Indexing API provider-usage boundaries',
+    /provider_default_publish_requests_per_day: z\.literal\(200\)[\s\S]*provider_default_quota_for_testing_only: z\.literal\(false\)[\s\S]*provider_usage_approval_required: z\.literal\(false\)[\s\S]*provider_spam_detection_applies:/,
+    'runtime structured output must reflect the current documented provider quota',
   );
-  assert.match(
-    indexSource,
-    /default 200 publish-requests-per-day project quota is for onboarding\/testing rather than ongoing-use approval/,
-    'server.capabilities must preserve the restricted Indexing API scope',
-  );
+  assert.match(indexSource, /provider_default_publish_requests_per_day: 200 as const/);
+  assert.match(indexSource, /provider_usage_approval_required: false as const/);
+  assert.match(indexSource, /October 16, 2026 update removed the previous quota-approval request form/);
   assert.match(
     readmeSource,
-    /default 200 publish requests\/day\/project is for onboarding and submission testing[\s\S]*spam detection[\s\S]*revoke access/i,
-    'README must document Indexing API approval and spam-enforcement semantics',
+    /default 200 publish requests\/day\/project[\s\S]*spam detection[\s\S]*revoke access/i,
+    'README must preserve provider quota and spam-enforcement boundaries',
   );
   assert.match(
     setupSource,
-    /default \*\*200 publish requests\/day\/project\*\*[\s\S]*ongoing usage\/resource provisioning requires additional Google approval[\s\S]*spam detection/i,
-    'SETUP must distinguish local safety limits from Google Indexing API approval',
+    /default \*\*200 publish requests\/day\/project\*\*[\s\S]*spam detection[\s\S]*revoked access/i,
+    'SETUP must preserve provider quotas and restrictions',
   );
+  assert.doesNotMatch(setupSource, /ongoing usage\/resource provisioning requires additional Google approval/i);
 });
 
 test('Search Analytics metadata preserves provider-level non-exhaustiveness', () => {

@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Align Indexing API quotas, structured tool metadata and setup guidance with Google's October 16, 2026 documentation update: 200 default publish requests/day/project, removal of the outdated quota-approval form, and unchanged content eligibility, ownership, spam and quota restrictions.
+
 ## [0.4.37] - 2026-10-24
 
 ### Security

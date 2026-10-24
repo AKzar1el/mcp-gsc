@@ -74,7 +74,7 @@
     },
     {
       "name": "indexing.request",
-      "description": "Request an eligible JobPosting or livestream URL update through Google's restricted Indexing API; this is not a general webpage submission tool. Google's default publish quota is for onboarding/testing, ongoing usage requires approval, and submissions are spam-screened."
+      "description": "Request an eligible JobPosting or livestream URL update through Google's restricted Indexing API; this is not a general webpage submission tool. Google documents a default limit of 200 publish requests/day/project shared by updates and removals; eligibility, quota limits and spam policies still apply."
     },
     {
       "name": "indexing.remove",
