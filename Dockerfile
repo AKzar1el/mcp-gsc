@@ -16,6 +16,9 @@ RUN npm run build
 
 ENV NODE_ENV=production
 ENV PORT=8080
+# Bind across container interfaces so explicitly published Docker ports reach Wrangler.
+# Direct npm launches still default to loopback only.
+ENV MCP_GSC_BIND_IP=0.0.0.0
 
 EXPOSE 8080
 

@@ -308,8 +308,8 @@ test('registry package identity remains aligned', () => {
   );
   assert.match(
     npmLauncherSource,
-    /'--ip',\s*'127\.0\.0\.1'/,
-    'npm launcher must bind its local HTTP endpoint to loopback only',
+    /const bindIp = process\.env\.MCP_GSC_BIND_IP\?\.trim\(\) \|\| '127\.0\.0\.1'/,
+    'npm launcher must preserve the secure loopback default even when Docker opts into container binding',
   );
   assert.doesNotMatch(
     npmLauncherSource,
