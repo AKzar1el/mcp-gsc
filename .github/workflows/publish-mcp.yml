@@ -88,9 +88,63 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Main may advance before a new npm version is public. Registry metadata-only
+      # updates still publish immediately when their referenced package exists.
+      - name: Require publicly available npm package
+        id: npm_ready
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          PACKAGE_NAME=$(jq -r '.packages[] | select(.registryType == "npm") | .identifier' server.json | head -n 1)
+          PACKAGE_VERSION=$(jq -r '.packages[] | select(.registryType == "npm") | .version' server.json | head -n 1)
+          if [[ -z "$PACKAGE_NAME" || -z "$PACKAGE_VERSION" || "$PACKAGE_NAME" == null || "$PACKAGE_VERSION" == null ]]; then
+            echo "::error file=server.json::Missing npm package name/version"
+            exit 1
+          fi
+          ENCODED_NAME=$(node -p 'encodeURIComponent(process.argv[1])' "$PACKAGE_NAME")
+          URL="https://registry.npmjs.org/$ENCODED_NAME/$PACKAGE_VERSION"
+          max_attempts=1
+          if [[ "$EVENT_NAME" == release ]]; then
+            max_attempts=24
+          fi
+
+          for ((attempt=1; attempt<=max_attempts; attempt++)); do
+            status=$(curl --silent --show-error --max-time 15 --output "$RUNNER_TEMP/npm-package-version.json" --write-out '%{http_code}' "$URL") || status=000
+            if [[ "$status" == 200 ]]; then
+              if ! jq -e --arg name "$PACKAGE_NAME" --arg version "$PACKAGE_VERSION" '.name == $name and .version == $version' "$RUNNER_TEMP/npm-package-version.json" >/dev/null; then
+                echo "::error::npm returned mismatching package metadata"
+                exit 1
+              fi
+              echo 'ready=true' >> "$GITHUB_OUTPUT"
+              echo "npm $PACKAGE_NAME@$PACKAGE_VERSION is publicly available"
+              exit 0
+            fi
+
+            if [[ "$EVENT_NAME" == push && "$status" == 404 ]]; then
+              echo "npm $PACKAGE_NAME@$PACKAGE_VERSION is not public yet; defer Registry publication to the release event"
+              echo 'ready=false' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
+            if [[ "$status" != 404 && "$status" != 000 && "$status" != 429 && ! "$status" =~ ^5[0-9][0-9]$ ]]; then
+              echo "::error::Unexpected npm registry HTTP status $status"
+              exit 1
+            fi
+            if ((attempt < max_attempts)); then
+              echo "npm $PACKAGE_NAME@$PACKAGE_VERSION not ready (HTTP $status; attempt $attempt/$max_attempts)"
+              sleep 10
+            fi
+          done
+          echo "::error::npm $PACKAGE_NAME@$PACKAGE_VERSION was not public after $max_attempts checks; rerun this workflow only after npm publication is verified"
+          exit 1
       - name: Install verified mcp-publisher
+        if: steps.npm_ready.outputs.ready == 'true'
         uses: ./.github/actions/install-mcp-publisher
       - name: Log in to the registry (GitHub OIDC)
+        if: steps.npm_ready.outputs.ready == 'true'
         run: ./mcp-publisher login github-oidc
       - name: Publish
+        if: steps.npm_ready.outputs.ready == 'true'
         run: ./mcp-publisher publish server.json
