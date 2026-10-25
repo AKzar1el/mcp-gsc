@@ -7,11 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.38] - 2026-10-25
+
 ### Changed
 - Align Indexing API quotas, structured tool metadata and setup guidance with Google's October 16, 2026 documentation update: 200 default publish requests/day/project, removal of the outdated quota-approval form, and unchanged content eligibility, ownership, spam and quota restrictions.
 
 ### Fixed
 - Docker/Glama images now bind Wrangler to container interfaces when explicitly configured by the Docker image, restoring reachability through Docker-published ports while leaving direct npm launches loopback-only by default. Invalid custom bind addresses fail closed.
+- Docker images now install system CA certificates so the Cloudflare workerd runtime can initialize TLS; CI builds and runs a real container, checks host-forwarded health, and confirms unauthenticated MCP still returns 401.
 
 ## [0.4.37] - 2026-10-24
 
