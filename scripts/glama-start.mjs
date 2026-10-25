@@ -39,6 +39,13 @@ if (
   process.exit(1);
 }
 
+const bindIp = process.env.MCP_GSC_BIND_IP?.trim() || '127.0.0.1';
+if (bindIp !== '127.0.0.1' && bindIp !== '0.0.0.0') {
+  console.error(
+    '[mcp-gsc] Invalid MCP_GSC_BIND_IP: expected 127.0.0.1 (safe local default) or 0.0.0.0 (explicit container/network binding).',
+  );
+  process.exit(1);
+}
 const port = process.env.PORT || '8080';
 const localBaseUrl = `http://127.0.0.1:${port}`;
 const mcpUrl = `${localBaseUrl}/mcp`;
@@ -62,7 +69,7 @@ const args = [
   stateDir,
   '--local',
   '--ip',
-  '127.0.0.1',
+  bindIp,
   '--port',
   port,
 ];

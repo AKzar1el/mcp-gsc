@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -62,4 +63,20 @@ test('npm launcher rejects malformed TOKEN_ENCRYPTION_KEY before starting Wrangl
     assert.doesNotMatch(result.stderr, /Local MCP endpoint:/);
     assert.equal(result.error, undefined);
   }
+});
+
+test('npm launcher rejects an unexpected bind address before launching Wrangler', () => {
+  const result = runLauncherWithEnvironment({ MCP_GSC_BIND_IP: '192.0.2.1' });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Invalid MCP_GSC_BIND_IP/);
+  assert.doesNotMatch(result.stderr, /Local MCP endpoint:/);
+  assert.equal(result.error, undefined);
+});
+
+test('Docker binding is explicitly container-scoped while npm defaults to loopback', () => {
+  const launcher = readFileSync(launcherPath, 'utf8');
+  const dockerfile = readFileSync(resolve(repoRoot, 'Dockerfile'), 'utf8');
+  assert.match(launcher, /MCP_GSC_BIND_IP\?\.trim\(\) \|\| '127\.0\.0\.1'/);
+  assert.match(launcher, /'--ip',\s*bindIp,/);
+  assert.match(dockerfile, /ENV MCP_GSC_BIND_IP=0\.0\.0\.0/);
 });
