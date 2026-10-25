@@ -26,3 +26,48 @@ jobs:
       - run: npm run typecheck
       - run: npm run test:worker
       - run: npm run test:unit
+
+  docker-network-smoke:
+    name: Docker port forwarding + MCP auth boundary
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build and smoke-test Docker network transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --tag mcp-gsc-ci-smoke .
+          trap 'docker rm -f mcp-gsc-ci-smoke >/dev/null 2>&1 || true' EXIT
+          docker run --detach --name mcp-gsc-ci-smoke \
+            --publish 127.0.0.1:18080:8080 \
+            --env GOOGLE_CLIENT_ID=ci-placeholder.apps.googleusercontent.com \
+            --env GOOGLE_CLIENT_SECRET=ci-not-real \
+            --env TOKEN_ENCRYPTION_KEY="$(openssl rand -base64 32)" \
+            --env GSC_ACCESS_MODE=readonly \
+            mcp-gsc-ci-smoke
+
+          reachable=false
+          for attempt in $(seq 1 45); do
+            if curl --silent --fail http://127.0.0.1:18080/healthz | grep -Fxq ok; then
+              reachable=true
+              break
+            fi
+            if [[ "$(docker inspect --format '{{.State.Running}}' mcp-gsc-ci-smoke)" != true ]]; then
+              break
+            fi
+            sleep 2
+          done
+
+          if [[ "$reachable" != true ]]; then
+            docker logs mcp-gsc-ci-smoke | tail -n 80
+            echo "::error::Docker host-to-container health check did not succeed"
+            exit 1
+          fi
+
+          status="$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18080/mcp)"
+          if [[ "$status" != 401 ]]; then
+            echo "::error::Unauthenticated MCP request returned HTTP $status (expected 401)"
+            exit 1
+          fi
+          echo "Verified Docker published port and unauthenticated MCP protection"

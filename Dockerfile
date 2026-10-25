@@ -4,6 +4,11 @@
 
 FROM node:22-slim
 
+# Wrangler's workerd runtime requires a system CA bundle to initialize TLS.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 
 COPY package.json package-lock.json ./
