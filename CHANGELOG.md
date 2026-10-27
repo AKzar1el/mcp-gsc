@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.40] - 2026-10-27
+
+### Fixed
+- Weekly digest treats an absent Search Analytics aggregate row as unavailable rather than measured zero and withholds unsupported week-over-week traffic-loss comparisons and diagnostic recommendations (PR #208).
+- Correct the self-hosting clone commands in README and SETUP so new installers receive valid repository paths (PR #207).
+
+## [0.4.39] - 2026-10-26
+
+### Security
+- Update Wrangler and the Miniflare/undici dependency chain to patched undici 7.30.1, resolving the three recorded security alerts.
+- Update the affected Vitest mocker dependency to its patched version.
+
+### Changed
+- Synchronize package and client/plugin metadata with the signed npm release and independent MCP Registry entry.
+
+
 ## [0.4.38] - 2026-10-25
 
 ### Changed
