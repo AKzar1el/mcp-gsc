@@ -16,7 +16,7 @@ By the end you'll have a Worker at `https://<your-worker>.workers.dev/mcp` that 
 Clone and install:
 
 ```bash
-git clone https://github.com/<you>/mcp-gsc.git
+git clone https://github.com/AKzar1el/mcp-gsc.git
 cd mcp-gsc
 npm install
 ```

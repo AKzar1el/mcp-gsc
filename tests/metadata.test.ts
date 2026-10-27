@@ -908,6 +908,17 @@ test('agent installation guide preserves the least-privilege readonly path', () 
   );
 });
 
+test('self-hosting clone examples use the real published repository', () => {
+  const repositoryUrl = packageJson.repository.url.replace(/^git\+/, '');
+  const expectedCommand = `git clone ${repositoryUrl}`;
+  for (const [label, source] of [
+    ['README.md', readmeSource],
+    ['SETUP.md', setupSource],
+  ] as const) {
+    assert.ok(source.includes(expectedCommand), `${label} must show a copy-pasteable clone command for the published repository`);
+    assert.doesNotMatch(source, /git clone[^\r\n]*<you>/, `${label} must not contain a placeholder Git clone URL`);
+  }
+});
 test('onboarding docs use current Google Auth Platform navigation', () => {
   for (const [label, source] of [
     ['SETUP.md', setupSource],

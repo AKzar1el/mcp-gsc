@@ -174,7 +174,7 @@ Self-hosting means bringing your own Google OAuth credentials and Cloudflare acc
 Quick shape:
 
 ```bash
-git clone https://github.com/<you>/mcp-gsc.git
+git clone https://github.com/AKzar1el/mcp-gsc.git
 cd mcp-gsc
 npm install
 cp wrangler.example.jsonc wrangler.jsonc       # then paste in your KV ids
