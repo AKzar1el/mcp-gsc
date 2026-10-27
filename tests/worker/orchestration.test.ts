@@ -2263,6 +2263,40 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('withholds a weekly traffic comparison when Google returns no aggregate row', async () => {
+    await saveUser(workerEnv, 'digest-no-rows', 'digest-no-rows@example.test', 'digest-no-rows-refresh');
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'digest-no-rows-access', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/https%3A%2F%2Fexample.com%2F/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as { startDate: string; dimensions: string[] };
+          if (body.dimensions.length === 0 && body.startDate === '2026-01-01') {
+            return response({ rows: [{ keys: [], clicks: 30, impressions: 300, ctr: 0.1, position: 10 }] });
+          }
+          return response({ rows: [] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const markdown = await generateWeeklyDigest(
+        new GoogleAccessTokenLifecycle(workerEnv),
+        'digest-no-rows',
+        'https://example.com/',
+        '2026-01-14',
+      );
+      expect(markdown).toContain('## Data availability');
+      expect(markdown).toContain('2026-01-08 to 2026-01-14');
+      expect(markdown).toContain('withheld rather than treating absent rows');
+      expect(markdown).not.toContain('## Quick numbers');
+      expect(markdown).not.toContain('No Google Search impressions were recorded this week');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
   it('defaults the weekly digest to the latest usually-complete Search Console date', async () => {
     await saveUser(
       workerEnv,

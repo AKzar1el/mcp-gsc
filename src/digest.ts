@@ -132,6 +132,32 @@ export async function generateWeeklyDigest(
     }),
   ]);
 
+  // No aggregate row is not a measured zero. Avoid manufacturing a weekly drop
+  // or an indexing diagnosis when Search Console returns no data for either week.
+  const missingPeriods = [
+    ...(currentTotalsResponse.rows.length === 0
+      ? [`${dates.currentStart} to ${dates.currentEnd}`]
+      : []),
+    ...(prevTotalsResponse.rows.length === 0
+      ? [`${dates.prevStart} to ${dates.prevEnd}`]
+      : []),
+  ];
+  if (missingPeriods.length > 0) {
+    return [
+      `# Your weekly site report - ${siteDisplayName(siteUrl)}`,
+      `### Week of ${dates.currentStart} to ${dates.currentEnd}`,
+      '',
+      '## Data availability',
+      `Google Search Console returned no aggregate Search Analytics row for ${missingPeriods.join(' and ')}.`,
+      'An empty API response does not establish a measured zero for clicks or impressions. It may reflect no search activity or data that has not yet been processed.',
+      'A week-over-week comparison and SEO action recommendation are withheld rather than treating absent rows as confirmed traffic loss.',
+      '',
+      '## What to check',
+      '1. Open the Search Console Performance report and check its latest available reporting date.',
+      '2. Query the same period grouped by date, or compare an earlier finalized week, to identify which days contain data.',
+      '3. If visibility is still absent, inspect representative URLs for crawl and index status before diagnosing an indexing issue.',
+    ].join('\n');
+  }
   const currentTotals = totalsFromRow(currentTotalsResponse.rows[0]);
   const prevTotals = totalsFromRow(prevTotalsResponse.rows[0]);
   const currentQueries = rowsToQueries(currentQueriesResponse.rows);
