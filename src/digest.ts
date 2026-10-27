@@ -155,7 +155,7 @@ export async function generateWeeklyDigest(
       '## What to check',
       '1. Open the Search Console Performance report and check its latest available reporting date.',
       '2. Query the same period grouped by date, or compare an earlier finalized week, to identify which days contain data.',
-      '3. If visibility is still absent, inspect representative URLs for crawl and index status before diagnosing an indexing issue.',
+      '3. Search Analytics alone does not tell us whether Google crawled or indexed a URL; use this server\'s `urls.inspect` tool to inspect Google\'s indexed version of a representative URL, not the live page, before diagnosing an indexing issue.',
     ].join('\n');
   }
   const currentTotals = totalsFromRow(currentTotalsResponse.rows[0]);

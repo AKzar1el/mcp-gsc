@@ -2291,6 +2291,8 @@ describe('Worker orchestration', () => {
       expect(markdown).toContain('## Data availability');
       expect(markdown).toContain('2026-01-08 to 2026-01-14');
       expect(markdown).toContain('withheld rather than treating absent rows');
+      expect(markdown).toContain('Search Analytics alone does not tell us whether Google crawled or indexed');
+      expect(markdown).toContain("use this server's `urls.inspect` tool");
       expect(markdown).not.toContain('## Quick numbers');
       expect(markdown).not.toContain('No Google Search impressions were recorded this week');
     } finally {
