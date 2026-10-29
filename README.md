@@ -62,6 +62,12 @@ codex mcp add gsc --url http://127.0.0.1:8080/mcp
 
 Codex CLI and the Codex IDE extension share MCP configuration, so registering the server once makes the same local connection available to both clients. Start the npm launcher before using the connection; Codex will open the server's OAuth flow when authentication is required.
 
+**Visual Studio Code (GitHub Copilot)**
+
+[![Add GSC MCP to VS Code](https://img.shields.io/badge/VS_Code-Add_GSC_MCP-007ACC?logo=visualstudiocode&logoColor=white)](https://vscode.dev/redirect/mcp/install?name=gsc&config=%7B%22type%22%3A%22http%22%2C%22url%22%3A%22http%3A%2F%2F127.0.0.1%3A8080%2Fmcp%22%7D)
+
+The button adds only the local Streamable HTTP connection; it does **not** start the npm launcher or configure Google OAuth. Follow [SETUP.md](SETUP.md) and start the launcher above on the **same machine** as VS Code before connecting and signing in. Remote VS Code environments cannot reach your computer's `127.0.0.1` endpoint.
+
 **Cursor**
 
 [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](https://cursor.com/en/install-mcp?name=gsc&config=eyJ1cmwiOiJodHRwOi8vMTI3LjAuMC4xOjgwODAvbWNwIn0%3D)
