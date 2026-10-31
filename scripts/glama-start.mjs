@@ -46,7 +46,13 @@ if (bindIp !== '127.0.0.1' && bindIp !== '0.0.0.0') {
   );
   process.exit(1);
 }
-const port = process.env.PORT || '8080';
+// Validate before constructing URLs or spawning Wrangler. PORT comes from the
+// host environment and must not become a malformed URL or unexpected CLI value.
+const port = process.env.PORT?.trim() || '8080';
+if (!/^[1-9][0-9]{0,4}$/.test(port) || Number(port) > 65535) {
+  console.error('[mcp-gsc] Invalid PORT: expected a decimal TCP port from 1 to 65535.');
+  process.exit(1);
+}
 const localBaseUrl = `http://127.0.0.1:${port}`;
 const mcpUrl = `${localBaseUrl}/mcp`;
 const googleRedirectUri = `${localBaseUrl}/google/callback`;
