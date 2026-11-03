@@ -160,7 +160,7 @@ test('GoogleAccessTokenLifecycle refreshes when the cached token is no longer sa
   assert.equal(refreshCalls, 2);
 });
 
-test('GoogleAccessTokenLifecycle deletes credentials only for definitive invalid_grant', async () => {
+test('GoogleAccessTokenLifecycle gives accurate reconnect guidance for invalid_grant', async () => {
   const fixture = createLifecycle({
     refreshAccessToken: async () => {
       throw new GoogleRefreshTokenRevokedError();
@@ -169,7 +169,12 @@ test('GoogleAccessTokenLifecycle deletes credentials only for definitive invalid
 
   await assert.rejects(
     () => fixture.lifecycle.getAccessToken('user-a'),
-    GoogleRefreshTokenRevokedError,
+    (error: unknown) => {
+      assert.ok(error instanceof GoogleRefreshTokenRevokedError);
+      assert.match(error.message, /expired, been revoked, or requires reauthentication/i);
+      assert.match(error.message, /reconnect this server/i);
+      return true;
+    },
   );
   assert.equal(fixture.deleteCalls, 1);
 });

@@ -11,6 +11,7 @@ import {
   type Env,
 } from '../../src/index';
 import {
+  GSC_ACCESS_REVOKED_MESSAGE,
   GOOGLE_TOKEN_URL,
   GOOGLE_USERINFO_URL,
 } from '../../src/google';
@@ -2191,7 +2192,7 @@ describe('Worker orchestration', () => {
       expect(cachedRefreshes).toBe(1);
 
       await expect(revokedTools['sites.list'].handler({})).rejects.toThrow(
-        "Google access revoked. Please reconnect this server from your MCP client's connector or app settings.",
+        GSC_ACCESS_REVOKED_MESSAGE,
       );
     } finally {
       globalThis.fetch = originalFetch;

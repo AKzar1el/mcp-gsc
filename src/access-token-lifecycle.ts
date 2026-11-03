@@ -99,7 +99,7 @@ export class GoogleAccessTokenLifecycle implements GoogleAccessTokenProvider {
       if (err instanceof GoogleRefreshTokenRevokedError) {
         this.cache.delete(googleId);
         await this.dependencies.deleteUser(this.env, googleId);
-        console.warn('Refresh token revoked; deleted stored user credentials');
+        console.warn('Google OAuth invalid_grant: stored credentials cleared; reconnection required');
       }
       throw err;
     }
