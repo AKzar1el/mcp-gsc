@@ -73,6 +73,19 @@ test('npm launcher rejects an unexpected bind address before launching Wrangler'
   assert.equal(result.error, undefined);
 });
 
+test('npm launcher refuses invalid PORT before exposing an endpoint or launching Wrangler', () => {
+  for (const invalidPort of [
+    '0', '-1', '65536', '1e3', '8080/path', '8080;--ip=0.0.0.0', '1.5',
+  ]) {
+    const result = runLauncherWithEnvironment({ PORT: invalidPort });
+    assert.equal(result.status, 1, invalidPort);
+    assert.match(result.stderr, /Invalid PORT: expected a decimal TCP port from 1 to 65535/);
+    assert.doesNotMatch(result.stderr, /Local MCP endpoint:/);
+    assert.doesNotMatch(result.stderr, /Google OAuth redirect URI:/);
+    assert.equal(result.error, undefined);
+  }
+});
+
 test('Docker binding is explicitly container-scoped while npm defaults to loopback', () => {
   const launcher = readFileSync(launcherPath, 'utf8');
   const dockerfile = readFileSync(resolve(repoRoot, 'Dockerfile'), 'utf8');
