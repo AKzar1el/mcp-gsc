@@ -200,6 +200,52 @@ test('weekly digest defaults to the latest usually-complete Search Console date'
   assert.equal(resolveWeeklyDigestEndDate('2026-09-19', '2026-09-20'), '2026-09-19');
 });
 
+test('weekly digest ranks impression-only queries by net growth, not current impressions', async () => {
+  const { generateWeeklyDigest } = await import('../src/digest');
+  const queryRow = (query: string, impressions: number) => ({
+    keys: [query],
+    clicks: 0,
+    impressions,
+    ctr: 0,
+    position: 12,
+  });
+
+  const { result: report } = await withMockFetch(
+    (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as {
+        startDate: string;
+        dimensions: string[];
+      };
+      const previousWeek = body.startDate === '2026-09-07';
+      if (body.dimensions.length === 0) {
+        return json(200, {
+          rows: [{ clicks: 0, impressions: previousWeek ? 4 : 198, ctr: 0, position: 12 }],
+        });
+      }
+      if (body.dimensions[0] === 'query') {
+        return json(200, {
+          rows: previousWeek
+            ? [queryRow('gain-96', 4), queryRow('gain-98', 0)]
+            : [queryRow('gain-96', 100), queryRow('gain-98', 98)],
+        });
+      }
+      return json(200, { rows: [] });
+    },
+    () => generateWeeklyDigest(
+      { getAccessToken: async () => 'mock-access-token' },
+      'mock-user',
+      'sc-domain:example.com',
+      '2026-09-20',
+    ),
+  );
+
+  const moversSection = report.split('### New searches showing your site')[1] ?? '';
+  const higherGrowth = moversSection.indexOf('**"gain-98"**');
+  const lowerGrowth = moversSection.indexOf('**"gain-96"**');
+  assert.ok(higherGrowth >= 0 && lowerGrowth >= 0, 'both impression movers are reported');
+  assert.ok(higherGrowth < lowerGrowth, '98 new impressions must rank ahead of 96');
+});
+
 test('content decay comparison days must be positive and default to 30', () => {
   assert.deepEqual(CONTENT_DECAY_COMPARE_DAYS_SCHEMA.safeParse(1), {
     success: true,

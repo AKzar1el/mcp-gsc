@@ -273,7 +273,7 @@ test('registry package identity remains aligned', () => {
 
   assert.match(
     npmLauncherSource,
-    /const port = process\.env\.PORT \|\| '8080'/,
+    /const port = process\.env\.PORT\?\.trim\(\) \|\| '8080'/,
     'npm launcher default port must stay aligned with Registry metadata',
   );
   assert.match(

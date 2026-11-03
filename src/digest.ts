@@ -286,7 +286,7 @@ function computeMovers(current: QueryRow[], prev: QueryRow[]): Movers {
         prevImpressions: pImpr,
         currentPosition: cPos,
         prevPosition: pPos,
-        change: cImpr,
+        change: cImpr - pImpr,
       });
     }
   }

@@ -41,8 +41,9 @@ export interface GoogleTokenResponse {
 export const MCP_RECONNECT_INSTRUCTION =
   "Please reconnect this server from your MCP client's connector or app settings.";
 
+// Google invalid_grant and API 401 do not by themselves prove user revocation.
 export const GSC_ACCESS_REVOKED_MESSAGE =
-  `Google access revoked. ${MCP_RECONNECT_INSTRUCTION}`;
+  `Google authorization has expired, been revoked, or requires reauthentication. ${MCP_RECONNECT_INSTRUCTION}`;
 
 export class GoogleRefreshTokenRevokedError extends Error {
   constructor() {
