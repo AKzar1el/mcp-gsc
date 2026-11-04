@@ -5,9 +5,13 @@ export const SITEMAP_URL_SCHEMA = z
   .url()
   .refine((value) => {
     try {
-      const protocol = new URL(value).protocol;
-      return protocol === 'http:' || protocol === 'https:';
+      const parsed = new URL(value);
+      return (
+        (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
+        parsed.username === '' &&
+        parsed.password === ''
+      );
     } catch {
       return false;
     }
-  }, 'Sitemap URL must use http:// or https://.');
+  }, 'Sitemap URL must use http:// or https:// without embedded credentials.');
