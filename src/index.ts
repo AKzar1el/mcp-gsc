@@ -1040,6 +1040,15 @@ class GscMcpRuntime {
     }
   }
 
+  private async reserveMetadataReadRetry(googleId: string): Promise<void> {
+    // All four metadata tools share the same per-user rate-limit category.
+    const result = await enforceToolRateLimit(this.env, googleId, 'sites.list', 1);
+    if (!result.allowed) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((result.retry_after_ms ?? 0) / 1000));
+      throw new Error(`Search Console metadata retry budget exhausted. Retry after ${retryAfterSeconds} seconds.`);
+    }
+  }
+
   private async getAccessToken(googleId: string): Promise<string> {
     return this.getAccessTokenLifecycle().getAccessToken(googleId);
   }
@@ -1132,7 +1141,10 @@ class GscMcpRuntime {
         const rateLimitError = await this.rateLimitError(googleId, 'sites.list');
         if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
-        const sites = (await listSites(accessToken)).map((site) => {
+        const sites = (await listSites(
+          accessToken,
+          () => this.reserveMetadataReadRetry(googleId),
+        )).map((site) => {
           const apiIdentifierKind = classifySearchConsolePropertyIdentifier(site.siteUrl);
           const mcpSiteUrlAccepted = apiIdentifierKind !== 'undocumented';
           return {
@@ -1179,7 +1191,11 @@ class GscMcpRuntime {
         const rateLimitError = await this.rateLimitError(googleId, 'sites.get');
         if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
-        const site = await getSite(accessToken, site_url);
+        const site = await getSite(
+          accessToken,
+          site_url,
+          () => this.reserveMetadataReadRetry(googleId),
+        );
         const siteWithPermissionState = {
           ...site,
           ...sitePermissionState(site.permissionLevel),
@@ -1321,7 +1337,12 @@ class GscMcpRuntime {
         const rateLimitError = await this.rateLimitError(googleId, 'sitemaps.list');
         if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
-        const sitemaps = (await listSitemaps(accessToken, site_url, sitemap_index))
+        const sitemaps = (await listSitemaps(
+          accessToken,
+          site_url,
+          sitemap_index,
+          () => this.reserveMetadataReadRetry(googleId),
+        ))
           .sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
         const bounded = windowKnownResults(
           sitemaps, start_row, limit, COLLECTION_LIST_BYTE_BUDGET,
@@ -1931,7 +1952,12 @@ class GscMcpRuntime {
         const rateLimitError = await this.rateLimitError(googleId, 'sitemaps.get');
         if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
-        const details = await getSitemap(accessToken, site_url, feedpath);
+        const details = await getSitemap(
+          accessToken,
+          site_url,
+          feedpath,
+          () => this.reserveMetadataReadRetry(googleId),
+        );
         const payload = { sitemap: details, provider_note: SITEMAP_PROVIDER_NOTE };
         return toolResponse(JSON.stringify(payload, null, 2), payload);
       },
