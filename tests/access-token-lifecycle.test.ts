@@ -69,6 +69,13 @@ function installDigestAnalyticsMock(
       position: number;
     }>;
     currentPageUrl?: string;
+    currentPageRows?: Array<{
+      keys: string[];
+      clicks: number;
+      impressions: number;
+      ctr: number;
+      position: number;
+    }>;
   } = {},
 ): () => void {
   const originalFetch = globalThis.fetch;
@@ -110,7 +117,7 @@ function installDigestAnalyticsMock(
     } else if (dimension === 'query') {
       rows = options.previousQueryRows ?? [];
     } else if (dimension === 'page' && currentPeriod) {
-      rows = [
+      rows = options.currentPageRows ?? [
         {
           keys: [options.currentPageUrl ?? 'https://example.com/page'],
           clicks: 0,
@@ -516,6 +523,27 @@ test('weekly digest renders provider queries and page paths as plain Markdown te
     assert.ok(digest.includes('/page\\*\\*bold\\*\\*'));
     assert.doesNotMatch(digest, /\n## fake heading/);
     assert.doesNotMatch(digest, /\[free\]\(https:\/\/fake\.invalid\)/);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest distinguishes the same path across different hosts', async () => {
+  const restoreFetch = installDigestAnalyticsMock([], {
+    currentPageRows: [
+      { keys: ['https://www.example.com/pricing'], clicks: 7, impressions: 70, ctr: 0.1, position: 6 },
+      { keys: ['https://fr.example.com/pricing'], clicks: 5, impressions: 50, ctr: 0.1, position: 7 },
+      { keys: ['https://www.example.com/blog'], clicks: 4, impressions: 40, ctr: 0.1, position: 8 },
+    ],
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'sc-domain:example.com', '2026-08-10',
+    );
+    assert.ok(digest.includes('**https://www\\.example\\.com/pricing**'));
+    assert.ok(digest.includes('**https://fr\\.example\\.com/pricing**'));
+    assert.match(digest, /\*\*\/blog\*\*/);
+    assert.doesNotMatch(digest, /\*\*\/pricing\*\*/);
   } finally {
     restoreFetch();
   }

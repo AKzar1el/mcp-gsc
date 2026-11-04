@@ -523,9 +523,17 @@ function renderMarkdown(data: {
   if (topPages.length === 0) {
     lines.push('- No pages had impressions this week.');
   } else {
+    const pagePathCounts = new Map<string, number>();
+    for (const page of topPages) {
+      const path = relativePagePath(page.page);
+      pagePathCounts.set(path, (pagePathCounts.get(path) ?? 0) + 1);
+    }
     for (const p of topPages) {
+      const path = relativePagePath(p.page);
+      // Keep concise paths unless dropping the host would merge distinct URLs.
+      const displayPage = (pagePathCounts.get(path) ?? 0) > 1 ? p.page : path;
       lines.push(
-        `- **${escapeMarkdownInline(relativePagePath(p.page))}** — ${formatNumber(p.clicks)} clicks, ${formatNumber(p.impressions)} times shown.`,
+        `- **${escapeMarkdownInline(displayPage)}** — ${formatNumber(p.clicks)} clicks, ${formatNumber(p.impressions)} times shown.`,
       );
     }
   }
