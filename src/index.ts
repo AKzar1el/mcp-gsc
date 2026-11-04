@@ -2596,6 +2596,30 @@ function googleRedirectUri(request: Request): string {
   return new URL('/google/callback', request.url).toString();
 }
 
+async function readConsentForm(request: Request): Promise<URLSearchParams | null> {
+  const maxBytes = 4_096;
+  const bytes = new Uint8Array(maxBytes);
+  const reader = request.body?.getReader();
+  let received = 0;
+  if (reader) {
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value.byteLength > maxBytes - received) {
+          await reader.cancel().catch(() => undefined);
+          return null;
+        }
+        bytes.set(value, received);
+        received += value.byteLength;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+  return new URLSearchParams(new TextDecoder().decode(bytes.subarray(0, received)));
+}
+
 export const defaultHandler = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -2706,7 +2730,10 @@ export const defaultHandler = {
       if (Number.isFinite(contentLength) && contentLength > 4096) {
         return new Response('Authorization response too large', { status: 413 });
       }
-      const body = await request.formData();
+      const body = await readConsentForm(request);
+      if (!body) {
+        return new Response('Authorization response too large', { status: 413 });
+      }
       const consentNonceValue = body.get('consent_nonce');
       const decisionValue = body.get('decision');
       const consentNonce =

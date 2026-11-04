@@ -395,6 +395,39 @@ describe('OAuth discovery', () => {
     expect(deniedUrl.searchParams.get('iss')).toBe('https://worker.example');
   });
 
+  it('rejects oversized streaming consent bodies without a Content-Length header', async () => {
+    const bytes = new TextEncoder().encode('decision=allow&padding=' + 'x'.repeat(4_096));
+    let offset = 0;
+    const request = new Request('https://worker.example/authorize', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new ReadableStream<Uint8Array>({
+        pull(controller) {
+          const end = Math.min(offset + 256, bytes.byteLength);
+          controller.enqueue(bytes.subarray(offset, end));
+          offset = end;
+          if (offset === bytes.byteLength) controller.close();
+        },
+      }),
+      duplex: 'half',
+    } as RequestInit & { duplex: 'half' });
+
+    expect(request.headers.get('content-length')).toBeNull();
+    const result = await callWorker(request);
+    expect(result.status).toBe(413);
+    await expect(result.text()).resolves.toBe('Authorization response too large');
+
+    const misleadingLength = new Request('https://worker.example/authorize', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/x-www-form-urlencoded',
+        'content-length': '10',
+      },
+      body: 'decision=allow&padding=' + 'x'.repeat(4_096),
+    });
+    expect((await callWorker(misleadingLength)).status).toBe(413);
+  });
+
   it('returns an upstream Google denial to the validated MCP client', async () => {
     const redirectUri = 'https://client.example/callback';
     const registration = await callWorker(
