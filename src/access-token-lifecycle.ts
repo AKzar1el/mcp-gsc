@@ -40,6 +40,7 @@ const DEFAULT_DEPENDENCIES: AccessTokenLifecycleDependencies = {
 export class GoogleAccessTokenLifecycle implements GoogleAccessTokenProvider {
   private readonly cache = new Map<string, AccessTokenCacheEntry>();
   private readonly inFlightRefreshes = new Map<string, Promise<string>>();
+  private readonly authorizationGenerations = new Map<string, number>();
   private readonly dependencies: AccessTokenLifecycleDependencies;
 
   constructor(
@@ -47,6 +48,19 @@ export class GoogleAccessTokenLifecycle implements GoogleAccessTokenProvider {
     dependencies: Partial<AccessTokenLifecycleDependencies> = {},
   ) {
     this.dependencies = { ...DEFAULT_DEPENDENCIES, ...dependencies };
+  }
+
+  /**
+   * Called after a new Google grant is persisted. A refresh started under the
+   * previous grant must not repopulate this user's cache after reconnection.
+   */
+  invalidate(googleId: string): void {
+    this.authorizationGenerations.set(
+      googleId,
+      (this.authorizationGenerations.get(googleId) ?? 0) + 1,
+    );
+    this.cache.delete(googleId);
+    this.inFlightRefreshes.delete(googleId);
   }
 
   async getAccessToken(googleId: string): Promise<string> {
@@ -71,26 +85,29 @@ export class GoogleAccessTokenLifecycle implements GoogleAccessTokenProvider {
   }
 
   private async refreshAndCache(googleId: string): Promise<string> {
+    const generation = this.authorizationGenerations.get(googleId) ?? 0;
     const refreshToken = await this.dependencies.getDecryptedRefreshToken(
       this.env,
       googleId,
     );
+    if ((this.authorizationGenerations.get(googleId) ?? 0) !== generation) {
+      return this.getAccessToken(googleId);
+    }
     if (!refreshToken) {
       throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
     }
 
+    let tokens: Awaited<ReturnType<typeof refreshAccessToken>>;
     try {
-      const tokens = await this.dependencies.refreshAccessToken(
+      tokens = await this.dependencies.refreshAccessToken(
         refreshToken,
         this.env.GOOGLE_CLIENT_ID,
         this.env.GOOGLE_CLIENT_SECRET,
       );
-      this.cache.set(googleId, {
-        token: tokens.access_token,
-        expires_at: this.dependencies.now() + tokens.expires_in * 1000,
-      });
-      return tokens.access_token;
     } catch (err) {
+      if ((this.authorizationGenerations.get(googleId) ?? 0) !== generation) {
+        return this.getAccessToken(googleId);
+      }
       if (err instanceof GoogleRefreshTokenRevokedError) {
         this.cache.delete(googleId);
         // A concurrent Google reconnection may already have replaced the stored
@@ -99,5 +116,13 @@ export class GoogleAccessTokenLifecycle implements GoogleAccessTokenProvider {
       }
       throw err;
     }
+    if ((this.authorizationGenerations.get(googleId) ?? 0) !== generation) {
+      return this.getAccessToken(googleId);
+    }
+    this.cache.set(googleId, {
+      token: tokens.access_token,
+      expires_at: this.dependencies.now() + tokens.expires_in * 1000,
+    });
+    return tokens.access_token;
   }
 }

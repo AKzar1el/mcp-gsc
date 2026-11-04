@@ -2853,6 +2853,7 @@ export const defaultHandler = {
 
       try {
         await saveUser(env, userinfo.id, userinfo.email, tokens.refresh_token);
+        getSharedAccessTokenLifecycle(env).invalidate(userinfo.id);
       } catch (err) {
         console.error('Save user failed', {
           google_id: userinfo.id,

@@ -3,7 +3,7 @@ import { reset } from 'cloudflare:test';
 import { afterEach, describe, expect, it } from 'vitest';
 import worker from '../../src/entrypoint';
 import { GOOGLE_TOKEN_URL, GOOGLE_USERINFO_URL } from '../../src/google';
-import { type Env } from '../../src/index';
+import { createGscMcpServer, type Env } from '../../src/index';
 
 const workerEnv = env as unknown as Env;
 
@@ -122,12 +122,21 @@ describe('OAuth discovery', () => {
     expect(client.client_id).toBeTruthy();
 
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = async (input: RequestInfo | URL) => {
+    let googleGrants = 0;
+    const refreshedGrants: string[] = [];
+    globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = input instanceof Request ? input.url : input.toString();
       if (url === GOOGLE_TOKEN_URL) {
+        const body = new URLSearchParams(String(init?.body ?? ''));
+        if (body.get('grant_type') === 'refresh_token') {
+          const grant = body.get('refresh_token') ?? '';
+          refreshedGrants.push(grant);
+          return Response.json({ access_token: `access-from-${grant}`, expires_in: 3600 });
+        }
+        googleGrants += 1;
         return Response.json({
           access_token: 'google-access-token',
-          refresh_token: 'google-refresh-token',
+          refresh_token: `google-refresh-token-${googleGrants}`,
           expires_in: 3600,
           token_type: 'Bearer',
           scope: 'openid email',
@@ -135,6 +144,9 @@ describe('OAuth discovery', () => {
       }
       if (url === GOOGLE_USERINFO_URL) {
         return Response.json({ id: 'reconnect-user', email: 'reconnect@example.test' });
+      }
+      if (url === 'https://www.googleapis.com/webmasters/v3/sites') {
+        return Response.json({ siteEntry: [] });
       }
       throw new Error(`Unexpected outbound request: ${url}`);
     };
@@ -200,8 +212,20 @@ describe('OAuth discovery', () => {
       expect(firstTokens.access_token).toBeTruthy();
       expect((await probeBearer(firstTokens.access_token!)).status).not.toBe(401);
 
+      const mcp = await createGscMcpServer(workerEnv, {
+        google_id: 'reconnect-user',
+        email: 'reconnect@example.test',
+      });
+      const sitesList = (mcp as unknown as {
+        _registeredTools: Record<string, { handler: (args: Record<string, never>) => Promise<unknown> }>;
+      })._registeredTools['sites.list'].handler;
+      await sitesList({});
+      expect(refreshedGrants).toEqual(['google-refresh-token-1']);
+
       const secondCode = await authorize('reconnect');
       expect((await probeBearer(firstTokens.access_token!)).status).toBe(401);
+      await sitesList({});
+      expect(refreshedGrants).toEqual(['google-refresh-token-1', 'google-refresh-token-2']);
 
       const secondExchange = await exchangeCode(secondCode);
       expect(secondExchange.status).toBe(200);
