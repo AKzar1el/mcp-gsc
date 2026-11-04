@@ -2526,11 +2526,17 @@ class GscMcpRuntime {
   }
 }
 
-let sharedAccessTokens: GoogleAccessTokenLifecycle | undefined;
+// Keep access tokens tied to their Worker binding set. A module-global singleton
+// would reuse credentials from the first Env even when another Env is supplied.
+const sharedAccessTokens = new WeakMap<Env, GoogleAccessTokenLifecycle>();
 
 function getSharedAccessTokenLifecycle(env: Env): GoogleAccessTokenLifecycle {
-  sharedAccessTokens ??= new GoogleAccessTokenLifecycle(env);
-  return sharedAccessTokens;
+  let lifecycle = sharedAccessTokens.get(env);
+  if (!lifecycle) {
+    lifecycle = new GoogleAccessTokenLifecycle(env);
+    sharedAccessTokens.set(env, lifecycle);
+  }
+  return lifecycle;
 }
 
 function currentAgentProps(): AgentProps | undefined {
