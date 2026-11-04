@@ -144,6 +144,132 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('pages and sorts property lists without breaking the legacy text array', async () => {
+    const server = await createGscMcpServer(
+      {
+        GSC_ACCESS_MODE: 'readonly',
+        TOOL_RATE_LIMITER: {
+          idFromName: (name: string) => name,
+          get: () => ({ take: async () => ({ allowed: true }) }),
+        },
+      } as unknown as Env,
+      { google_id: 'many-properties-user', email: 'many@example.test' },
+      { getAccessToken: async () => 'access-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{
+          content: Array<{ text: string }>;
+          structuredContent: {
+            sites: Array<{ siteUrl: string }>;
+            result_page: { has_more: boolean; next_start_row?: number; total_count: number };
+          };
+        }>;
+      }>;
+    })._registeredTools['sites.list'].handler;
+    const originalFetch = globalThis.fetch;
+    const properties = Array.from({ length: 145 }, (_, i) => ({
+      siteUrl: `sc-domain:site-${String(144 - i).padStart(3, '0')}.example`,
+      permissionLevel: 'siteOwner',
+    }));
+    try {
+      globalThis.fetch = async () => response({ siteEntry: properties });
+      const first = await handler({ limit: 50 });
+      const second = await handler({ start_row: 50, limit: 50 });
+      const last = await handler({ start_row: 100, limit: 50 });
+      expect(first.structuredContent.sites).toHaveLength(50);
+      expect(second.structuredContent.sites).toHaveLength(50);
+      expect(last.structuredContent.sites).toHaveLength(45);
+      expect(last.structuredContent.result_page.has_more).toBe(false);
+      expect(first.structuredContent.result_page).toMatchObject({
+        has_more: true, next_start_row: 50, total_count: 145,
+      });
+      expect(first.structuredContent.sites[0].siteUrl).toBe('sc-domain:site-000.example');
+      expect(second.structuredContent.sites[0].siteUrl).toBe('sc-domain:site-050.example');
+      expect(JSON.parse(first.content[0].text)).toEqual(first.structuredContent.sites);
+      expect(JSON.parse(first.content[1].text)).toEqual({
+        result_page: first.structuredContent.result_page,
+      });
+      const largeProperties = Array.from({ length: 90 }, (_, i) => ({
+        siteUrl: `sc-domain:site-${String(i).padStart(3, '0')}-${'x'.repeat(1100)}.example`,
+        permissionLevel: 'siteOwner',
+      }));
+      globalThis.fetch = async () => response({ siteEntry: largeProperties });
+      const bounded = await handler({ limit: 90 });
+      expect(bounded.structuredContent.result_page.has_more).toBe(true);
+      expect(bounded.structuredContent.result_page.next_start_row).toBeGreaterThan(0);
+      expect(new TextEncoder().encode(bounded.content[0].text).byteLength).toBeLessThan(48_000);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('bounds sitemap list payload bytes and supports deterministic continuation', async () => {
+    const server = await createGscMcpServer(
+      {
+        GSC_ACCESS_MODE: 'readonly',
+        TOOL_RATE_LIMITER: {
+          idFromName: (name: string) => name,
+          get: () => ({ take: async () => ({ allowed: true }) }),
+        },
+      } as unknown as Env,
+      { google_id: 'many-sitemaps-user', email: 'sitemaps@example.test' },
+      { getAccessToken: async () => 'access-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{
+          isError?: boolean;
+          content: Array<{ text: string }>;
+          structuredContent: {
+            sitemaps: Array<{ path: string }>;
+            result_page: {
+              has_more: boolean; byte_limit_reached: boolean;
+              next_start_row?: number; total_count: number;
+            };
+          };
+        }>;
+      }>;
+    })._registeredTools['sitemaps.list'].handler;
+    const originalFetch = globalThis.fetch;
+    const sitemaps = Array.from({ length: 90 }, (_, i) => ({
+      path: `https://example.com/${String(89 - i).padStart(3, '0')}/${'x'.repeat(1200)}.xml`,
+      errors: '0',
+    }));
+    try {
+      globalThis.fetch = async () => response({ sitemap: sitemaps });
+      const first = await handler({ site_url: 'sc-domain:example.com', limit: 90 });
+      const page = first.structuredContent.result_page;
+      expect(first.isError).not.toBe(true);
+      expect(page.has_more).toBe(true);
+      expect(page.byte_limit_reached).toBe(true);
+      expect(page.next_start_row).toBe(first.structuredContent.sitemaps.length);
+      expect(first.structuredContent.sitemaps[0].path).toContain('/000/');
+      expect(new TextEncoder().encode(first.content[0].text).byteLength).toBeLessThan(48_000);
+      const next = await handler({
+        site_url: 'sc-domain:example.com', limit: 90, start_row: page.next_start_row,
+      });
+      expect(next.structuredContent.sitemaps[0].path).toContain(
+        `/${String(page.next_start_row).padStart(3, '0')}/`,
+      );
+      expect(next.structuredContent.result_page.total_count).toBe(90);
+      globalThis.fetch = async () => response({
+        sitemap: [{ path: `https://example.com/${'x'.repeat(55_000)}.xml` }],
+      });
+      const oversize = await handler({ site_url: 'sc-domain:example.com' });
+      expect(oversize.isError).toBe(true);
+      expect(oversize.content[0].text).toContain('exceeds the response byte limit');
+      globalThis.fetch = async () => response({ sitemap: [] });
+      const empty = await handler({ site_url: 'sc-domain:example.com' });
+      expect(empty.structuredContent.sitemaps).toHaveLength(0);
+      expect(empty.structuredContent.result_page).toMatchObject({
+        has_more: false, total_count: 0, byte_limit_reached: false,
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('does not send a Search Analytics retry when the additional unit is denied', async () => {
     const take = vi.fn(async () => (
       take.mock.calls.length === 1
