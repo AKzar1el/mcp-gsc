@@ -954,6 +954,14 @@ class GscMcpRuntime {
     }
   }
 
+  private async reserveSearchAnalyticsRetry(googleId: string): Promise<void> {
+    const result = await enforceToolRateLimit(this.env, googleId, 'analytics.query', 1);
+    if (!result.allowed) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((result.retry_after_ms ?? 0) / 1000));
+      throw new Error(`Search Analytics retry budget exhausted. Retry after ${retryAfterSeconds} seconds.`);
+    }
+  }
+
   private async getAccessToken(googleId: string): Promise<string> {
     return this.getAccessTokenLifecycle().getAccessToken(googleId);
   }
@@ -1450,7 +1458,10 @@ class GscMcpRuntime {
         const rateLimitError = await this.rateLimitError(googleId, 'analytics.query');
         if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
-        const response = await querySearchAnalytics(accessToken, site_url, query);
+        const response = await querySearchAnalytics(
+          accessToken, site_url, query,
+          () => this.reserveSearchAnalyticsRetry(googleId),
+        );
         // Google documents a short page as terminal. An exactly full page can
         // still have a following page, so expose continuation only then.
         const sourceMayHaveMore =
@@ -1567,7 +1578,10 @@ class GscMcpRuntime {
               ],
             },
           ],
-        }, { maxRows: sourceRowLimit });
+        }, {
+          maxRows: sourceRowLimit,
+          beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId),
+        });
         const rows = source.rows
           .filter((row) => (row.keys?.length ?? 0) > 0 && hasRecordedPosition(row))
           .map((row) => ({
@@ -1656,7 +1670,10 @@ class GscMcpRuntime {
               ],
             },
           ],
-        }, { maxRows: sourceRowLimit });
+        }, {
+          maxRows: sourceRowLimit,
+          beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId),
+        });
         const rows = source.rows
           .filter((row) => (row.keys?.length ?? 0) > 0 && hasRecordedPosition(row))
           .map((row) => ({
@@ -1846,7 +1863,7 @@ class GscMcpRuntime {
           startDate: start_date,
           endDate: end_date,
           dimensions: ['query', 'page'],
-        });
+        }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
         const quickWins = processQuickWins(source.rows, min_impressions, min_position, max_position);
         const bounded = windowKnownResults(quickWins, start_row, limit);
@@ -1898,7 +1915,7 @@ class GscMcpRuntime {
           startDate: start_date,
           endDate: end_date,
           dimensions: ['query', 'page'],
-        });
+        }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
         const cannibalizationCandidates = processCannibalization(
           source.rows,
@@ -1968,13 +1985,13 @@ class GscMcpRuntime {
           startDate: recentStart,
           endDate: recentEnd,
           dimensions: ['page'],
-        });
+        }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
         const previousSource = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: previousStart,
           endDate: previousEnd,
           dimensions: ['page'],
-        });
+        }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
         const decayResults = processContentDecay(
           recentSource.rows,
@@ -2178,7 +2195,7 @@ class GscMcpRuntime {
           dimensions: ['page'],
           rowLimit: sourceRowLimit,
           startRow: start_row,
-        });
+        }, () => this.reserveSearchAnalyticsRetry(googleId));
 
         const pages = response.rows
           .filter((row) => (row.keys?.length ?? 0) > 0 && hasRecordedPosition(row))
@@ -2280,7 +2297,7 @@ class GscMcpRuntime {
           ...(dimension_filter_groups !== undefined
             ? { dimensionFilterGroups: dimension_filter_groups }
             : {}),
-        });
+        }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
         const sourceB = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: start_date_b,
@@ -2291,7 +2308,7 @@ class GscMcpRuntime {
           ...(dimension_filter_groups !== undefined
             ? { dimensionFilterGroups: dimension_filter_groups }
             : {}),
-        });
+        }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
         const comparison = processPerformanceComparison(sourceA.rows, sourceB.rows);
         const bounded = windowKnownResults(comparison, start_row, limit);
@@ -2353,6 +2370,7 @@ class GscMcpRuntime {
             googleId,
             site_url,
             resolvedEndDate,
+            () => this.reserveSearchAnalyticsRetry(googleId),
           );
           return toolResponse(markdown, { markdown });
         } catch (err) {

@@ -99,6 +99,94 @@ describe('Worker orchestration', () => {
     expect(getAccessToken).not.toHaveBeenCalled();
   });
 
+  it('charges a separate Search Analytics budget unit before a retry', async () => {
+    const take = vi.fn(async () => ({ allowed: true }));
+    const server = await createGscMcpServer(
+      {
+        GSC_ACCESS_MODE: 'readonly',
+        TOOL_RATE_LIMITER: { idFromName: (name: string) => name, get: () => ({ take }) },
+      } as unknown as Env,
+      { google_id: 'analytics-retry-user', email: 'analytics-retry@example.test' },
+      { getAccessToken: async () => 'access-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    })._registeredTools['analytics.query'].handler;
+    const originalFetch = globalThis.fetch;
+    let requests = 0;
+    try {
+      globalThis.fetch = async () => {
+        requests += 1;
+        if (requests === 1) {
+          return new Response('transient', { status: 503, headers: { 'retry-after': '0' } });
+        }
+        return response({ rows: [] });
+      };
+      await handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-09-01',
+        end_date: '2026-09-07',
+        dimensions: ['query'],
+        row_limit: 5,
+        start_row: 0,
+        search_type: 'web',
+        data_state: 'final',
+      });
+      expect(requests).toBe(2);
+      expect(take).toHaveBeenCalledTimes(2);
+      expect(take.mock.calls.map((call) => [call[1].category, call[2]])).toEqual([
+        ['search-analytics', 1], ['search-analytics', 1],
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('does not send a Search Analytics retry when the additional unit is denied', async () => {
+    const take = vi.fn(async () => (
+      take.mock.calls.length === 1
+        ? { allowed: true }
+        : { allowed: false, retry_after_ms: 2_000 }
+    ));
+    const server = await createGscMcpServer(
+      {
+        GSC_ACCESS_MODE: 'readonly',
+        TOOL_RATE_LIMITER: { idFromName: (name: string) => name, get: () => ({ take }) },
+      } as unknown as Env,
+      { google_id: 'analytics-denied-user', email: 'analytics-denied@example.test' },
+      { getAccessToken: async () => 'access-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    })._registeredTools['analytics.query'].handler;
+    const originalFetch = globalThis.fetch;
+    let requests = 0;
+    try {
+      globalThis.fetch = async () => {
+        requests += 1;
+        return new Response('retryable', { status: 429, headers: { 'retry-after': '0' } });
+      };
+      await expect(handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-09-01',
+        end_date: '2026-09-07',
+        dimensions: ['query'],
+        row_limit: 5,
+        start_row: 0,
+        search_type: 'web',
+        data_state: 'final',
+      })).rejects.toThrow(/Search Analytics retry budget exhausted/);
+      expect(requests).toBe(1);
+      expect(take).toHaveBeenCalledTimes(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('keeps the root discovery response deployment-neutral', async () => {
     const result = await defaultHandler.fetch(
       new Request('http://127.0.0.1:8080/'),
@@ -2556,6 +2644,42 @@ describe('Worker orchestration', () => {
       ['search-analytics', 5],
     ]);
     expect(getAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('charges a weekly digest retry in addition to its five upfront Analytics units', async () => {
+    const take = vi.fn(async () => ({ allowed: true }));
+    const server = await createGscMcpServer(
+      {
+        GSC_ACCESS_MODE: 'readonly',
+        TOOL_RATE_LIMITER: { idFromName: (name: string) => name, get: () => ({ take }) },
+      } as unknown as Env,
+      { google_id: 'digest-retry-user', email: 'digest-retry@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    })._registeredTools['reports.weekly_digest'].handler;
+    const originalFetch = globalThis.fetch;
+    let providerCalls = 0;
+    try {
+      globalThis.fetch = async () => {
+        providerCalls += 1;
+        return providerCalls === 1
+          ? new Response('transient', { status: 503, headers: { 'retry-after': '0' } })
+          : response({ rows: [] });
+      };
+      await handler({ site_url: 'sc-domain:example.com', end_date: '2026-09-17' });
+      expect(providerCalls).toBe(6);
+      expect(take.mock.calls.map((call) => [call[1].category, call[2]])).toEqual([
+        ['weekly-digest', 1],
+        ['search-analytics', 5],
+        ['search-analytics', 1],
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('defaults the weekly digest to the latest usually-complete Search Console date', async () => {

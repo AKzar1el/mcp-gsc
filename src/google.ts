@@ -521,6 +521,7 @@ export interface PaginatedSearchAnalyticsResult {
 interface SearchAnalyticsPaginationOptions {
   /** May lower the hard ceiling for a caller, but never raise it. */
   maxRows?: number;
+  beforeRetry?: () => Promise<void>;
 }
 
 export async function inspectUrl(
@@ -743,6 +744,7 @@ export async function querySearchAnalytics(
   accessToken: string,
   siteUrl: string,
   body: SearchAnalyticsQuery,
+  beforeRetry?: () => Promise<void>,
 ): Promise<SearchAnalyticsResponse> {
   assertSearchAnalyticsQueryCompatible(body);
   const encoded = encodeURIComponent(siteUrl);
@@ -756,6 +758,7 @@ export async function querySearchAnalytics(
       },
       body: JSON.stringify(body),
     },
+    beforeRetry,
   );
   if (resp.status === 401) {
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
@@ -826,7 +829,7 @@ export async function querySearchAnalyticsPaginated(
       ...body,
       rowLimit: requestedRows,
       startRow,
-    });
+    }, options.beforeRetry);
     pagesFetched += 1;
 
     const acceptedRows = page.rows.slice(0, requestedRows);

@@ -84,6 +84,7 @@ export async function generateWeeklyDigest(
   googleId: string,
   siteUrl: string,
   endDate: string,
+  beforeRetry?: () => Promise<void>,
 ): Promise<string> {
   const dates = computeDateRanges(endDate);
   const accessToken = await accessTokens.getAccessToken(googleId);
@@ -101,35 +102,35 @@ export async function generateWeeklyDigest(
       dimensions: [],
       rowLimit: 1,
       dataState: 'all',
-    }),
+    }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.prevStart,
       endDate: dates.prevEnd,
       dimensions: [],
       rowLimit: 1,
       dataState: 'all',
-    }),
+    }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.currentStart,
       endDate: dates.currentEnd,
       dimensions: ['query'],
       rowLimit: 25,
       dataState: 'all',
-    }),
+    }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.prevStart,
       endDate: dates.prevEnd,
       dimensions: ['query'],
       rowLimit: 25,
       dataState: 'all',
-    }),
+    }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.currentStart,
       endDate: dates.currentEnd,
       dimensions: ['page'],
       rowLimit: 10,
       dataState: 'all',
-    }),
+    }, beforeRetry),
   ]);
 
   // No aggregate row is not a measured zero. Avoid manufacturing a weekly drop
