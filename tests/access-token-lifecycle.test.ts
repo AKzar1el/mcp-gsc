@@ -68,6 +68,7 @@ function installDigestAnalyticsMock(
       ctr: number;
       position: number;
     }>;
+    currentPageUrl?: string;
   } = {},
 ): () => void {
   const originalFetch = globalThis.fetch;
@@ -111,7 +112,7 @@ function installDigestAnalyticsMock(
     } else if (dimension === 'page' && currentPeriod) {
       rows = [
         {
-          keys: ['https://example.com/page'],
+          keys: [options.currentPageUrl ?? 'https://example.com/page'],
           clicks: 0,
           impressions: 40,
           ctr: 0,
@@ -487,6 +488,34 @@ test('weekly digest treats a query click drop as an observation, not a proven ca
     assert.match(digest, /treat them as hypotheses, not proven causes/i);
     assert.doesNotMatch(digest, /usually means either/i);
     assert.doesNotMatch(digest, /competitor outranked you/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest renders provider queries and page paths as plain Markdown text', async () => {
+  const query = 'picks **hot** [free](https://fake.invalid)\n## fake heading';
+  const restoreFetch = installDigestAnalyticsMock(
+    [{ keys: [query], clicks: 20, impressions: 200, ctr: 0.1, position: 15 }],
+    {
+      currentTotals: { clicks: 25, impressions: 250, ctr: 0.1, position: 15 },
+      previousTotals: { clicks: 10, impressions: 200, ctr: 0.05, position: 17 },
+      previousQueryRows: [
+        { keys: [query], clicks: 2, impressions: 120, ctr: 0.0167, position: 17 },
+      ],
+      currentPageUrl: 'https://example.com/page**bold**',
+    },
+  );
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.match(digest, /Searches gaining traction/);
+    assert.ok(digest.includes('picks \\*\\*hot\\*\\*'));
+    assert.ok(digest.includes('\\[free\\]\\('));
+    assert.ok(digest.includes('/page\\*\\*bold\\*\\*'));
+    assert.doesNotMatch(digest, /\n## fake heading/);
+    assert.doesNotMatch(digest, /\[free\]\(https:\/\/fake\.invalid\)/);
   } finally {
     restoreFetch();
   }
