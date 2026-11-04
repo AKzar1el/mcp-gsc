@@ -1031,6 +1031,8 @@ class GscMcpRuntime {
       },
       async () => {
         const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'sites.list');
+        if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
         const sites = (await listSites(accessToken)).map((site) => {
           const apiIdentifierKind = classifySearchConsolePropertyIdentifier(site.siteUrl);
@@ -1063,6 +1065,8 @@ class GscMcpRuntime {
       },
       async ({ site_url }) => {
         const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'sites.get');
+        if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
         const site = await getSite(accessToken, site_url);
         const siteWithPermissionState = {
@@ -1208,6 +1212,8 @@ class GscMcpRuntime {
       },
       async ({ site_url, sitemap_index }) => {
         const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'sitemaps.list');
+        if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
         const sitemaps = await listSitemaps(accessToken, site_url, sitemap_index);
         const payload = { sitemaps, provider_note: SITEMAP_PROVIDER_NOTE };
@@ -1796,6 +1802,8 @@ class GscMcpRuntime {
       },
       async ({ site_url, feedpath }) => {
         const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'sitemaps.get');
+        if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
         const details = await getSitemap(accessToken, site_url, feedpath);
         const payload = { sitemap: details, provider_note: SITEMAP_PROVIDER_NOTE };

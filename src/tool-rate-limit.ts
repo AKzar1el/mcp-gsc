@@ -49,6 +49,14 @@ export const TOOL_RATE_LIMIT_POLICIES = {
     windowMs: DAY_MS,
     userLimit: 20,
   },
+  search_console_metadata_reads: {
+    category: 'search-console-metadata-read',
+    tools: ['sites.list', 'sites.get', 'sitemaps.list', 'sitemaps.get'],
+    // Google's per-user quota for non-Analytics/Inspection resources is
+    // 200 requests/minute. Leave ample room for other GSC clients.
+    windowMs: MINUTE_MS,
+    userLimit: 10,
+  },
   search_console_writes: {
     category: 'search-console-write',
     tools: ['sites.add', 'sites.delete', 'sitemaps.submit', 'sitemaps.delete'],

@@ -84,6 +84,13 @@ test('tool rate-limit policy table assigns the documented categories and limits'
       projectLimit: undefined,
     },
     {
+      category: 'search-console-metadata-read',
+      tools: ['sites.list', 'sites.get', 'sitemaps.list', 'sitemaps.get'],
+      windowMs: 60 * 1000,
+      userLimit: 10,
+      projectLimit: undefined,
+    },
+    {
       category: 'search-console-write',
       tools: ['sites.add', 'sites.delete', 'sitemaps.submit', 'sitemaps.delete'],
       windowMs: 60 * 60 * 1000,
@@ -118,7 +125,9 @@ test('tool rate-limit policy table assigns the documented categories and limits'
   assert.equal(getToolRateLimitPolicy('sitemaps.delete')?.category, 'search-console-write');
   assert.equal(getToolRateLimitPolicy('indexing.status')?.category, 'indexing-metadata');
   assert.equal(getToolRateLimitPolicy('indexing.remove')?.category, 'indexing-request');
-  assert.equal(getToolRateLimitPolicy('sites.list'), undefined);
+  for (const tool of ['sites.list', 'sites.get', 'sitemaps.list', 'sitemaps.get']) {
+    assert.equal(getToolRateLimitPolicy(tool)?.category, 'search-console-metadata-read');
+  }
 });
 
 test('Search Analytics helpers reserve their worst-case upstream request fan-out', () => {
@@ -132,6 +141,8 @@ test('Search Analytics helpers reserve their worst-case upstream request fan-out
   assert.equal(getToolRateLimitUnits('analytics.compare'), 8);
   assert.equal(getToolRateLimitUnits('indexing.status'), 1);
   assert.equal(getToolRateLimitUnits('indexing.remove'), 1);
+  assert.equal(getToolRateLimitUnits('sites.list'), 1);
+  assert.equal(getToolRateLimitUnits('sitemaps.get'), 1);
   assert.equal(getToolRateLimitUnits('reports.weekly_digest'), 1);
 });
 
@@ -201,6 +212,25 @@ test('ToolRateLimiter is atomic under concurrent calls', async () => {
 
   assert.equal(results.filter((result) => result.allowed).length, 5);
   assert.equal(results.filter((result) => !result.allowed).length, 5);
+});
+
+test('property and sitemap metadata reads share a 10-per-minute user budget', async () => {
+  let now = 1_000;
+  const limiter = createLimiter(() => now);
+  const policy = getToolRateLimitPolicy('sites.list')!;
+  assert.equal(policy, getToolRateLimitPolicy('sites.get'));
+  assert.equal(policy, getToolRateLimitPolicy('sitemaps.list'));
+  assert.equal(policy, getToolRateLimitPolicy('sitemaps.get'));
+
+  const results = await Promise.all(
+    Array.from({ length: 14 }, () => limiter.take('user-a', policy)),
+  );
+  assert.equal(results.filter((result) => result.allowed).length, 10);
+  assert.equal(results.filter((result) => !result.allowed).length, 4);
+  assert.equal((await limiter.take('user-b', policy)).allowed, true);
+
+  now += 60_000;
+  assert.deepEqual(await limiter.take('user-a', policy), { allowed: true });
 });
 
 test('ToolRateLimiter enforces a shared project limit without exposing usage', async () => {
