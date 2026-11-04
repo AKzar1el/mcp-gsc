@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import {
   DEFAULT_GSC_ACCESS_MODE,
@@ -45,6 +46,16 @@ test('GSC access mode defaults to backward-compatible readwrite', () => {
     () => resolveGscAccessMode('write-only'),
     /Invalid GSC_ACCESS_MODE configuration/,
   );
+});
+
+test('new self-hosting templates explicitly select least-privilege readonly mode', () => {
+  const varsExample = readFileSync(new URL('../.dev.vars.example', import.meta.url), 'utf8');
+  const wranglerExample = readFileSync(new URL('../wrangler.example.jsonc', import.meta.url), 'utf8');
+
+  assert.match(varsExample, /^GSC_ACCESS_MODE=readonly\s*$/m);
+  assert.match(wranglerExample, /"GSC_ACCESS_MODE"\s*:\s*"readonly"/);
+  // Existing deployments with no explicit mode retain their original tool contract.
+  assert.equal(resolveGscAccessMode(undefined), 'readwrite');
 });
 
 test('GSC access modes request their exact OAuth scope sets', () => {

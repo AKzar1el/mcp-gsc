@@ -1,7 +1,9 @@
 // Cloudflare Worker configuration for mcp-gsc.
 //
 // Copy this file to `wrangler.jsonc` (gitignored) and fill in your own
-// values before deploying. See SETUP.md for the full walkthrough.
+// values before deploying. This starter explicitly uses read-only OAuth;
+// existing installations without GSC_ACCESS_MODE retain the readwrite fallback.
+// See SETUP.md for the full walkthrough.
 {
   "name": "mcp-gsc",
   "main": "src/entrypoint.ts",
@@ -12,7 +14,7 @@
     "required": ["GOOGLE_CLIENT_SECRET", "TOKEN_ENCRYPTION_KEY"]
   },
   "vars": {
-    "GSC_ACCESS_MODE": "readwrite"
+    "GSC_ACCESS_MODE": "readonly"
   },
   "kv_namespaces": [
     {

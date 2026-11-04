@@ -56,10 +56,10 @@ npx wrangler login
 
    | `GSC_ACCESS_MODE` | Scopes to add |
    |---|---|
-   | `readwrite` (default) | `https://www.googleapis.com/auth/webmasters` and `https://www.googleapis.com/auth/indexing` |
-   | `readonly` | `https://www.googleapis.com/auth/webmasters.readonly` |
+   | `readonly` (recommended starter template) | `https://www.googleapis.com/auth/webmasters.readonly` |
+   | `readwrite` (legacy runtime fallback; opt in for new installs) | `https://www.googleapis.com/auth/webmasters` and `https://www.googleapis.com/auth/indexing` |
 
-   `readwrite` preserves the full tool surface: it grants Search Console read-write access and the Indexing API scope required to manage sites, sitemaps, and request URL crawling. `readonly` requests only the Search Console read-only scope and omits the mutation tools.
+   `readonly` requests only the Search Console read-only scope and omits mutation tools. Choose `readwrite` only when you need to manage sites, sitemaps, or eligible Indexing API URLs; enable the Indexing API and grant the additional scopes before connecting. For backward compatibility, a deployment that **omits** `GSC_ACCESS_MODE` still runs in `readwrite`, even though the starter templates explicitly choose `readonly`.
 
    Note that the Indexing API itself is narrow: Google currently restricts it to pages containing `JobPosting` structured data or livestream pages containing `BroadcastEvent` inside `VideoObject`. It is not available for general webpage submission - the `indexing.request` tool checks a page's structured data before submitting and returns an error for ineligible URLs. `indexing.remove` is for previously eligible pages and requires the URL to already return HTTP 404/410 or expose a robots `noindex` meta directive before it sends Google's `URL_DELETED` notification. Google's documented default **200 publish requests/day/project** is shared by update and removal notifications. The October 16, 2026 Google documentation update removed an outdated quota request form; check project-specific API access and quotas in Google Cloud Console, and never exceed permitted limits. All submissions are subject to spam detection, and Google warns that abuse or attempts to exceed quotas through multiple accounts or other means can result in revoked access. The server's own lower safety limits do not increase Google quota or bypass provider restrictions.
 5. Save the Data Access changes. In **Google Auth platform → Audience**, leave **Publishing status** as **Testing** for now — see [Step 7](#step-7--important-google-verification).
@@ -121,7 +121,7 @@ For **local development**, put the same three values in `.dev.vars` instead — 
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 TOKEN_ENCRYPTION_KEY=...
-GSC_ACCESS_MODE=readwrite
+GSC_ACCESS_MODE=readonly
 ```
 
 ---
@@ -150,7 +150,7 @@ Then edit `wrangler.jsonc` and replace the placeholders:
 ]
 ```
 
-The template also sets `GSC_ACCESS_MODE` to `readwrite`, preserving the historical behavior. To deploy least-privilege read-only access, set it to `readonly` before deploying:
+The starter template explicitly sets `GSC_ACCESS_MODE` to `readonly` for least-privilege analytics/reporting. It contains:
 
 ```jsonc
 "vars": {
@@ -158,7 +158,7 @@ The template also sets `GSC_ACCESS_MODE` to `readwrite`, preserving the historic
 }
 ```
 
-Read-only deployments request `webmasters.readonly`, omit the Indexing API scope, and do not register `sites.add`, `sites.delete`, `sitemaps.submit`, `sitemaps.delete`, `indexing.request`, `indexing.remove`, or the otherwise read-only `indexing.status` lookup. Changing modes affects OAuth grants for future connections; reconnect users after changing the mode so Google grants the matching scope set.
+Read-only deployments request `webmasters.readonly`, omit the Indexing API scope, and do not register `sites.add`, `sites.delete`, `sitemaps.submit`, `sitemaps.delete`, `indexing.request`, `indexing.remove`, or the otherwise read-only `indexing.status` lookup. If you need these operations, set `GSC_ACCESS_MODE` to `readwrite` in your deployment configuration **and** select the matching OAuth scopes in Step 2; reconnect users after a mode change so Google grants the matching scope set. Never change the access mode of an existing deployment merely to follow the starter recommendation.
 
 `wrangler.jsonc` is gitignored because it contains your account's namespace ids. The `wrangler.example.jsonc` template stays in git.
 

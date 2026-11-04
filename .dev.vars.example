@@ -7,6 +7,7 @@
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 TOKEN_ENCRYPTION_KEY=
-# Optional: defaults to readwrite. Set readonly to omit mutation tools and
-# request only the Google Search Console read-only scope during OAuth.
-GSC_ACCESS_MODE=readwrite
+# Start new installations with read-only analytics access. The runtime fallback
+# is still readwrite when unset, for compatibility with existing installations.
+# Explicitly opt into readwrite only when write tools and scopes are needed.
+GSC_ACCESS_MODE=readonly
