@@ -133,6 +133,7 @@ test('Search Console property schema accepts documented Domain and URL-prefix fo
     'https://www.example.com/',
     'http://example.com/blog/',
     'https://example.com',
+    'https://example.com/blog%3Fsection/',
   ]) {
     assert.equal(SEARCH_CONSOLE_PROPERTY_SCHEMA.safeParse(property).success, true, property);
   }
@@ -150,6 +151,12 @@ test('Search Console property schema rejects malformed and unsupported identifie
     'sc-domain:https://example.com',
     'sc-domain:example.com/path',
     'sc-domain:example.com:443',
+    'https://example.com/?utm_source=test',
+    'https://example.com/blog/?page=2',
+    'https://example.com/#section',
+    'https://example.com/blog/#section',
+    'https://example.com/?',
+    'https://example.com/#',
   ]) {
     assert.equal(SEARCH_CONSOLE_PROPERTY_SCHEMA.safeParse(property).success, false, property);
   }
