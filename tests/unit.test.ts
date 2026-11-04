@@ -108,6 +108,7 @@ test('sitemap URL schema accepts absolute HTTP and HTTPS URLs', () => {
   for (const url of [
     'http://example.com/sitemap.xml',
     'https://example.com/sitemaps/news.xml?part=1',
+    'https://example.com/sitemaps/news%23part.xml',
   ]) {
     assert.equal(SITEMAP_URL_SCHEMA.safeParse(url).success, true, url);
   }
@@ -121,6 +122,9 @@ test('sitemap URL schema rejects malformed, relative, and non-web URLs', () => {
     'sc-domain:example.com',
     'https://user:password@example.com/sitemap.xml',
     'https://user@example.com/sitemap.xml',
+    'https://example.com/sitemap.xml#section',
+    'https://example.com/sitemap.xml#',
+    'https://example.com/sitemap.xml?part=1#section',
   ]) {
     assert.equal(SITEMAP_URL_SCHEMA.safeParse(url).success, false, url);
   }
