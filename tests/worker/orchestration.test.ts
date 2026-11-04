@@ -2126,7 +2126,7 @@ describe('Worker orchestration', () => {
     }
   });
 
-  it('uses the normal tool token cache and deletes a revoked stored credential', async () => {
+  it('uses the normal tool token cache and preserves stored credentials on invalid_grant', async () => {
     await saveUser(
       workerEnv,
       'cached-user',
@@ -2198,8 +2198,47 @@ describe('Worker orchestration', () => {
       globalThis.fetch = originalFetch;
     }
 
-    expect(await getUser(workerEnv, 'revoked-user')).toBeNull();
+    expect(await getUser(workerEnv, 'revoked-user')).not.toBeNull();
     expect(await getUser(workerEnv, 'cached-user')).not.toBeNull();
+  });
+
+  it('does not erase a newer Google grant when an older refresh fails late', async () => {
+    await saveUser(workerEnv, 'reconnected-user', 'user@example.test', 'old-refresh');
+    const lifecycle = new GoogleAccessTokenLifecycle(workerEnv);
+    const originalFetch = globalThis.fetch;
+    let resolveOldRefresh!: (value: Response) => void;
+    let oldRefreshStarted!: () => void;
+    const oldRefreshReachedGoogle = new Promise<void>((resolve) => {
+      oldRefreshStarted = resolve;
+    });
+
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (requestUrl(input) !== GOOGLE_TOKEN_URL) {
+          throw new Error(`Unexpected outbound request: ${requestUrl(input)}`);
+        }
+        const body = String(init?.body ?? '');
+        if (body.includes('old-refresh')) {
+          oldRefreshStarted();
+          return new Promise<Response>((resolve) => {
+            resolveOldRefresh = resolve;
+          });
+        }
+        expect(body).toContain('new-refresh');
+        return response({ access_token: 'new-access', expires_in: 3600 });
+      };
+
+      const staleRefresh = lifecycle.getAccessToken('reconnected-user');
+      await oldRefreshReachedGoogle;
+      await saveUser(workerEnv, 'reconnected-user', 'user@example.test', 'new-refresh');
+      resolveOldRefresh(response({ error: 'invalid_grant' }, 400));
+      await expect(staleRefresh).rejects.toThrow(GSC_ACCESS_REVOKED_MESSAGE);
+
+      expect(await getDecryptedRefreshToken(workerEnv, 'reconnected-user')).toBe('new-refresh');
+      await expect(lifecycle.getAccessToken('reconnected-user')).resolves.toBe('new-access');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it('orchestrates the weekly digest through stored credentials and deterministic analytics responses', async () => {
