@@ -2693,9 +2693,17 @@ function oauthErrorRedirect(
   });
 }
 
+function consentReturnDestination(redirectUri: string): string {
+  const redirect = new URL(redirectUri);
+  if (redirect.origin !== 'null') return redirect.origin;
+  // Custom-scheme desktop clients may not have a web origin.
+  return redirect.host ? `${redirect.protocol}//${redirect.host}` : redirect.protocol;
+}
+
 function consentHtml(input: {
   clientName: string;
   clientId: string;
+  returnDestination: string;
   consentNonce: string;
   mcpScopes: readonly string[];
   googleScopes: readonly string[];
@@ -2720,6 +2728,8 @@ body{font-family:system-ui,sans-serif;max-width:760px;margin:3rem auto;padding:0
 <h1>Authorize Google Search Console access</h1>
 <p><strong>${escapeHtml(input.clientName)}</strong> is requesting access through mcp-gsc.</p>
 <p class="muted">Client ID: <code>${escapeHtml(input.clientId)}</code></p>
+<p class="muted">Return destination: <code>${escapeHtml(input.returnDestination)}</code></p>
+<p class="muted">Confirm this destination belongs to the MCP client you intended to connect.</p>
 <h2>MCP scopes requested</h2>
 <ul>${list(input.mcpScopes)}</ul>
 <h2>Google scopes mcp-gsc will request</h2>
@@ -2846,6 +2856,7 @@ export const defaultHandler = {
         consentHtml({
           clientName: client.clientName ?? claudeAuthRequest.clientId,
           clientId: claudeAuthRequest.clientId,
+          returnDestination: consentReturnDestination(claudeAuthRequest.redirectUri),
           consentNonce,
           mcpScopes: claudeAuthRequest.scope,
           googleScopes: getGoogleOAuthScopes(accessMode),
