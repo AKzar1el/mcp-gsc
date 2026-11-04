@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Ensure byte-limited Search Analytics pages can continue past an oversized first source row instead of repeatedly returning an unusable cursor; preserve source-row offsets and truncation metadata.
 - Scope cached Google access tokens to their originating Worker environment so separate binding sets cannot reuse each other's OAuth credentials for the same Google account.
 - Bound oversized single-URL Inspection MCP responses using the existing batch compaction budget while preserving normalized indexed state and explicitly marking omitted raw/status details.
 - Reject fragment identifiers in sitemap URLs before passing them to Search Console; preserve dynamic sitemap query parameters and percent-encoded path characters.
