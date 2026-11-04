@@ -103,6 +103,23 @@ test('eligibility fetch ignores structured-data-looking markup inside inert text
   assert.equal(result.eligible, false);
 });
 
+test('eligibility ignores commented and inert JSON-LD and prefixed schema attributes', async () => {
+  for (const html of [
+    '<!-- <script type="application/ld+json">{"@type":"JobPosting"}</script> -->',
+    '<template><script type="application/ld+json">{"@type":"JobPosting"}</script></template>',
+    '<script data-type="application/ld+json">{"@type":"JobPosting"}</script>',
+    '<script data-note="type=application/ld+json">{"@type":"JobPosting"}</script>',
+    '<main data-itemtype="https://schema.org/JobPosting">Not a job posting</main>',
+    '<main data-vocab="https://schema.org/" typeof="JobPosting">Not a job posting</main>',
+  ]) {
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingEligibility('https://example.com/docs/example'),
+    );
+    assert.equal(result.eligible, false, html);
+  }
+});
+
 test('eligibility fetch rejects oversized streamed HTML', async () => {
   let cancelled = false;
   const oversizedBody = new ReadableStream<Uint8Array>({
@@ -240,5 +257,22 @@ test('removal eligibility rejects an ordinary live page and noindex outside the 
     );
     assert.equal(result.eligible, false);
     assert.match(result.reason ?? '', /404\/410|robots noindex/);
+  }
+});
+
+test('removal eligibility ignores inert and prefixed robots meta attributes', async () => {
+  for (const html of [
+    '<html><head><!-- <meta name="robots" content="noindex"> --></head><body>Live</body></html>',
+    '<html><head><meta data-name="robots" data-content="noindex"></head><body>Live</body></html>',
+    '<html><head><meta name="robots" data-content="noindex"></head><body>Live</body></html>',
+    '<html><head><meta data-name="robots" content="noindex"></head><body>Live</body></html>',
+    '<html><head><script>const sample = \'<meta name="robots" content="noindex">\';</script></head><body>Live</body></html>',
+    '<html><head><template><meta name="robots" content="noindex"></template></head><body>Live</body></html>',
+  ]) {
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingRemovalEligibility('https://example.com/jobs/old-role'),
+    );
+    assert.equal(result.eligible, false, html);
   }
 });
