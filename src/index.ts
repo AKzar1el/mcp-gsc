@@ -336,7 +336,13 @@ const URL_INSPECTION_INDEX_STATUS_SUMMARY_SCHEMA = z.object({
 });
 
 const INSPECTION_OUTPUT_SCHEMA = {
-  inspection_result: z.unknown(),
+  inspection_result: z.unknown().optional(),
+  inspection_result_omitted: z.boolean().optional().describe(
+    'True when the raw Google response exceeded the bounded MCP output budget; index_status_summary remains available.',
+  ),
+  summary_fields_omitted: z.boolean().optional().describe(
+    'True when oversized provider status descriptions were omitted; indexed_state remains available.',
+  ),
   index_status_summary: URL_INSPECTION_INDEX_STATUS_SUMMARY_SCHEMA,
   note: z.string(),
 };
@@ -1189,7 +1195,7 @@ class GscMcpRuntime {
       'urls.inspect',
       {
         title: 'Inspect URL index status',
-        description: `Inspect the version of a single URL currently known in Google's index. Returns a conservative normalized index-status summary alongside Google's raw index-status analysis, last crawl, page-fetch/indexing state, canonicals, and rich-results/AMP analysis where available. This API does not test the live URL or prove current live-page indexability, and its mobile-usability result is deprecated. Use this when the user asks 'is X indexed?' or wants Google's indexed-state evidence for one page. For a bounded group of 2-10 URLs, prefer urls.inspect_many; Google still processes one URL Inspection request per URL and applies the same quota semantics.`,
+        description: `Inspect the version of a single URL currently known in Google's index. Returns a conservative normalized index-status summary alongside Google's raw index-status analysis, last crawl, page-fetch/indexing state, canonicals, and rich-results/AMP analysis where the bounded response budget permits. inspection_result_omitted marks oversized raw details; indexed_state is preserved even when optional status descriptions are omitted. This API does not test the live URL or prove current live-page indexability, and its mobile-usability result is deprecated. Use this when the user asks 'is X indexed?' or wants Google's indexed-state evidence for one page. For a bounded group of 2-10 URLs, prefer urls.inspect_many; Google still processes one URL Inspection request per URL and applies the same quota semantics.`,
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           inspection_url: z
@@ -1220,11 +1226,23 @@ class GscMcpRuntime {
           () => this.reserveUrlInspectionRetry(googleId),
         );
         const indexStatusSummary = summarizeUrlInspectionIndexStatus(result);
-        return toolResponse(JSON.stringify({ note: URL_INSPECTION_SCOPE_NOTE, index_status_summary: indexStatusSummary, inspection_result: result }, null, 2), {
+        // Share the batch output budget and compaction rules so oversized raw
+        // Google details cannot flood the single-URL MCP response either.
+        const bounded = boundInspectionBatchPayload([{
+          inspection_url,
           inspection_result: result,
           index_status_summary: indexStatusSummary,
+        }]).results[0];
+        const payload = {
+          ...(bounded.inspection_result !== undefined
+            ? { inspection_result: bounded.inspection_result }
+            : {}),
+          index_status_summary: bounded.index_status_summary ?? indexStatusSummary,
+          ...(bounded.inspection_result_omitted ? { inspection_result_omitted: true } : {}),
+          ...(bounded.summary_fields_omitted ? { summary_fields_omitted: true } : {}),
           note: URL_INSPECTION_SCOPE_NOTE,
-        });
+        };
+        return toolResponse(JSON.stringify(payload), payload);
       },
     );
 

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Bound oversized single-URL Inspection MCP responses using the existing batch compaction budget while preserving normalized indexed state and explicitly marking omitted raw/status details.
 - Reject fragment identifiers in sitemap URLs before passing them to Search Console; preserve dynamic sitemap query parameters and percent-encoded path characters.
 - Reject query strings and fragments in Search Console URL-prefix property identifiers before making Google API requests; preserve optional path prefixes and encoded path characters.
 - Recognize Search Analytics load-quota 403 responses even when Google omits the legacy `errors[].reason` field, providing actionable recovery guidance without retrying exhausted quota or mislabeling permission errors.
