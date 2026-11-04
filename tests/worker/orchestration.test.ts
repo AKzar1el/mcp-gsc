@@ -1077,6 +1077,91 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('bounds large URL Inspection batches while preserving every URL status', async () => {
+    const take = vi.fn(async () => ({ allowed: true }));
+    const limiter = {
+      idFromName: vi.fn((name: string) => name),
+      get: vi.fn(() => ({ take })),
+    };
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly', TOOL_RATE_LIMITER: limiter } as unknown as Env,
+      { google_id: 'inspection-output-user', email: 'inspection-output@example.test' },
+      { getAccessToken: async () => 'test-access-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    })._registeredTools['urls.inspect_many'].handler;
+    const originalFetch = globalThis.fetch;
+    const inspectionUrls = [
+      'https://example.com/huge-a',
+      'https://example.com/small',
+      'https://example.com/failed',
+      'https://example.com/huge-b',
+      'https://example.com/huge-c',
+    ];
+    let providerCalls = 0;
+
+    try {
+      globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        providerCalls += 1;
+        const inspectionUrl = (JSON.parse(String(init?.body)) as { inspectionUrl: string }).inspectionUrl;
+        if (inspectionUrl.endsWith('/failed')) return new Response('not found', { status: 404 });
+        return response({
+          inspectionResult: {
+            indexStatusResult: {
+              verdict: 'PASS',
+              coverageState: inspectionUrl.endsWith('/huge-a')
+                ? 'oversized-status-'.repeat(5_000)
+                : 'Submitted and indexed',
+            },
+            richResultsResult: {
+              details: inspectionUrl.endsWith('/small') ? 'normal' : 'x'.repeat(65_000),
+            },
+          },
+        });
+      };
+
+      const result = await handler({
+        site_url: 'sc-domain:example.com',
+        inspection_urls: inspectionUrls,
+      }) as {
+        content: Array<{ text: string }>;
+        structuredContent: {
+          requested_count: number;
+          succeeded_count: number;
+          failed_count: number;
+          raw_results_omitted_count: number;
+          results: Array<{
+            inspection_url: string;
+            inspection_result?: unknown;
+            index_status_summary?: { indexed_state: string };
+            inspection_result_omitted?: boolean;
+            error?: string;
+          }>;
+        };
+      };
+
+      const payload = result.structuredContent;
+      expect(providerCalls).toBe(inspectionUrls.length);
+      expect(payload.requested_count).toBe(5);
+      expect(payload.succeeded_count).toBe(4);
+      expect(payload.failed_count).toBe(1);
+      expect(payload.results.map((entry) => entry.inspection_url)).toEqual(inspectionUrls);
+      expect(payload.results.filter((entry) => entry.index_status_summary?.indexed_state === 'indexed')).toHaveLength(4);
+      expect(payload.results[2].error).toContain('404');
+      expect(payload.results[1].inspection_result).toBeDefined();
+      expect(payload.raw_results_omitted_count).toBe(3);
+      expect(payload.results.filter((entry) => entry.inspection_result_omitted)).toHaveLength(3);
+      expect(payload.results[0]).toMatchObject({ summary_fields_omitted: true });
+      expect(new TextEncoder().encode(JSON.stringify(payload)).byteLength).toBeLessThanOrEqual(48_000);
+      expect(new TextEncoder().encode(result.content[0].text).byteLength).toBeLessThanOrEqual(48_000);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('returns a schema-discoverable URL Inspection index-status summary alongside the raw provider result', async () => {
     await saveUser(
       workerEnv,
