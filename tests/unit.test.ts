@@ -118,6 +118,8 @@ test('sitemap URL schema rejects malformed, relative, and non-web URLs', () => {
     'not a url',
     'ftp://example.com/sitemap.xml',
     'sc-domain:example.com',
+    'https://user:password@example.com/sitemap.xml',
+    'https://user@example.com/sitemap.xml',
   ]) {
     assert.equal(SITEMAP_URL_SCHEMA.safeParse(url).success, false, url);
   }

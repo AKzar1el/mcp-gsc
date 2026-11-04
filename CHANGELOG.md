@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Reject sitemap URLs containing embedded HTTP credentials before passing them to Search Console, preventing credential-bearing values from reaching Google API requests and tool result messages.
+
 ## [0.4.40] - 2026-10-27
 
 ### Fixed
