@@ -1833,6 +1833,7 @@ export interface IndexingNotificationMetadata {
 export async function getIndexingNotificationMetadata(
   accessToken: string,
   url: string,
+  beforeRetry?: () => Promise<void>,
 ): Promise<IndexingNotificationMetadata> {
   const endpoint = new URL(
     'https://indexing.googleapis.com/v3/urlNotifications/metadata',
@@ -1841,7 +1842,7 @@ export async function getIndexingNotificationMetadata(
 
   const resp = await fetchGoogleRead(endpoint.toString(), {
     headers: { authorization: `Bearer ${accessToken}` },
-  });
+  }, beforeRetry);
   if (resp.status === 401) {
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
   }
