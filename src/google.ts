@@ -82,16 +82,19 @@ const GOOGLE_READ_MAX_ATTEMPTS = 3;
 const GOOGLE_READ_BASE_DELAY_MS = 1_000;
 const GOOGLE_READ_MAX_DELAY_MS = 5_000;
 
-function googleErrorReasonsFromText(text: string): string[] {
+function googleErrorDetailsFromText(text: string): { reasons: string[]; message?: string } {
   try {
     const data = JSON.parse(text) as {
-      error?: { errors?: Array<{ reason?: unknown }> };
+      error?: { message?: unknown; errors?: Array<{ reason?: unknown }> };
     };
-    return (data.error?.errors ?? [])
-      .map((entry) => entry.reason)
-      .filter((reason): reason is string => typeof reason === 'string');
+    return {
+      reasons: (data.error?.errors ?? [])
+        .map((entry) => entry.reason)
+        .filter((reason): reason is string => typeof reason === 'string'),
+      ...(typeof data.error?.message === 'string' ? { message: data.error.message } : {}),
+    };
   } catch {
-    return [];
+    return { reasons: [] };
   }
 }
 
@@ -810,8 +813,12 @@ export async function querySearchAnalytics(
   }
   if (!resp.ok) {
     const text = await resp.text();
-    const reasons = googleErrorReasonsFromText(text);
-    if (resp.status === 403 && reasons.includes('quotaExceeded')) {
+    const { reasons, message } = googleErrorDetailsFromText(text);
+    // Search Console also sends load-quota errors with a message but no legacy
+    // error.errors[] reason. Do not misclassify unrelated permission denials.
+    const loadQuotaMessage = message !== undefined &&
+      /Search Analytics load quota exceeded|quota exceeded for quota metric SearchAnalyticsLoad/i.test(message);
+    if (resp.status === 403 && (reasons.includes('quotaExceeded') || loadQuotaMessage)) {
       throw new Error(
         'Search Analytics load quota exceeded. Google recommends waiting about 15 minutes before retrying a short-term load-quota failure. If the error persists, reduce expensive page/query grouping or filtering, shorten the date range, and avoid repeatedly requesting the same data.',
       );
