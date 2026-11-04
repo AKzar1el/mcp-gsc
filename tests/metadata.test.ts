@@ -1004,3 +1004,21 @@ test('URL inspection guidance routes bounded multi-URL work to the batch tool', 
     'README must document the bounded URL inspection concurrency',
   );
 });
+
+test('agency weekly reporting guide provides a reproducible read-only client workflow', () => {
+  const guide = readFileSync(resolve(projectRoot, 'docs/agency-weekly-reporting.md'), 'utf8');
+  assert.match(readmeSource, /docs\/agency-weekly-reporting\.md/);
+  for (const toolName of [
+    'sites.list',
+    'sites.get',
+    'reports.weekly_digest',
+    'analytics.query',
+    'analytics.compare',
+    'insights.page_queries',
+  ]) {
+    assert.ok(guide.includes('`' + toolName + '`'), `guide must name ${toolName}`);
+  }
+  assert.match(guide, /GSC_ACCESS_MODE=readonly/);
+  assert.match(guide, /a missing row is not zero/i);
+  assert.match(guide, /no client data is transmitted outside the selected MCP connection/i);
+});

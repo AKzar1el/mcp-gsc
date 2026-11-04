@@ -140,6 +140,8 @@ Large analytics responses are bounded at the MCP boundary instead of being gener
 
 ## What you can ask
 
+**Agency reporting workflow:** [Read-only weekly Search Console reporting for SEO agencies](docs/agency-weekly-reporting.md) walks through exact-property verification, one bounded weekly digest, matched-period comparisons, evidence checks, and a reusable human-reviewed client report. It contains no fabricated client metrics or automated outreach.
+
 Once connected, ask your assistant things like:
 
 - *"What are my top 20 queries by clicks in the last 28 days?"*
