@@ -580,7 +580,9 @@ function formatPosition(n: number): string {
 
 function formatPctChange(current: number, prev: number): string {
   if (prev === 0 && current === 0) return 'same as last week';
-  if (prev === 0 && current > 0) return 'new — no data last week';
+  if (prev === 0 && current > 0) {
+    return 'increased from a measured zero last week (percentage change unavailable)';
+  }
   const pct = ((current - prev) / prev) * 100;
   const sign = pct >= 0 ? '+' : '';
   return `${sign}${pct.toFixed(0)}% vs last week`;
