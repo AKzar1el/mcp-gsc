@@ -91,6 +91,7 @@ import {
   DEFAULT_ANALYSIS_RESULT_LIMIT,
   MAX_ANALYSIS_RESULT_LIMIT,
   MAX_DIRECT_SOURCE_ROWS,
+  STRUCTURED_RESULT_BYTE_BUDGET,
   resultPageMetadata,
   takeBoundedItems,
 } from './result-bounds';
@@ -342,12 +343,20 @@ const INSPECTION_BATCH_OUTPUT_SCHEMA = {
   requested_count: z.number().int().positive(),
   succeeded_count: z.number().int().nonnegative(),
   failed_count: z.number().int().nonnegative(),
+  raw_results_omitted_count: z.number().int().nonnegative().describe(
+    'Number of successful URL inspections whose raw Google detail was omitted to keep this batch bounded.',
+  ),
   note: z.string(),
   results: z.array(
     z.object({
       inspection_url: z.string(),
       inspection_result: z.unknown().optional(),
       index_status_summary: URL_INSPECTION_INDEX_STATUS_SUMMARY_SCHEMA.optional(),
+      inspection_result_omitted: z.boolean().optional().describe(
+        'True if the raw Google result was omitted for response size; index_status_summary remains available.',
+      ),
+      summary_fields_omitted: z.boolean().optional(),
+      error_truncated: z.boolean().optional(),
       error: z.string().optional(),
     }),
   ),
@@ -708,6 +717,67 @@ function toolResponse<T extends Record<string, unknown>>(
     content: [{ type: 'text' as const, text }],
     structuredContent,
   };
+}
+
+type InspectionBatchEntry = {
+  inspection_url: string;
+  inspection_result?: unknown;
+  index_status_summary?: ReturnType<typeof summarizeUrlInspectionIndexStatus>;
+  error?: string;
+  inspection_result_omitted?: boolean;
+  summary_fields_omitted?: boolean;
+  error_truncated?: boolean;
+};
+
+function boundInspectionBatchPayload(entries: InspectionBatchEntry[]) {
+  // Reserve MCP envelope headroom; bound text and structured payload equally.
+  const byteBudget = STRUCTURED_RESULT_BYTE_BUDGET - 2_000;
+  const encodedBytes = (value: unknown) =>
+    new TextEncoder().encode(JSON.stringify(value)).byteLength;
+  const compact: InspectionBatchEntry[] = entries.map((entry) => {
+    const { inspection_result, ...status } = entry;
+    return inspection_result !== undefined
+      ? { ...status, inspection_result_omitted: true }
+      : status;
+  });
+  const makePayload = () => ({
+    requested_count: entries.length,
+    succeeded_count: entries.filter((entry) => entry.inspection_result !== undefined).length,
+    failed_count: entries.filter((entry) => entry.inspection_result === undefined).length,
+    raw_results_omitted_count: compact.filter((entry) => entry.inspection_result_omitted).length,
+    note: URL_INSPECTION_SCOPE_NOTE,
+    results: compact,
+  });
+
+  // Preserve exact URL identity and normalized indexed state when provider
+  // messages or optional status annotations themselves are oversized.
+  if (encodedBytes(makePayload()) > byteBudget) {
+    for (const entry of compact) {
+      if (entry.error && entry.error.length > 512) {
+        entry.error = entry.error.slice(0, 512);
+        entry.error_truncated = true;
+      }
+      if (entry.index_status_summary) {
+        entry.index_status_summary = {
+          indexed_state: entry.index_status_summary.indexed_state,
+        };
+        entry.summary_fields_omitted = true;
+      }
+    }
+  }
+  if (encodedBytes(makePayload()) > byteBudget) {
+    throw new Error('URL Inspection result identifiers exceed the bounded response budget. Retry with shorter URLs or smaller batches.');
+  }
+
+  // Restore raw Google data where the entire batch still fits. Earlier large
+  // results cannot crowd out the statuses for later requested URLs.
+  for (let i = 0; i < entries.length; i += 1) {
+    if (entries[i].inspection_result === undefined) continue;
+    const previous = compact[i];
+    compact[i] = { ...entries[i] };
+    if (encodedBytes(makePayload()) > byteBudget) compact[i] = previous;
+  }
+  return makePayload();
 }
 
 const SEARCH_ANALYTICS_PROVIDER_NOTE =
@@ -1167,7 +1237,7 @@ class GscMcpRuntime {
       'urls.inspect_many',
       {
         title: 'Inspect multiple URLs',
-        description: `Inspect the versions of up to 10 URLs currently known in Google's index from one Search Console property. Each successful item includes a conservative normalized index-status summary alongside Google's raw response. This API does not run live URL tests. Each URL reserves one initial unit of the shared URL-inspection safety budget; transient Google retries reserve an additional unit per attempt before calling Google again. Requests use bounded concurrency of ${URL_INSPECTION_BATCH_CONCURRENCY}; results preserve input order, and a Google-access revocation stops later chunks from starting. Use this for a small group of important or debugging-target URLs; do not use it to crawl an entire site.`,
+        description: `Inspect the versions of up to 10 URLs currently known in Google's index from one Search Console property. Each successful item includes a normalized index-status summary; raw Google details are included when the bounded response budget allows, otherwise inspection_result_omitted marks the affected item. This API does not run live URL tests. Each URL reserves one initial unit of the shared URL-inspection safety budget; transient Google retries reserve an additional unit per attempt before calling Google again. Requests use bounded concurrency of ${URL_INSPECTION_BATCH_CONCURRENCY}; results preserve input order, and a Google-access revocation stops later chunks from starting. Use this for a small group of important or debugging-target URLs; do not use it to crawl an entire site.`,
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           inspection_urls: z
@@ -1222,17 +1292,8 @@ class GscMcpRuntime {
           ...(result.error !== undefined ? { error: result.error } : {}),
         }));
 
-        const succeededCount = results.filter(
-          (result) => result.inspection_result !== undefined,
-        ).length;
-        const payload = {
-          requested_count: inspection_urls.length,
-          succeeded_count: succeededCount,
-          failed_count: results.length - succeededCount,
-          note: URL_INSPECTION_SCOPE_NOTE,
-          results,
-        };
-        return toolResponse(JSON.stringify(payload, null, 2), payload);
+        const payload = boundInspectionBatchPayload(results);
+        return toolResponse(JSON.stringify(payload), payload);
       },
     );
 
