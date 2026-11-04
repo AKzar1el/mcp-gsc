@@ -1906,6 +1906,46 @@ test('getIndexingNotificationMetadata: reads provider notification receipt metad
   assert.deepEqual(result, mockResult);
 });
 
+test('getIndexingNotificationMetadata: reserves indexing metadata budget before retrying', async () => {
+  let reservations = 0;
+  let attempts = 0;
+  const { calls, result } = await withMockFetch(
+    () => {
+      attempts += 1;
+      return attempts === 1
+        ? new Response('transient', { status: 503, headers: { 'retry-after': '0' } })
+        : json(200, { url: 'https://example.com/careers/role' });
+    },
+    () => getIndexingNotificationMetadata(
+      'at',
+      'https://example.com/careers/role',
+      async () => { reservations += 1; },
+    ),
+  );
+  assert.equal(calls.length, 2);
+  assert.equal(reservations, 1);
+  assert.equal(result.url, 'https://example.com/careers/role');
+});
+
+test('getIndexingNotificationMetadata: refuses an unreserved retry before contacting Google', async () => {
+  let attempts = 0;
+  await assert.rejects(
+    () => withMockFetch(
+      () => {
+        attempts += 1;
+        return new Response('temporary', { status: 503, headers: { 'retry-after': '0' } });
+      },
+      () => getIndexingNotificationMetadata(
+        'at',
+        'https://example.com/careers/role',
+        async () => { throw new Error('Indexing metadata retry budget exhausted'); },
+      ),
+    ),
+    /Indexing metadata retry budget exhausted/,
+  );
+  assert.equal(attempts, 1);
+});
+
 test('requestIndexingRemoval: verifies removal readiness then publishes URL_DELETED', async () => {
   const targetUrl = 'https://example.com/careers/old-role';
   const mockResult = {

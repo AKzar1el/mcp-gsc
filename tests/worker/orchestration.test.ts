@@ -1482,6 +1482,7 @@ describe('Worker orchestration', () => {
     })._registeredTools;
     const originalFetch = globalThis.fetch;
     const targetUrl = 'https://example.com/careers/senior-engineer';
+    let siteListRequests = 0;
 
     try {
       globalThis.fetch = async (input: RequestInfo | URL) => {
@@ -1493,6 +1494,7 @@ describe('Worker orchestration', () => {
           });
         }
         if (url === 'https://www.googleapis.com/webmasters/v3/sites') {
+          siteListRequests += 1;
           return response({
             siteEntry: [
               { siteUrl: 'sc-domain:example.com', permissionLevel: 'siteOwner' },
@@ -1540,6 +1542,20 @@ describe('Worker orchestration', () => {
       expect(result.structuredContent.index_coverage_report).toBe(false);
       expect(result.structuredContent.indexing_or_removal_completion_proven).toBe(false);
       expect(result.structuredContent.note).toContain('does not report whether Google crawled, indexed, or removed');
+
+      // The owner preflight is itself a Google sites.list request. It must
+      // consume the same shared metadata budget as explicit property reads.
+      for (let index = 0; index < 9; index += 1) {
+        const listResult = await tools['sites.list'].handler({}) as { isError?: boolean };
+        expect(listResult.isError).not.toBe(true);
+      }
+      const exhausted = await tools['sites.list'].handler({}) as {
+        isError?: boolean;
+        content?: Array<{ text?: string }>;
+      };
+      expect(exhausted.isError).toBe(true);
+      expect(exhausted.content?.[0]?.text).toContain('Rate limit reached for sites.list');
+      expect(siteListRequests).toBe(10);
     } finally {
       globalThis.fetch = originalFetch;
     }

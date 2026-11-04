@@ -1049,6 +1049,15 @@ class GscMcpRuntime {
     }
   }
 
+  private async reserveIndexingMetadataRetry(googleId: string): Promise<void> {
+    // Indexing API receipt lookups have both per-user and project-level limits.
+    const result = await enforceToolRateLimit(this.env, googleId, 'indexing.status', 1);
+    if (!result.allowed) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((result.retry_after_ms ?? 0) / 1000));
+      throw new Error(`Indexing metadata retry budget exhausted. Retry after ${retryAfterSeconds} seconds.`);
+    }
+  }
+
   private async getAccessToken(googleId: string): Promise<string> {
     return this.getAccessTokenLifecycle().getAccessToken(googleId);
   }
@@ -2172,12 +2181,20 @@ class GscMcpRuntime {
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'indexing.status');
         if (rateLimitError) return rateLimitError;
+        // Ownership validation issues an independent Search Console sites.list
+        // read, so account for it in that shared per-user metadata budget.
+        const sitesRateLimitError = await this.rateLimitError(googleId, 'sites.list');
+        if (sitesRateLimitError) return sitesRateLimitError;
         const accessToken = await this.getAccessToken(googleId);
-        const sites = await listSites(accessToken);
+        const sites = await listSites(
+          accessToken,
+          () => this.reserveMetadataReadRetry(googleId),
+        );
         assertIndexingUrlAuthorized(url, site_url, sites);
         const notificationMetadata = await getIndexingNotificationMetadata(
           accessToken,
           url,
+          () => this.reserveIndexingMetadataRetry(googleId),
         );
         const payload = {
           notification_metadata: notificationMetadata,
