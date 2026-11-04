@@ -196,7 +196,23 @@ export async function fetchGoogleUserInfo(
     const text = await resp.text();
     throw new Error(`Userinfo fetch failed: ${resp.status} ${text}`);
   }
-  return (await resp.json()) as GoogleUserInfo;
+  const profile: unknown = await resp.json();
+  if (
+    !profile ||
+    typeof profile !== 'object' ||
+    Array.isArray(profile) ||
+    !('id' in profile) ||
+    typeof profile.id !== 'string' ||
+    !profile.id.trim() ||
+    !('email' in profile) ||
+    typeof profile.email !== 'string' ||
+    !profile.email.trim()
+  ) {
+    // The Google ID keys the encrypted refresh-token record and OAuth tenant.
+    // An unchecked/undefined ID could collapse distinct sign-ins into one KV key.
+    throw new Error('Google userinfo response missing a valid account ID or email.');
+  }
+  return profile as GoogleUserInfo;
 }
 
 export async function refreshAccessToken(
