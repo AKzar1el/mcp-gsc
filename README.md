@@ -16,11 +16,13 @@ Part of the **[DigestSEO](https://digestseo.com/)** suite of open-source SEO too
 - Support: [digestseo.com/support](https://digestseo.com/support/)
 - Privacy: [digestseo.com/privacy](https://digestseo.com/privacy/)
 
-The self-hosting launcher is available as [`@digestseo/mcp-gsc`](https://www.npmjs.com/package/@digestseo/mcp-gsc):
+The self-hosting launcher is available as [`@digestseo/mcp-gsc`](https://www.npmjs.com/package/@digestseo/mcp-gsc). For new analytics/reporting-only connections, explicitly start in read-only mode:
 
 ```bash
-npx -y @digestseo/mcp-gsc
+GSC_ACCESS_MODE=readonly npx -y @digestseo/mcp-gsc
 ```
+
+On Windows PowerShell, use `$env:GSC_ACCESS_MODE = 'readonly'` followed by `npx -y @digestseo/mcp-gsc` instead. Supply your own Google OAuth and encryption settings from [SETUP.md](SETUP.md) before starting either command.
 
 The npm launcher starts a loopback-only **Streamable HTTP** Worker on `127.0.0.1` (port `8080` by default); it is not a stdio MCP process. You can run the `npx` command from any directory because the launcher resolves its bundled Worker configuration from the installed package. Clients that launch the package should connect to `http://127.0.0.1:8080/mcp` after supplying the Google OAuth and token-encryption environment variables described in [SETUP.md](SETUP.md). The launcher exits before starting Wrangler if `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, or `TOKEN_ENCRYPTION_KEY` is missing or blank, and it also rejects a nonblank `TOKEN_ENCRYPTION_KEY` unless it is valid base64 that decodes to exactly 32 bytes. Errors identify only the invalid or missing setting, never its secret value, so a broken OAuth session is not started. It keeps secret values in the child process environment and Wrangler loads them through declared local secrets; their values are not copied into Wrangler `--var` command-line arguments. Before the first OAuth sign-in, authorize the exact callback `http://127.0.0.1:8080/google/callback` in Google Cloud (or use the same custom `PORT` you launch with); the launcher prints both URLs at startup.
 
@@ -28,17 +30,13 @@ The npm launcher starts a loopback-only **Streamable HTTP** Worker on `127.0.0.1
 
 Local KV and Durable Object state, including the encrypted Google session, is stored in `~/.mcp-gsc/state` by default instead of inside the versioned npm cache. That keeps the local connection available across package upgrades and ordinary npm cache cleanup. Set `MCP_GSC_STATE_DIR` to use another directory; keep the same `TOKEN_ENCRYPTION_KEY` when reusing existing state because stored refresh tokens are encrypted with that key. The launcher prints the effective state directory at startup. The first release with this stable path may require one Google reconnect because older launcher releases stored local state under the npm package cache.
 
-The local launcher defaults to `GSC_ACCESS_MODE=readwrite`. For least-privilege analytics/reporting-only use, set `GSC_ACCESS_MODE=readonly` in the environment before running `npx`; the launcher forwards that value into the local Worker so OAuth requests only the read-only Search Console scope and the six mutation tools stay unregistered.
+The launcher's **implicit fallback** remains `GSC_ACCESS_MODE=readwrite` for backward compatibility. The read-only commands above and checked-in self-hosting templates explicitly select `readonly`: Google OAuth then requests only the read-only Search Console scope, and the six mutation tools stay unregistered. Opt into `readwrite` only for workflows that actually require changes to Search Console properties, sitemaps or eligible Indexing API URLs.
 
 For Google OAuth and Cloudflare deployment configuration, follow [SETUP.md](SETUP.md).
 
 ### Connect the local launcher
 
-For the current verified quick-connect path, start the npm launcher first after supplying the Google OAuth and token-encryption environment variables described in [SETUP.md](SETUP.md):
-
-```bash
-npx -y @digestseo/mcp-gsc
-```
+For the current verified quick-connect path, supply the Google OAuth and token-encryption environment variables described in [SETUP.md](SETUP.md), then start the npm launcher using the appropriate read-only command above (or deliberately choose `readwrite` for a privileged workflow).
 
 Then connect your MCP client to the launcher's loopback endpoint:
 

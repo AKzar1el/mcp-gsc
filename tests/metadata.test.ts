@@ -377,8 +377,13 @@ test('registry package identity remains aligned', () => {
   );
   assert.match(
     readmeSource,
-    /local launcher defaults to `GSC_ACCESS_MODE=readwrite`[\s\S]*set `GSC_ACCESS_MODE=readonly`/i,
-    'README npm onboarding must document the least-privilege launcher mode',
+    /GSC_ACCESS_MODE=readonly npx -y @digestseo\/mcp-gsc/,
+    'README quickstart must use least-privilege read-only mode',
+  );
+  assert.match(
+    readmeSource,
+    /implicit fallback[\s\S]*`GSC_ACCESS_MODE=readwrite`/i,
+    'README must explain the backward-compatible readwrite fallback',
   );
   assert.match(
     readmeSource,
