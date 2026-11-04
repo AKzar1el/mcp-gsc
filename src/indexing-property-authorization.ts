@@ -125,5 +125,8 @@ export function assertIndexingUrlAuthorized(
 }
 
 export function assertIndexingRequestUrl(url: string): void {
-  parseHttpUrl(url, 'url');
+  const parsed = parseHttpUrl(url, 'url');
+  if (parsed.hash) {
+    throw new Error('url must not include a fragment for the Indexing API.');
+  }
 }
