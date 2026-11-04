@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Advance Search Analytics insight pagination in provider-row coordinates when source rows are filtered, preventing duplicate or stalled page/query results after a full or byte-truncated page.
 - Reject fragment identifiers in Indexing API URLs, which do not identify separate HTTP resources, without changing URL Inspection URL handling.
 - Reject sitemap URLs containing embedded HTTP credentials before passing them to Search Console, preventing credential-bearing values from reaching Google API requests and tool result messages.
 

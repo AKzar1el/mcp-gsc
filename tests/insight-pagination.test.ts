@@ -11,6 +11,8 @@ import {
 import {
   resultPageMetadata,
   takeBoundedItems,
+  windowSourceRows,
+  mapSourceRows,
 } from '../src/result-bounds';
 
 async function withMockAnalyticsPages<T>(
@@ -213,4 +215,25 @@ test('result page metadata exposes truncation and a usable next offset', () => {
       next_start_row: 42,
     },
   );
+});
+
+test('source pagination advances past filtered provider rows instead of repeating them', () => {
+  const rows = mapSourceRows(['first', undefined, 'third', undefined], (row) => row);
+  const page = windowSourceRows(rows.items, 20, 2, true, 24, rows.sourceRowOffsets);
+  assert.deepEqual(page.items, ['first', 'third']);
+  assert.deepEqual(rows.sourceRowOffsets, [0, 2]);
+  assert.equal(page.resultPage.next_start_row, 24);
+  // An entire source page can lack usable position/keys; the next offset must
+  // still progress when the provider reported a full page.
+  const empty = windowSourceRows([], 20, 4, true, 24, []);
+  assert.equal(empty.resultPage.has_more, true);
+  assert.equal(empty.resultPage.next_start_row, 24);
+});
+
+test('byte-limited insight continuation counts the last emitted source index', () => {
+  const big = 'x'.repeat(30_000);
+  const page = windowSourceRows([big, big, big], 40, 3, true, 46, [1, 3, 5]);
+  assert.deepEqual(page.items, [big]);
+  assert.equal(page.resultPage.byte_limit_reached, true);
+  assert.equal(page.resultPage.next_start_row, 42);
 });

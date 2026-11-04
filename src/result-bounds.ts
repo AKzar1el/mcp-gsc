@@ -8,6 +8,23 @@ export interface BoundedItems<T> {
   byteLimitReached: boolean;
 }
 
+/** Preserve source offsets when removing provider rows without usable fields. */
+export function mapSourceRows<T, U>(
+  sourceRows: readonly T[],
+  map: (row: T) => U | undefined,
+): { items: U[]; sourceRowOffsets: number[] } {
+  const items: U[] = [];
+  const sourceRowOffsets: number[] = [];
+  sourceRows.forEach((row, sourceOffset) => {
+    const item = map(row);
+    if (item !== undefined) {
+      items.push(item);
+      sourceRowOffsets.push(sourceOffset);
+    }
+  });
+  return { items, sourceRowOffsets };
+}
+
 function jsonByteLength(value: unknown): number {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength;
 }
@@ -88,4 +105,39 @@ export function resultPageMetadata(input: {
       ? { next_start_row: startRow + returnedCount }
       : {}),
   };
+}
+
+/**
+ * Build a page in the provider's row coordinate system, not the count of
+ * visible rows after an insight tool has discarded unusable provider rows.
+ */
+export function windowSourceRows<T>(
+  items: readonly T[],
+  sourceStartRow: number,
+  requestedLimit: number,
+  sourceMayHaveMore: boolean,
+  sourceNextStartRow?: number,
+  sourceRowOffsets?: readonly number[],
+) {
+  if (sourceRowOffsets && sourceRowOffsets.length !== items.length) {
+    throw new Error('Source row offsets must match the returned item count.');
+  }
+  const bounded = takeBoundedItems(items, requestedLimit);
+  const returnedCount = bounded.items.length;
+  const localContinuation =
+    bounded.byteLimitReached || returnedCount < items.length;
+  const hasMore = localContinuation || sourceMayHaveMore;
+  const resultPage = resultPageMetadata({
+    startRow: sourceStartRow,
+    limit: requestedLimit,
+    returnedCount,
+    hasMore,
+    byteLimitReached: bounded.byteLimitReached,
+  });
+  if (!localContinuation && sourceMayHaveMore && sourceNextStartRow !== undefined) {
+    resultPage.next_start_row = sourceNextStartRow;
+  } else if (localContinuation && returnedCount > 0 && sourceRowOffsets) {
+    resultPage.next_start_row = sourceStartRow + sourceRowOffsets[returnedCount - 1] + 1;
+  }
+  return { items: bounded.items, resultPage };
 }

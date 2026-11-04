@@ -94,6 +94,8 @@ import {
   STRUCTURED_RESULT_BYTE_BUDGET,
   resultPageMetadata,
   takeBoundedItems,
+  windowSourceRows,
+  mapSourceRows,
 } from './result-bounds';
 
 export interface Env {
@@ -820,38 +822,6 @@ function windowKnownResults<T>(
       hasMore,
       byteLimitReached: bounded.byteLimitReached,
     }),
-  };
-}
-
-function windowSourceRows<T>(
-  items: readonly T[],
-  sourceStartRow: number,
-  requestedLimit: number,
-  sourceMayHaveMore: boolean,
-  sourceNextStartRow?: number,
-) {
-  const bounded = takeBoundedItems(items, requestedLimit);
-  const returnedCount = bounded.items.length;
-  const localContinuation =
-    bounded.byteLimitReached || returnedCount < items.length;
-  const hasMore = localContinuation || sourceMayHaveMore;
-  const resultPage = resultPageMetadata({
-    startRow: sourceStartRow,
-    limit: requestedLimit,
-    returnedCount,
-    hasMore,
-    byteLimitReached: bounded.byteLimitReached,
-  });
-  if (
-    !localContinuation &&
-    sourceMayHaveMore &&
-    sourceNextStartRow !== undefined
-  ) {
-    resultPage.next_start_row = sourceNextStartRow;
-  }
-  return {
-    items: bounded.items,
-    resultPage,
   };
 }
 
@@ -1710,20 +1680,21 @@ class GscMcpRuntime {
           maxRows: sourceRowLimit,
           beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId),
         });
-        const rows = source.rows
-          .filter((row) => (row.keys?.length ?? 0) > 0 && hasRecordedPosition(row))
-          .map((row) => ({
+        const rows = mapSourceRows(source.rows, (row) =>
+          (row.keys?.length ?? 0) > 0 && hasRecordedPosition(row) ? ({
             query: row.keys![0],
             clicks: row.clicks,
             impressions: row.impressions,
             ctr: row.ctr,
             position: row.position,
-          }));
+          }) : undefined);
         const bounded = windowSourceRows(
-          rows,
+          rows.items,
           start_row,
           row_limit,
           source.localLimitReached,
+          start_row + source.rows.length,
+          rows.sourceRowOffsets,
         );
         const payload = {
           page: page_url,
@@ -1802,20 +1773,21 @@ class GscMcpRuntime {
           maxRows: sourceRowLimit,
           beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId),
         });
-        const rows = source.rows
-          .filter((row) => (row.keys?.length ?? 0) > 0 && hasRecordedPosition(row))
-          .map((row) => ({
+        const rows = mapSourceRows(source.rows, (row) =>
+          (row.keys?.length ?? 0) > 0 && hasRecordedPosition(row) ? ({
             page: row.keys![0],
             clicks: row.clicks,
             impressions: row.impressions,
             ctr: row.ctr,
             position: row.position,
-          }));
+          }) : undefined);
         const bounded = windowSourceRows(
-          rows,
+          rows.items,
           start_row,
           row_limit,
           source.localLimitReached,
+          start_row + source.rows.length,
+          rows.sourceRowOffsets,
         );
         const payload = {
           query,
@@ -2349,21 +2321,21 @@ class GscMcpRuntime {
           startRow: start_row,
         }, () => this.reserveSearchAnalyticsRetry(googleId));
 
-        const pages = response.rows
-          .filter((row) => (row.keys?.length ?? 0) > 0 && hasRecordedPosition(row))
-          .map((row) => ({
+        const pages = mapSourceRows(response.rows, (row) =>
+          (row.keys?.length ?? 0) > 0 && hasRecordedPosition(row) ? ({
             page: row.keys![0],
             clicks: row.clicks,
             impressions: row.impressions,
             ctr: row.ctr,
             position: row.position,
-          }));
+          }) : undefined);
         const bounded = windowSourceRows(
-          pages,
+          pages.items,
           start_row,
           row_limit,
           response.rows.length === sourceRowLimit,
-          start_row + sourceRowLimit,
+          start_row + response.rows.length,
+          pages.sourceRowOffsets,
         );
 
         const payload = {
