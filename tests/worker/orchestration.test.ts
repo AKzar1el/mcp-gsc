@@ -718,6 +718,151 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('charges URL Inspection retries separately from first attempts', async () => {
+    const take = vi.fn(async () => ({ allowed: true }));
+    const limiter = {
+      idFromName: vi.fn((name: string) => name),
+      get: vi.fn(() => ({ take })),
+    };
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly', TOOL_RATE_LIMITER: limiter } as unknown as Env,
+      { google_id: 'inspection-retry-user', email: 'inspection-retry@example.test' },
+      { getAccessToken: async () => 'test-access-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    })._registeredTools['urls.inspect'].handler;
+    const originalFetch = globalThis.fetch;
+    const attempts = new Map<string, number>();
+
+    try {
+      globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const inspectionUrl = (JSON.parse(String(init?.body)) as { inspectionUrl: string }).inspectionUrl;
+        const count = (attempts.get(inspectionUrl) ?? 0) + 1;
+        attempts.set(inspectionUrl, count);
+        if (inspectionUrl.endsWith('/retry') && count === 1) {
+          return new Response('temporarily unavailable', {
+            status: 503,
+            headers: { 'retry-after': '0' },
+          });
+        }
+        return response({ inspectionResult: { indexStatusResult: { verdict: 'PASS' } } });
+      };
+
+      for (const inspectionUrl of ['https://example.com/stable', 'https://example.com/retry']) {
+        await handler({ site_url: 'sc-domain:example.com', inspection_url: inspectionUrl });
+      }
+      expect(attempts.get('https://example.com/stable')).toBe(1);
+      expect(attempts.get('https://example.com/retry')).toBe(2);
+      expect(take).toHaveBeenCalledTimes(3);
+      expect(take.mock.calls.map((call) => call[2])).toEqual([1, 1, 1]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('stops URL Inspection before a retry when the daily budget is exhausted', async () => {
+    let reservations = 0;
+    const take = vi.fn(async () => (
+      ++reservations === 1 ? { allowed: true } : { allowed: false, retry_after_ms: 5_000 }
+    ));
+    const limiter = {
+      idFromName: (name: string) => name,
+      get: () => ({ take }),
+    };
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly', TOOL_RATE_LIMITER: limiter } as unknown as Env,
+      { google_id: 'inspection-denied-user', email: 'inspection-denied@example.test' },
+      { getAccessToken: async () => 'test-access-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    })._registeredTools['urls.inspect'].handler;
+    const originalFetch = globalThis.fetch;
+    let providerCalls = 0;
+
+    try {
+      globalThis.fetch = async () => {
+        providerCalls += 1;
+        return providerCalls === 1
+          ? new Response('try again', { status: 429, headers: { 'retry-after': '0' } })
+          : response({ inspectionResult: { indexStatusResult: { verdict: 'PASS' } } });
+      };
+
+      await expect(handler({
+        site_url: 'sc-domain:example.com',
+        inspection_url: 'https://example.com/denied',
+      })).rejects.toThrow(/URL Inspection retry budget exhausted/);
+      expect(providerCalls).toBe(1);
+      expect(take).toHaveBeenCalledTimes(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('accounts for concurrent batch retries and returns per-URL budget failures', async () => {
+    let usedUnits = 0;
+    const take = vi.fn(async (_bucket: string, _policy: unknown, units: number) => {
+      if (usedUnits + units > 3) return { allowed: false, retry_after_ms: 5_000 };
+      usedUnits += units;
+      return { allowed: true };
+    });
+    const limiter = {
+      idFromName: (name: string) => name,
+      get: () => ({ take }),
+    };
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly', TOOL_RATE_LIMITER: limiter } as unknown as Env,
+      { google_id: 'inspection-batch-retry-user', email: 'inspection-batch@example.test' },
+      { getAccessToken: async () => 'test-access-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    })._registeredTools['urls.inspect_many'].handler;
+    const originalFetch = globalThis.fetch;
+    const attempts = new Map<string, number>();
+
+    try {
+      globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const inspectionUrl = (JSON.parse(String(init?.body)) as { inspectionUrl: string }).inspectionUrl;
+        const count = (attempts.get(inspectionUrl) ?? 0) + 1;
+        attempts.set(inspectionUrl, count);
+        return count === 1
+          ? new Response('transient', { status: 503, headers: { 'retry-after': '0' } })
+          : response({ inspectionResult: { indexStatusResult: { verdict: 'PASS' } } });
+      };
+
+      const result = await handler({
+        site_url: 'sc-domain:example.com',
+        inspection_urls: ['https://example.com/a', 'https://example.com/b'],
+      }) as {
+        structuredContent: {
+          requested_count: number;
+          succeeded_count: number;
+          failed_count: number;
+          results: Array<{ error?: string }>;
+        };
+      };
+      expect(result.structuredContent.requested_count).toBe(2);
+      expect(result.structuredContent.succeeded_count).toBe(1);
+      expect(result.structuredContent.failed_count).toBe(1);
+      expect(result.structuredContent.results.filter((entry) => entry.error)).toEqual([
+        expect.objectContaining({ error: expect.stringContaining('URL Inspection retry budget exhausted') }),
+      ]);
+      expect(Array.from(attempts.values()).sort()).toEqual([1, 2]);
+      expect(take.mock.calls.map((call) => call[2])).toEqual([2, 1, 1]);
+      expect(usedUnits).toBe(3);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('returns a schema-discoverable URL Inspection index-status summary alongside the raw provider result', async () => {
     await saveUser(
       workerEnv,
