@@ -2233,8 +2233,14 @@ class GscMcpRuntime {
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'indexing.request');
         if (rateLimitError) return rateLimitError;
+        // Authorization requires an independent Search Console sites.list read.
+        const sitesRateLimitError = await this.rateLimitError(googleId, 'sites.list');
+        if (sitesRateLimitError) return sitesRateLimitError;
         const accessToken = await this.getAccessToken(googleId);
-        const sites = await listSites(accessToken);
+        const sites = await listSites(
+          accessToken,
+          () => this.reserveMetadataReadRetry(googleId),
+        );
         assertIndexingUrlAuthorized(url, site_url, sites);
         const result = await requestIndexing(accessToken, url);
         const payload = {
@@ -2276,8 +2282,13 @@ class GscMcpRuntime {
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'indexing.remove');
         if (rateLimitError) return rateLimitError;
+        const sitesRateLimitError = await this.rateLimitError(googleId, 'sites.list');
+        if (sitesRateLimitError) return sitesRateLimitError;
         const accessToken = await this.getAccessToken(googleId);
-        const sites = await listSites(accessToken);
+        const sites = await listSites(
+          accessToken,
+          () => this.reserveMetadataReadRetry(googleId),
+        );
         assertIndexingUrlAuthorized(url, site_url, sites);
         const result = await requestIndexingRemoval(accessToken, url);
         const payload = {
