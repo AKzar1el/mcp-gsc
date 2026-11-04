@@ -556,6 +556,64 @@ test('exchangeCodeForTokens: rejects when Google omits refresh_token', async () 
   );
 });
 
+test('exchangeCodeForTokens: preserves valid token exchange responses', async () => {
+  const tokens = {
+    access_token: 'valid-access', refresh_token: 'valid-refresh',
+    expires_in: 3600, token_type: 'Bearer', scope: 'openid email',
+  };
+  const { result } = await withMockFetch(
+    () => json(200, tokens),
+    () => exchangeCodeForTokens('code', 'id', 'secret', 'https://x/cb'),
+  );
+  assert.deepEqual(result, tokens);
+});
+
+test('exchangeCodeForTokens: rejects non-string or blank refresh tokens', async () => {
+  for (const refreshToken of [123, {}, '  ']) {
+    await assert.rejects(
+      withMockFetch(
+        () => json(200, { access_token: 'at', expires_in: 3600, refresh_token: refreshToken }),
+        () => exchangeCodeForTokens('code', 'id', 'secret', 'https://x/cb'),
+      ),
+      /refresh_token/,
+    );
+  }
+});
+
+test('exchangeCodeForTokens: rejects malformed successful token responses before OAuth account binding', async () => {
+  for (const payload of [
+    { refresh_token: 'rt', expires_in: 3600 },
+    { refresh_token: 'rt', access_token: '  ', expires_in: 3600 },
+    { refresh_token: 'rt', access_token: 123, expires_in: 3600 },
+    { refresh_token: 'rt', access_token: 'at', expires_in: 0 },
+    { refresh_token: 'rt', access_token: 'at', expires_in: '3600' },
+    { refresh_token: 'rt', access_token: 'at' },
+  ]) {
+    await assert.rejects(
+      withMockFetch(() => json(200, payload), () => exchangeCodeForTokens('code', 'id', 'secret', 'https://x/cb')),
+      /valid access_token|expires_in/,
+      JSON.stringify(payload),
+    );
+  }
+});
+
+test('refreshAccessToken: rejects malformed successful token responses instead of caching unusable tokens', async () => {
+  for (const payload of [
+    { expires_in: 3600 },
+    { access_token: '', expires_in: 3600 },
+    { access_token: {}, expires_in: 3600 },
+    { access_token: 'at', expires_in: -1 },
+    { access_token: 'at', expires_in: null },
+    { access_token: 'at', expires_in: '3600' },
+  ]) {
+    await assert.rejects(
+      withMockFetch(() => json(200, payload), () => refreshAccessToken('rt', 'id', 'secret')),
+      /valid access_token|expires_in/,
+      JSON.stringify(payload),
+    );
+  }
+});
+
 test('refreshAccessToken: invalid_grant maps to GoogleRefreshTokenRevokedError', async () => {
   await assert.rejects(
     withMockFetch(
