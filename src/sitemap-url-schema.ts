@@ -9,9 +9,10 @@ export const SITEMAP_URL_SCHEMA = z
       return (
         (parsed.protocol === 'http:' || parsed.protocol === 'https:') &&
         parsed.username === '' &&
-        parsed.password === ''
+        parsed.password === '' &&
+        !value.includes('#')
       );
     } catch {
       return false;
     }
-  }, 'Sitemap URL must use http:// or https:// without embedded credentials.');
+  }, 'Sitemap URL must use http:// or https:// without embedded credentials or fragments.');
