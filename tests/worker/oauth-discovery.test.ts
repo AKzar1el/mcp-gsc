@@ -395,6 +395,9 @@ describe('OAuth discovery', () => {
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('webmasters');
     expect(html).toContain('indexing');
+    expect(html).toContain('Return destination:');
+    expect(html).toContain('<code>https://client.example</code>');
+    expect(html).not.toContain('<code>https://client.example/callback</code>');
 
     const consentNonce = html.match(/name="consent_nonce" value="([^"]+)"/)?.[1];
     expect(consentNonce).toBeTruthy();
