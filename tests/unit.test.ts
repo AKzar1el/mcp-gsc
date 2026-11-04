@@ -36,6 +36,7 @@ import {
 import {
   buildAuthUrl,
   exchangeCodeForTokens,
+  fetchGoogleUserInfo,
   refreshAccessToken,
   listSites,
   getSite,
@@ -515,6 +516,35 @@ test('buildAuthUrl: includes offline access, consent prompt, scope, and state', 
 
 // ---------------------------------------------------------------------------
 // google.ts — token exchange and refresh error mapping
+
+test('Google userinfo accepts a complete identity used for OAuth tenant binding', async () => {
+  const profile = { id: 'google-account-123', email: 'user@example.com', verified_email: true };
+  const { result } = await withMockFetch(
+    () => json(200, profile),
+    () => fetchGoogleUserInfo('access-token'),
+  );
+  assert.deepEqual(result, profile);
+});
+
+test('Google userinfo rejects missing or invalid account identity before KV binding', async () => {
+  for (const profile of [
+    {},
+    { email: 'user@example.com' },
+    { id: '', email: 'user@example.com' },
+    { id: '   ', email: 'user@example.com' },
+    { id: 123, email: 'user@example.com' },
+    { id: 'google-account-123' },
+    { id: 'google-account-123', email: ' ' },
+    { id: 'google-account-123', email: 123 },
+    null,
+  ]) {
+    await assert.rejects(
+      withMockFetch(() => json(200, profile), () => fetchGoogleUserInfo('access-token')),
+      /Google userinfo response missing a valid account ID or email/,
+      JSON.stringify(profile),
+    );
+  }
+});
 
 test('exchangeCodeForTokens: rejects when Google omits refresh_token', async () => {
   await assert.rejects(
