@@ -685,7 +685,8 @@ test('weekly digest does not turn a zero site-level baseline into 0% growth', as
       '2026-08-10',
     );
 
-    assert.match(digest, /new — no data last week/i);
+    assert.match(digest, /increased from a measured zero last week \(percentage change unavailable\)/i);
+    assert.doesNotMatch(digest, /no data last week/i);
     assert.match(digest, /percentage change is unavailable from a zero baseline/i);
     assert.doesNotMatch(digest, /impressions.*\+0%/i);
     assert.doesNotMatch(digest, /clicks.*\+0%/i);
