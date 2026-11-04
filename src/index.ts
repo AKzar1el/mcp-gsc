@@ -932,6 +932,7 @@ class GscMcpRuntime {
     googleId: string,
     toolName: RateLimitedToolName,
     units = getToolRateLimitUnits(toolName),
+    displayName: string = toolName,
   ) {
     const result = await enforceToolRateLimit(this.env, googleId, toolName, units);
     if (result.allowed) return null;
@@ -941,7 +942,7 @@ class GscMcpRuntime {
       Math.ceil((result.retry_after_ms ?? 0) / 1000),
     );
     return toolError(
-      `Rate limit reached for ${toolName}. Retry after ${retryAfterSeconds} seconds.`,
+      `Rate limit reached for ${displayName}. Retry after ${retryAfterSeconds} seconds.`,
     );
   }
 
@@ -2326,6 +2327,15 @@ class GscMcpRuntime {
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'reports.weekly_digest');
         if (rateLimitError) return rateLimitError;
+        // The digest makes five Search Analytics queries. Its own hourly
+        // guard does not replace the shared per-user 10-minute budget.
+        const sharedBudgetError = await this.rateLimitError(
+          googleId,
+          'analytics.query',
+          5,
+          'reports.weekly_digest (shared Search Analytics quota)',
+        );
+        if (sharedBudgetError) return sharedBudgetError;
 
         try {
           const markdown = await generateWeeklyDigest(

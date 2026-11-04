@@ -2377,6 +2377,42 @@ describe('Worker orchestration', () => {
       globalThis.fetch = originalFetch;
     }
   });
+  it('reserves five shared Search Analytics units before running a weekly digest', async () => {
+    const take = vi.fn(async (_bucket: string, policy: { category: string }, _units: number) => ({
+      allowed: policy.category !== 'search-analytics',
+      retry_after_ms: 20_000,
+    }));
+    const limiter = {
+      idFromName: vi.fn((name: string) => name),
+      get: vi.fn(() => ({ take })),
+    };
+    const getAccessToken = vi.fn(async () => {
+      throw new Error('Shared budget rejection must happen before credential work');
+    });
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly', TOOL_RATE_LIMITER: limiter } as unknown as Env,
+      { google_id: 'digest-budget-user', email: 'digest-budget@example.test' },
+      { getAccessToken } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, string>) => Promise<{ isError?: boolean; content: Array<{ text: string }> }>;
+      }>;
+    })._registeredTools;
+
+    const result = await tools['reports.weekly_digest'].handler({
+      site_url: 'sc-domain:example.com',
+      end_date: '2026-09-17',
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('Rate limit reached for reports.weekly_digest');
+    expect(take.mock.calls.map(([, policy, units]) => [policy.category, units])).toEqual([
+      ['weekly-digest', 1],
+      ['search-analytics', 5],
+    ]);
+    expect(getAccessToken).not.toHaveBeenCalled();
+  });
+
   it('defaults the weekly digest to the latest usually-complete Search Console date', async () => {
     await saveUser(
       workerEnv,
