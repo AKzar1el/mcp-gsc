@@ -1179,6 +1179,58 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('bounds oversized single URL Inspection results without losing indexed state', async () => {
+    const take = vi.fn(async () => ({ allowed: true }));
+    const limiter = {
+      idFromName: vi.fn((name: string) => name),
+      get: vi.fn(() => ({ take })),
+    };
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly', TOOL_RATE_LIMITER: limiter } as unknown as Env,
+      { google_id: 'single-inspection-bound-user', email: 'single-inspection@example.test' },
+      { getAccessToken: async () => 'test-access-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    })._registeredTools['urls.inspect'].handler;
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async () => response({
+        inspectionResult: {
+          indexStatusResult: { verdict: 'PASS', coverageState: 'large-status-'.repeat(5_000) },
+          richResultsResult: { details: 'x'.repeat(65_000) },
+        },
+      });
+
+      const result = await handler({
+        site_url: 'sc-domain:example.com',
+        inspection_url: 'https://example.com/large',
+      }) as {
+        content: Array<{ text: string }>;
+        structuredContent: {
+          inspection_result?: unknown;
+          inspection_result_omitted?: boolean;
+          summary_fields_omitted?: boolean;
+          index_status_summary: { indexed_state: string };
+          note: string;
+        };
+      };
+
+      expect(result.structuredContent.index_status_summary.indexed_state).toBe('indexed');
+      expect(result.structuredContent.inspection_result).toBeUndefined();
+      expect(result.structuredContent.inspection_result_omitted).toBe(true);
+      expect(result.structuredContent.summary_fields_omitted).toBe(true);
+      expect(result.structuredContent.note).toContain('does not run a live URL test');
+      expect(new TextEncoder().encode(JSON.stringify(result.structuredContent)).byteLength).toBeLessThanOrEqual(48_000);
+      expect(new TextEncoder().encode(result.content[0].text).byteLength).toBeLessThanOrEqual(48_000);
+      expect(take).toHaveBeenCalledTimes(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('bounds large URL Inspection batches while preserving every URL status', async () => {
     const take = vi.fn(async () => ({ allowed: true }));
     const limiter = {
