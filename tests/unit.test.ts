@@ -706,6 +706,60 @@ test('listSites: does not retry when Retry-After exceeds the MCP retry budget', 
   assert.equal(calls.length, 1);
 });
 
+test('Search Console metadata reads reserve a unit before each additional Google attempt', async () => {
+  const site = { siteUrl: 'sc-domain:example.com', permissionLevel: 'siteOwner' };
+  const sitemap = { path: 'https://example.com/sitemap.xml' };
+  const reads = [
+    { name: 'sites.list', invoke: (beforeRetry: () => Promise<void>) => listSites('at', beforeRetry), response: { siteEntry: [site] } },
+    { name: 'sites.get', invoke: (beforeRetry: () => Promise<void>) => getSite('at', site.siteUrl, beforeRetry), response: site },
+    { name: 'sitemaps.list', invoke: (beforeRetry: () => Promise<void>) => listSitemaps('at', site.siteUrl, undefined, beforeRetry), response: { sitemap: [sitemap] } },
+    { name: 'sitemaps.get', invoke: (beforeRetry: () => Promise<void>) => getSitemap('at', site.siteUrl, sitemap.path, beforeRetry), response: sitemap },
+  ];
+
+  for (const read of reads) {
+    let attempts = 0;
+    let reservations = 0;
+    const { calls } = await withMockFetch(
+      () => {
+        attempts += 1;
+        return attempts === 1
+          ? new Response('temporary', { status: 503, headers: { 'retry-after': '0' } })
+          : json(200, read.response);
+      },
+      () => read.invoke(async () => { reservations += 1; }),
+    );
+    assert.equal(calls.length, 2, read.name);
+    assert.equal(reservations, 1, `${read.name} must meter its retry`);
+  }
+});
+
+test('Search Console metadata reads stop before upstream retry when quota denies it', async () => {
+  const siteUrl = 'sc-domain:example.com';
+  const feedpath = 'https://example.com/sitemap.xml';
+  const reads = [
+    { name: 'sites.list', invoke: (beforeRetry: () => Promise<void>) => listSites('at', beforeRetry) },
+    { name: 'sites.get', invoke: (beforeRetry: () => Promise<void>) => getSite('at', siteUrl, beforeRetry) },
+    { name: 'sitemaps.list', invoke: (beforeRetry: () => Promise<void>) => listSitemaps('at', siteUrl, undefined, beforeRetry) },
+    { name: 'sitemaps.get', invoke: (beforeRetry: () => Promise<void>) => getSitemap('at', siteUrl, feedpath, beforeRetry) },
+  ];
+
+  for (const read of reads) {
+    let attempts = 0;
+    await assert.rejects(
+      () => withMockFetch(
+        () => {
+          attempts += 1;
+          return new Response('temporary', { status: 503, headers: { 'retry-after': '0' } });
+        },
+        () => read.invoke(async () => { throw new Error('Metadata retry budget exhausted'); }),
+      ),
+      /Metadata retry budget exhausted/,
+      read.name,
+    );
+    assert.equal(attempts, 1, `${read.name} must not send an unreserved retry`);
+  }
+});
+
 test('addSite: transient write failures are not retried automatically', async () => {
   const original = globalThis.fetch;
   const calls: CapturedRequest[] = [];

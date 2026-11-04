@@ -240,10 +240,13 @@ export interface SiteEntry {
   permissionLevel: string;
 }
 
-export async function listSites(accessToken: string): Promise<SiteEntry[]> {
+export async function listSites(
+  accessToken: string,
+  beforeRetry?: () => Promise<void>,
+): Promise<SiteEntry[]> {
   const resp = await fetchGoogleRead('https://www.googleapis.com/webmasters/v3/sites', {
     headers: { authorization: `Bearer ${accessToken}` },
-  });
+  }, beforeRetry);
   if (resp.status === 401) {
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
   }
@@ -258,6 +261,7 @@ export async function listSites(accessToken: string): Promise<SiteEntry[]> {
 export async function getSite(
   accessToken: string,
   siteUrl: string,
+  beforeRetry?: () => Promise<void>,
 ): Promise<SiteEntry> {
   const encoded = encodeURIComponent(siteUrl);
   const resp = await fetchGoogleRead(
@@ -265,6 +269,7 @@ export async function getSite(
     {
       headers: { authorization: `Bearer ${accessToken}` },
     },
+    beforeRetry,
   );
   if (resp.status === 401) {
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
@@ -718,6 +723,7 @@ export async function listSitemaps(
   accessToken: string,
   siteUrl: string,
   sitemapIndex?: string,
+  beforeRetry?: () => Promise<void>,
 ): Promise<SitemapEntry[]> {
   const encoded = encodeURIComponent(siteUrl);
   const query = sitemapIndex
@@ -728,6 +734,7 @@ export async function listSitemaps(
     {
       headers: { authorization: `Bearer ${accessToken}` },
     },
+    beforeRetry,
   );
   if (resp.status === 401) {
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
@@ -939,6 +946,7 @@ export async function getSitemap(
   accessToken: string,
   siteUrl: string,
   feedpath: string,
+  beforeRetry?: () => Promise<void>,
 ): Promise<SitemapEntry> {
   const encodedSite = encodeURIComponent(siteUrl);
   const encodedFeed = encodeURIComponent(feedpath);
@@ -947,6 +955,7 @@ export async function getSitemap(
     {
       headers: { authorization: `Bearer ${accessToken}` },
     },
+    beforeRetry,
   );
   if (resp.status === 401) {
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
