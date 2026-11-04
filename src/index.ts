@@ -304,10 +304,6 @@ const CAPABILITIES_OUTPUT_SCHEMA = {
   hint: z.string(),
 };
 
-const SITES_OUTPUT_SCHEMA = {
-  sites: z.array(z.object(LISTED_SITE_OUTPUT_SCHEMA)),
-};
-
 const SITE_DETAIL_OUTPUT_SCHEMA = {
   site: z.object(SITE_OUTPUT_SCHEMA),
 };
@@ -355,11 +351,6 @@ const INSPECTION_BATCH_OUTPUT_SCHEMA = {
       error: z.string().optional(),
     }),
   ),
-};
-
-const SITEMAPS_OUTPUT_SCHEMA = {
-  sitemaps: z.array(SITEMAP_OUTPUT_SCHEMA),
-  provider_note: z.string(),
 };
 
 const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
@@ -481,6 +472,22 @@ const RESULT_PAGE_OUTPUT_SCHEMA = z.object({
   byte_limit_reached: z.boolean(),
   next_start_row: z.number().int().nonnegative().optional(),
 });
+
+const SITES_OUTPUT_SCHEMA = {
+  sites: z.array(z.object(LISTED_SITE_OUTPUT_SCHEMA)),
+  result_page: RESULT_PAGE_OUTPUT_SCHEMA,
+};
+
+const SITEMAPS_OUTPUT_SCHEMA = {
+  sitemaps: z.array(SITEMAP_OUTPUT_SCHEMA),
+  provider_note: z.string(),
+  result_page: RESULT_PAGE_OUTPUT_SCHEMA,
+};
+
+// Leave room for pagination metadata and the sitemap provider note inside 48 KB.
+const COLLECTION_LIST_BYTE_BUDGET = 44_000;
+const COLLECTION_LIST_LIMIT_SCHEMA = z.number().int().min(1).max(250).default(100)
+  .describe('Maximum items per response (1-250), subject to the output byte limit.');
 
 const ANALYSIS_RESULT_LIMIT_SCHEMA = z
   .number()
@@ -726,9 +733,10 @@ function windowKnownResults<T>(
   items: readonly T[],
   startRow: number,
   limit: number,
+  byteBudget?: number,
 ) {
   const requested = items.slice(startRow, startRow + limit);
-  const bounded = takeBoundedItems(requested, limit);
+  const bounded = takeBoundedItems(requested, limit, byteBudget);
   const returnedCount = bounded.items.length;
   const hasMore =
     startRow + returnedCount < items.length || bounded.byteLimitReached;
@@ -790,7 +798,7 @@ const TOOL_CATALOG = [
   {
     name: 'sites.list',
     description:
-      'List the Google Search Console properties (sites) the connected Google account can access, including whether each returned identifier matches the website-property siteUrl forms currently documented by the Search Console API.',
+      'List accessible Search Console properties with bounded, deterministic pagination using start_row and limit. Follow result_page.next_start_row while has_more is true.',
   },
   {
     name: 'sites.get',
@@ -835,7 +843,7 @@ const TOOL_CATALOG = [
   {
     name: 'sitemaps.list',
     description:
-      'List all sitemaps submitted for a property, with submission/processing status, submitted URL counts, and warning/error counts. Google\'s deprecated sitemap indexed count is intentionally omitted.',
+      'List submitted sitemaps for a property with bounded, deterministic pagination using start_row and limit. Follow result_page.next_start_row while has_more is true.',
   },
   {
     name: 'sitemaps.submit',
@@ -1041,12 +1049,15 @@ class GscMcpRuntime {
       {
         title: 'List Search Console properties',
         description:
-          "List the Google Search Console properties (sites) the connected Google account has access to. Each entry preserves Google's siteUrl and permissionLevel, derives verification_state plus owner from Google's documented permission levels, and adds api_identifier_kind plus mcp_site_url_accepted. Treat verification_state='unverified' as not ready for normal property-scoped Search Console workflows; owner=true is required by this server's restricted Indexing API workflows. Google now exposes platform properties for social/video accounts in the Search Console UI, but its current API documentation still defines siteUrl using URL-prefix and sc-domain website-property forms; identifiers outside those documented forms are preserved here but marked unsupported rather than guessed. Call this when the user asks 'what sites do I have?' or 'what properties are connected?', or before another tool that requires site_url.",
-        inputSchema: {},
+          "List the Google Search Console properties (sites) the connected Google account has access to, ordered by siteUrl. Each entry preserves Google's siteUrl and permissionLevel, derives verification_state plus owner, and adds api_identifier_kind plus mcp_site_url_accepted. The response is bounded by limit/start_row and encoded bytes; follow result_page.next_start_row while has_more is true. The first text content remains a JSON array for older clients; structuredContent.result_page contains continuation metadata. Treat verification_state='unverified' as not ready for normal property-scoped workflows; owner=true is required for restricted Indexing API workflows. Undocumented platform-property identifiers are preserved but marked unsupported.",
+        inputSchema: {
+          start_row: RESULT_START_ROW_SCHEMA,
+          limit: COLLECTION_LIST_LIMIT_SCHEMA,
+        },
         outputSchema: SITES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async () => {
+      async ({ start_row = 0, limit = 100 }) => {
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'sites.list');
         if (rateLimitError) return rateLimitError;
@@ -1063,8 +1074,21 @@ class GscMcpRuntime {
               ? { unsupported_reason: PLATFORM_PROPERTY_API_NOTE }
               : {}),
           };
-        });
-        return toolResponse(JSON.stringify(sites, null, 2), { sites });
+        }).sort((a, b) => a.siteUrl < b.siteUrl ? -1 : a.siteUrl > b.siteUrl ? 1 : 0);
+        const bounded = windowKnownResults(
+          sites, start_row, limit, COLLECTION_LIST_BYTE_BUDGET,
+        );
+        if (bounded.resultPage.byte_limit_reached && bounded.items.length === 0) {
+          return toolError('A single Search Console property entry exceeds the response byte limit. Use sites.get for a known property identifier.');
+        }
+        const payload = { sites: bounded.items, result_page: bounded.resultPage };
+        return {
+          content: [
+            { type: 'text' as const, text: JSON.stringify(payload.sites) },
+            { type: 'text' as const, text: JSON.stringify({ result_page: payload.result_page }) },
+          ],
+          structuredContent: payload,
+        };
       },
     );
 
@@ -1217,7 +1241,7 @@ class GscMcpRuntime {
       {
         title: 'List submitted sitemaps',
         description:
-          'List sitemaps submitted for a Search Console property. Optionally filter to entries included by one sitemap index. Returns sitemap URLs, provider-reported submission/download timestamps, submitted URL counts, warning and error counts, and sitemap status. lastSubmitted is when the sitemap was submitted to Search Console; lastDownloaded is when Google last downloaded the sitemap. Neither timestamp is a sitemap-file modification time or a page crawl/indexing time. Google\'s deprecated sitemap indexed count is intentionally omitted. Use this when the user asks about sitemap health, submission status, wants to audit which sitemaps are working, or needs the child sitemaps belonging to a specific sitemap index.',
+          'List sitemaps submitted for a Search Console property, sorted by sitemap path and bounded by limit/start_row plus output bytes. Follow result_page.next_start_row while has_more is true. Optionally filter to entries included by one sitemap index. Returns sitemap URLs, provider-reported submission/download timestamps, submitted URL counts, warning and error counts, and sitemap status. lastSubmitted is the Search Console submission time; lastDownloaded is when Google downloaded the sitemap, not page crawl/indexing time. Google\'s deprecated indexed count is intentionally omitted.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           sitemap_index: SITEMAP_URL_SCHEMA
@@ -1225,18 +1249,31 @@ class GscMcpRuntime {
             .describe(
               'Optional sitemap index URL. When supplied, Google returns sitemap entries included in that index.',
             ),
+          start_row: RESULT_START_ROW_SCHEMA,
+          limit: COLLECTION_LIST_LIMIT_SCHEMA,
         },
         outputSchema: SITEMAPS_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, sitemap_index }) => {
+      async ({ site_url, sitemap_index, start_row = 0, limit = 100 }) => {
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'sitemaps.list');
         if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
-        const sitemaps = await listSitemaps(accessToken, site_url, sitemap_index);
-        const payload = { sitemaps, provider_note: SITEMAP_PROVIDER_NOTE };
-        return toolResponse(JSON.stringify(payload, null, 2), payload);
+        const sitemaps = (await listSitemaps(accessToken, site_url, sitemap_index))
+          .sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+        const bounded = windowKnownResults(
+          sitemaps, start_row, limit, COLLECTION_LIST_BYTE_BUDGET,
+        );
+        if (bounded.resultPage.byte_limit_reached && bounded.items.length === 0) {
+          return toolError('A single sitemap entry exceeds the response byte limit. Use sitemaps.get with its known feedpath for individual status.');
+        }
+        const payload = {
+          sitemaps: bounded.items,
+          provider_note: SITEMAP_PROVIDER_NOTE,
+          result_page: bounded.resultPage,
+        };
+        return toolResponse(JSON.stringify(payload), payload);
       },
     );
 
