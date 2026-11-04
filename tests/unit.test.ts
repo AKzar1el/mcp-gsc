@@ -1713,6 +1713,55 @@ test('querySearchAnalytics: gives actionable guidance for non-retryable Search A
   assert.equal(calls.length, 1, 'quotaExceeded should not use the short transient retry loop');
 });
 
+test('querySearchAnalytics: recognizes message-only Search Analytics load quota errors', async () => {
+  for (const message of [
+    'Search Analytics load quota exceeded. Learn about usage limits.',
+    'Quota exceeded for quota metric SearchAnalyticsLoad',
+  ]) {
+    const { calls } = await withMockFetch(
+      () => json(403, { error: { code: 403, message } }),
+      async () => {
+        await assert.rejects(
+          querySearchAnalytics('at', 'sc-domain:example.com', {
+            startDate: '2026-05-01',
+            endDate: '2026-05-31',
+            dimensions: ['query', 'page'],
+            rowLimit: 100,
+          }),
+          (error: Error) => {
+            assert.match(error.message, /15 minutes/i);
+            assert.match(error.message, /reduce expensive page\/query grouping or filtering/i);
+            return true;
+          },
+        );
+      },
+    );
+    assert.equal(calls.length, 1, 'load-quota failures must not trigger fast retries');
+  }
+});
+
+test('querySearchAnalytics: unrelated 403 permission errors are not called quota exhaustion', async () => {
+  const { calls } = await withMockFetch(
+    () => json(403, { error: { code: 403, message: 'Permission denied.' } }),
+    async () => {
+      await assert.rejects(
+        querySearchAnalytics('at', 'sc-domain:example.com', {
+          startDate: '2026-05-01',
+          endDate: '2026-05-31',
+          dimensions: ['query', 'page'],
+          rowLimit: 100,
+        }),
+        (error: Error) => {
+          assert.match(error.message, /query failed: 403/i);
+          assert.doesNotMatch(error.message, /15 minutes/i);
+          return true;
+        },
+      );
+    },
+  );
+  assert.equal(calls.length, 1);
+});
+
 test('querySearchAnalytics: missing rows field returns an empty rows array (no data, not an error)', async () => {
   const { result } = await withMockFetch(
     () => json(200, {}),
