@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Reject malformed successful Google OAuth token exchange and refresh responses before unusable access tokens can reach userinfo requests or the refresh cache.
 - Fail closed on malformed Google userinfo identities before persisting OAuth refresh tokens or binding an MCP account to a Google user ID.
 - Advance Search Analytics insight pagination in provider-row coordinates when source rows are filtered, preventing duplicate or stalled page/query results after a full or byte-truncated page.
 - Reject fragment identifiers in Indexing API URLs, which do not identify separate HTTP resources, without changing URL Inspection URL handling.

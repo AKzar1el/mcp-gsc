@@ -38,6 +38,25 @@ export interface GoogleTokenResponse {
   scope: string;
 }
 
+function assertGoogleAccessTokenResponse(
+  value: unknown,
+): asserts value is { access_token: string; expires_in: number } {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Google token response missing a valid access_token.');
+  }
+  const token = value as Record<string, unknown>;
+  if (typeof token.access_token !== 'string' || !token.access_token.trim()) {
+    throw new Error('Google token response missing a valid access_token.');
+  }
+  if (
+    typeof token.expires_in !== 'number' ||
+    !Number.isFinite(token.expires_in) ||
+    token.expires_in <= 0
+  ) {
+    throw new Error('Google token response missing a valid expires_in.');
+  }
+}
+
 export const MCP_RECONNECT_INSTRUCTION =
   "Please reconnect this server from your MCP client's connector or app settings.";
 
@@ -173,9 +192,14 @@ export async function exchangeCodeForTokens(
     const text = await resp.text();
     throw new Error(`Token exchange failed: ${resp.status} ${text}`);
   }
-  const data = (await resp.json()) as Partial<GoogleTokenResponse>;
-  if (!data.refresh_token) {
-    throw new Error('Google did not return a refresh_token');
+  const data: unknown = await resp.json();
+  assertGoogleAccessTokenResponse(data);
+  if (
+    !('refresh_token' in data) ||
+    typeof data.refresh_token !== 'string' ||
+    !data.refresh_token.trim()
+  ) {
+    throw new Error('Google did not return a valid refresh_token');
   }
   return data as GoogleTokenResponse;
 }
@@ -244,10 +268,8 @@ export async function refreshAccessToken(
     }
     throw new Error(`Failed to refresh Google access token: ${resp.status}`);
   }
-  const data = (await resp.json()) as {
-    access_token: string;
-    expires_in: number;
-  };
+  const data: unknown = await resp.json();
+  assertGoogleAccessTokenResponse(data);
   return { access_token: data.access_token, expires_in: data.expires_in };
 }
 
