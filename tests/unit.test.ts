@@ -40,6 +40,7 @@ import {
   listSites,
   getSite,
   listSitemaps,
+  inspectUrl,
   inspectUrlsBoundedConcurrently,
   summarizeUrlInspectionIndexStatus,
   URL_INSPECTION_BATCH_CONCURRENCY,
@@ -850,6 +851,52 @@ test('inspectUrlsBoundedConcurrently: caps in-flight inspections at three', asyn
     result.map((entry) => entry.inspectionUrl),
     urls,
   );
+});
+
+test('inspectUrl: reserves an extra unit before retrying a network failure', async () => {
+  let attempts = 0;
+  let retryReservations = 0;
+  const { result, calls } = await withMockFetch(
+    () => {
+      attempts += 1;
+      if (attempts === 1) throw new TypeError('Temporary network failure');
+      return json(200, { inspectionResult: { indexStatusResult: { verdict: 'PASS' } } });
+    },
+    () => inspectUrl(
+      'access-token',
+      'sc-domain:example.com',
+      'https://example.com/page',
+      'en-US',
+      async () => { retryReservations += 1; },
+    ),
+  );
+
+  assert.equal(retryReservations, 1);
+  assert.equal(calls.length, 2);
+  assert.deepEqual(result, { indexStatusResult: { verdict: 'PASS' } });
+});
+
+test('inspectUrl: a non-retryable authorization failure consumes no retry units', async () => {
+  let retryReservations = 0;
+  let attempts = 0;
+  await assert.rejects(
+    withMockFetch(
+      () => {
+        attempts += 1;
+        return new Response('', { status: 401 });
+      },
+      () => inspectUrl(
+        'expired-token',
+        'sc-domain:example.com',
+        'https://example.com/page',
+        undefined,
+        async () => { retryReservations += 1; },
+      ),
+    ),
+    new RegExp(GSC_ACCESS_REVOKED_MESSAGE.slice(0, 22)),
+  );
+  assert.equal(attempts, 1);
+  assert.equal(retryReservations, 0);
 });
 
 test('querySearchAnalytics: retries a transient 429 and preserves the POST body', async () => {

@@ -111,10 +111,17 @@ function googleReadRetryDelayMs(response: Response, retryNumber: number): number
   return Math.min(exponentialDelay + jitterMs, GOOGLE_READ_MAX_DELAY_MS);
 }
 
-async function fetchGoogleRead(url: string, init?: RequestInit): Promise<Response> {
+async function fetchGoogleRead(
+  url: string,
+  init?: RequestInit,
+  beforeRetry?: () => Promise<void>,
+): Promise<Response> {
   let lastNetworkError: unknown;
 
   for (let attempt = 1; attempt <= GOOGLE_READ_MAX_ATTEMPTS; attempt += 1) {
+    // The caller must reserve quota before a second or later upstream attempt.
+    // Keep this outside the fetch catch so a denied reservation is never retried.
+    if (attempt > 1) await beforeRetry?.();
     try {
       const response = await fetch(url, init);
       const retryable = await isGoogleReadRetryableResponse(response);
@@ -521,6 +528,7 @@ export async function inspectUrl(
   siteUrl: string,
   inspectionUrl: string,
   languageCode?: string,
+  beforeRetry?: () => Promise<void>,
 ): Promise<unknown> {
   const body: Record<string, string> = {
     inspectionUrl,
@@ -537,6 +545,7 @@ export async function inspectUrl(
       },
       body: JSON.stringify(body),
     },
+    beforeRetry,
   );
   if (resp.status === 401) {
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
@@ -626,6 +635,7 @@ export async function inspectUrlsBoundedConcurrently(
   siteUrl: string,
   inspectionUrls: readonly string[],
   languageCode?: string,
+  beforeRetry?: () => Promise<void>,
 ): Promise<UrlInspectionBatchResult[]> {
   const results: UrlInspectionBatchResult[] = [];
 
@@ -645,6 +655,7 @@ export async function inspectUrlsBoundedConcurrently(
               siteUrl,
               inspectionUrl,
               languageCode,
+              beforeRetry,
             ),
           };
         } catch (error) {

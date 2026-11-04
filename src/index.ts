@@ -946,6 +946,14 @@ class GscMcpRuntime {
     );
   }
 
+  private async reserveUrlInspectionRetry(googleId: string): Promise<void> {
+    const result = await enforceToolRateLimit(this.env, googleId, 'urls.inspect', 1);
+    if (!result.allowed) {
+      const retryAfterSeconds = Math.max(1, Math.ceil((result.retry_after_ms ?? 0) / 1000));
+      throw new Error(`URL Inspection retry budget exhausted. Retry after ${retryAfterSeconds} seconds.`);
+    }
+  }
+
   private async getAccessToken(googleId: string): Promise<string> {
     return this.getAccessTokenLifecycle().getAccessToken(googleId);
   }
@@ -1112,6 +1120,7 @@ class GscMcpRuntime {
           site_url,
           inspection_url,
           language_code,
+          () => this.reserveUrlInspectionRetry(googleId),
         );
         const indexStatusSummary = summarizeUrlInspectionIndexStatus(result);
         return toolResponse(JSON.stringify({ note: URL_INSPECTION_SCOPE_NOTE, index_status_summary: indexStatusSummary, inspection_result: result }, null, 2), {
@@ -1126,7 +1135,7 @@ class GscMcpRuntime {
       'urls.inspect_many',
       {
         title: 'Inspect multiple URLs',
-        description: `Inspect the versions of up to 10 URLs currently known in Google's index from one Search Console property. Each successful item includes a conservative normalized index-status summary alongside Google's raw response. This API does not run live URL tests. Google still processes one URL Inspection request per URL, so every requested URL consumes one quota unit and one unit of this server's shared URL-inspection safety budget. Requests use bounded concurrency of ${URL_INSPECTION_BATCH_CONCURRENCY}; results preserve input order, and a Google-access revocation stops later chunks from starting. Use this for a small group of important or debugging-target URLs; do not use it to crawl an entire site.`,
+        description: `Inspect the versions of up to 10 URLs currently known in Google's index from one Search Console property. Each successful item includes a conservative normalized index-status summary alongside Google's raw response. This API does not run live URL tests. Each URL reserves one initial unit of the shared URL-inspection safety budget; transient Google retries reserve an additional unit per attempt before calling Google again. Requests use bounded concurrency of ${URL_INSPECTION_BATCH_CONCURRENCY}; results preserve input order, and a Google-access revocation stops later chunks from starting. Use this for a small group of important or debugging-target URLs; do not use it to crawl an entire site.`,
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           inspection_urls: z
@@ -1166,6 +1175,7 @@ class GscMcpRuntime {
           site_url,
           inspection_urls,
           language_code,
+          () => this.reserveUrlInspectionRetry(googleId),
         );
         const results = batchResults.map((result) => ({
           inspection_url: result.inspectionUrl,
