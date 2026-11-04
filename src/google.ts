@@ -1334,12 +1334,16 @@ const VOID_HTML_TAGS = new Set([
 ]);
 
 function htmlAttribute(attributes: string, name: string): string | undefined {
-  const pattern = new RegExp(
-    `\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>]+))`,
-    'i',
-  );
-  const match = pattern.exec(attributes);
-  return match?.[1] ?? match?.[2] ?? match?.[3];
+  // Match complete attribute names, not suffixes such as data-name or
+  // name= text embedded in another quoted attribute value.
+  const pattern = /(?:^|\s)([^\s=/>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'\x60=<>]+)))?/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(attributes)) !== null) {
+    if (match[1].toLowerCase() === name.toLowerCase()) {
+      return match[2] ?? match[3] ?? match[4];
+    }
+  }
+  return undefined;
 }
 
 function isSchemaVocabulary(value: string | undefined): boolean {
@@ -1388,9 +1392,7 @@ function htmlStructuredTypes(
  * Google's VideoObject -> BroadcastEvent nesting requirement.
  */
 function hasEligibleHtmlStructuredData(html: string): boolean {
-  const staticMarkup = html
-    .replace(/<!--(?:[\s\S]*?)-->/g, '')
-    .replace(/<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '');
+  const staticMarkup = stripInertHtml(html);
   const stack: Array<{
     tag: string;
     schemaVocabulary: boolean;
@@ -1432,6 +1434,17 @@ function hasEligibleHtmlStructuredData(html: string): boolean {
   }
 
   return false;
+}
+
+function stripHtmlComments(html: string): string {
+  return html.replace(/<!--[\s\S]*?-->/g, '');
+}
+
+function stripInertHtml(html: string): string {
+  return stripHtmlComments(html).replace(
+    /<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+    '',
+  );
 }
 
 export interface IndexingEligibility {
@@ -1592,14 +1605,21 @@ export async function checkIndexingEligibility(
     clearTimeout(timeout);
   }
 
+  // A script in a comment or inert template is not page structured data.
+  const activeHtml = stripHtmlComments(html).replace(
+    /<template\b[^>]*>[\s\S]*?<\/template\s*>/gi,
+    '',
+  );
   const types = new Set<string>();
   let hasVideoBroadcast = false;
-  const scriptPattern =
-    /<script\b[^>]*\btype\s*=\s*(?:"application\/ld\+json"|'application\/ld\+json'|application\/ld\+json)[^>]*>([\s\S]*?)<\/script>/gi;
+  const scriptPattern = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
   let match: RegExpExecArray | null;
-  while ((match = scriptPattern.exec(html)) !== null) {
+  while ((match = scriptPattern.exec(activeHtml)) !== null) {
+    if (htmlAttribute(match[1], 'type')?.trim().toLowerCase() !== 'application/ld+json') {
+      continue;
+    }
     try {
-      const parsed = JSON.parse(match[1]);
+      const parsed = JSON.parse(match[2]);
       collectSchemaTypes(parsed, types);
       if (hasEligibleVideoBroadcast(parsed)) hasVideoBroadcast = true;
     } catch {
@@ -1610,7 +1630,7 @@ export async function checkIndexingEligibility(
   if (
     types.has('JobPosting') ||
     hasVideoBroadcast ||
-    hasEligibleHtmlStructuredData(html)
+    hasEligibleHtmlStructuredData(activeHtml)
   ) {
     return { eligible: true };
   }
@@ -1623,7 +1643,9 @@ export async function checkIndexingEligibility(
 
 function hasRobotsNoindexMeta(html: string): boolean {
   // HTML permits an omitted </head>, so stop at </head>, <body>, or EOF.
-  const head = /<head\b[^>]*>([\s\S]*?)(?:<\/head\s*>|<body\b|$)/i.exec(html)?.[1];
+  const head = /<head\b[^>]*>([\s\S]*?)(?:<\/head\s*>|<body\b|$)/i.exec(
+    stripInertHtml(html),
+  )?.[1];
   if (!head) return false;
 
   const metaPattern = /<meta\b([^>]*)>/gi;
