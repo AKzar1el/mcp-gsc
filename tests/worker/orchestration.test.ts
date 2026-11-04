@@ -61,6 +61,44 @@ function createPendingStateBinding() {
 }
 
 describe('Worker orchestration', () => {
+  it('denies all four property/sitemap metadata reads before requesting Google credentials', async () => {
+    const take = vi.fn(async (_bucket: string, _policy: { category: string }, _units: number) => (
+      { allowed: false, retry_after_ms: 30_000 }
+    ));
+    const limiter = {
+      idFromName: vi.fn((name: string) => name),
+      get: vi.fn(() => ({ take })),
+    };
+    const getAccessToken = vi.fn(async () => {
+      throw new Error('Denied requests must not reach credential refresh');
+    });
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly', TOOL_RATE_LIMITER: limiter } as unknown as Env,
+      { google_id: 'metadata-budget-user', email: 'metadata@example.test' },
+      { getAccessToken } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, string>) => Promise<{ isError?: boolean; content: Array<{ text: string }> }>;
+      }>;
+    })._registeredTools;
+    const requests = [
+      ['sites.list', {}],
+      ['sites.get', { site_url: 'sc-domain:example.com' }],
+      ['sitemaps.list', { site_url: 'sc-domain:example.com' }],
+      ['sitemaps.get', { site_url: 'sc-domain:example.com', feedpath: 'https://example.com/sitemap.xml' }],
+    ] as const;
+
+    for (const [name, args] of requests) {
+      const result = await tools[name].handler(args);
+      expect(result.isError).toBe(true);
+      expect(result.content[0]?.text).toContain(`Rate limit reached for ${name}`);
+    }
+    expect(take).toHaveBeenCalledTimes(4);
+    expect(take.mock.calls.every((call) => call[1]?.category === 'search-console-metadata-read')).toBe(true);
+    expect(getAccessToken).not.toHaveBeenCalled();
+  });
+
   it('keeps the root discovery response deployment-neutral', async () => {
     const result = await defaultHandler.fetch(
       new Request('http://127.0.0.1:8080/'),
