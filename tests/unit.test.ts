@@ -46,6 +46,7 @@ import {
   URL_INSPECTION_BATCH_CONCURRENCY,
   assertSearchAnalyticsQueryCompatible,
   querySearchAnalytics,
+  querySearchAnalyticsPaginated,
   GoogleRefreshTokenRevokedError,
   GSC_ACCESS_REVOKED_MESSAGE,
   addSite,
@@ -897,6 +898,29 @@ test('inspectUrl: a non-retryable authorization failure consumes no retry units'
   );
   assert.equal(attempts, 1);
   assert.equal(retryReservations, 0);
+});
+
+test('querySearchAnalyticsPaginated: forwards retry budget reservation to underlying reads', async () => {
+  let retryReservations = 0;
+  let requests = 0;
+  const { result, calls } = await withMockFetch(
+    () => {
+      requests += 1;
+      return requests === 1
+        ? new Response('transient', { status: 503, headers: { 'retry-after': '0' } })
+        : json(200, { rows: [] });
+    },
+    () => querySearchAnalyticsPaginated(
+      'at',
+      'sc-domain:example.com',
+      { startDate: '2026-09-01', endDate: '2026-09-07', dimensions: ['query'] },
+      { maxRows: 1, beforeRetry: async () => { retryReservations += 1; } },
+    ),
+  );
+  assert.equal(retryReservations, 1);
+  assert.equal(calls.length, 2);
+  assert.equal(result.pagesFetched, 1);
+  assert.equal(result.localLimitReached, false);
 });
 
 test('querySearchAnalytics: retries a transient 429 and preserves the POST body', async () => {
