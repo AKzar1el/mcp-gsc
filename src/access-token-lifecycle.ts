@@ -3,10 +3,7 @@ import {
   GSC_ACCESS_REVOKED_MESSAGE,
   refreshAccessToken,
 } from './google';
-import {
-  deleteUser,
-  getDecryptedRefreshToken,
-} from './storage';
+import { getDecryptedRefreshToken } from './storage';
 
 export interface GoogleAccessTokenEnv {
   USER_KV: KVNamespace;
@@ -27,14 +24,12 @@ interface AccessTokenCacheEntry {
 export interface AccessTokenLifecycleDependencies {
   getDecryptedRefreshToken: typeof getDecryptedRefreshToken;
   refreshAccessToken: typeof refreshAccessToken;
-  deleteUser: typeof deleteUser;
   now: () => number;
 }
 
 const DEFAULT_DEPENDENCIES: AccessTokenLifecycleDependencies = {
   getDecryptedRefreshToken,
   refreshAccessToken,
-  deleteUser,
   now: Date.now,
 };
 
@@ -98,8 +93,9 @@ export class GoogleAccessTokenLifecycle implements GoogleAccessTokenProvider {
     } catch (err) {
       if (err instanceof GoogleRefreshTokenRevokedError) {
         this.cache.delete(googleId);
-        await this.dependencies.deleteUser(this.env, googleId);
-        console.warn('Google OAuth invalid_grant: stored credentials cleared; reconnection required');
+        // A concurrent Google reconnection may already have replaced the stored
+        // refresh token. KV cannot atomically delete only the rejected version.
+        console.warn('Google OAuth invalid_grant: cached token cleared; reconnection required');
       }
       throw err;
     }

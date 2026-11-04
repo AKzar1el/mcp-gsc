@@ -20,15 +20,11 @@ function createLifecycle(
 ) {
   let now = 1_000;
   let refreshCalls = 0;
-  let deleteCalls = 0;
   const dependencies: Partial<AccessTokenLifecycleDependencies> = {
     getDecryptedRefreshToken: async () => 'refresh-token',
     refreshAccessToken: async () => {
       refreshCalls += 1;
       return { access_token: `access-token-${refreshCalls}`, expires_in: 3_600 };
-    },
-    deleteUser: async () => {
-      deleteCalls += 1;
     },
     now: () => now,
     ...overrides,
@@ -40,9 +36,6 @@ function createLifecycle(
     },
     get refreshCalls() {
       return refreshCalls;
-    },
-    get deleteCalls() {
-      return deleteCalls;
     },
   };
 }
@@ -160,7 +153,7 @@ test('GoogleAccessTokenLifecycle refreshes when the cached token is no longer sa
   assert.equal(refreshCalls, 2);
 });
 
-test('GoogleAccessTokenLifecycle gives accurate reconnect guidance for invalid_grant', async () => {
+test('GoogleAccessTokenLifecycle gives reconnect guidance without deleting stored credentials', async () => {
   const fixture = createLifecycle({
     refreshAccessToken: async () => {
       throw new GoogleRefreshTokenRevokedError();
@@ -176,7 +169,6 @@ test('GoogleAccessTokenLifecycle gives accurate reconnect guidance for invalid_g
       return true;
     },
   );
-  assert.equal(fixture.deleteCalls, 1);
 });
 
 test('GoogleAccessTokenLifecycle preserves credentials after transient refresh errors', async () => {
@@ -190,7 +182,6 @@ test('GoogleAccessTokenLifecycle preserves credentials after transient refresh e
     () => fixture.lifecycle.getAccessToken('user-a'),
     /503/,
   );
-  assert.equal(fixture.deleteCalls, 0);
 });
 
 test('GoogleAccessTokenLifecycle coalesces concurrent refreshes for one user', async () => {
