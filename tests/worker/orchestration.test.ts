@@ -99,6 +99,108 @@ describe('Worker orchestration', () => {
     expect(getAccessToken).not.toHaveBeenCalled();
   });
 
+  it('charges indexing write ownership checks to the shared metadata budget', async () => {
+    const take = vi.fn(async (_bucket: string, policy: { category: string }) => ({
+      allowed: policy.category !== 'search-console-metadata-read',
+      retry_after_ms: 30_000,
+    }));
+    const getAccessToken = vi.fn(async () => {
+      throw new Error('Denied metadata reads must not request Google credentials');
+    });
+    const server = await createGscMcpServer(
+      {
+        GSC_ACCESS_MODE: 'readwrite',
+        TOOL_RATE_LIMITER: {
+          idFromName: (name: string) => name,
+          get: () => ({ take }),
+        },
+      } as unknown as Env,
+      { google_id: 'indexing-owner-budget-user', email: 'indexing-owner@example.test' },
+      { getAccessToken } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: { site_url: string; url: string }) => Promise<{
+          isError?: boolean;
+          content?: Array<{ text?: string }>;
+        }>;
+      }>;
+    })._registeredTools;
+
+    for (const name of ['indexing.request', 'indexing.remove']) {
+      const result = await tools[name].handler({
+        site_url: 'sc-domain:example.com',
+        url: 'https://example.com/careers/engineer',
+      });
+      expect(result.isError).toBe(true);
+      expect(result.content?.[0]?.text).toContain('Rate limit reached for sites.list');
+    }
+    expect(take.mock.calls.map((call) => call[1].category)).toEqual([
+      'indexing-request',
+      'search-console-metadata-read',
+      'indexing-request',
+      'search-console-metadata-read',
+    ]);
+    expect(getAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('stops indexing write ownership retries when the metadata budget is exhausted', async () => {
+    const originalFetch = globalThis.fetch;
+    try {
+      for (const name of ['indexing.request', 'indexing.remove']) {
+        let metadataReservations = 0;
+        const take = vi.fn(async (_bucket: string, policy: { category: string }) => {
+          if (policy.category === 'search-console-metadata-read') {
+            metadataReservations += 1;
+            return { allowed: metadataReservations === 1, retry_after_ms: 30_000 };
+          }
+          return { allowed: true };
+        });
+        const server = await createGscMcpServer(
+          {
+            GSC_ACCESS_MODE: 'readwrite',
+            TOOL_RATE_LIMITER: {
+              idFromName: (key: string) => key,
+              get: () => ({ take }),
+            },
+          } as unknown as Env,
+          { google_id: `indexing-retry-${name}`, email: 'indexing-retry@example.test' },
+          { getAccessToken: async () => 'access-token' } as unknown as GoogleAccessTokenLifecycle,
+        );
+        const handler = (server as unknown as {
+          _registeredTools: Record<string, {
+            handler: (args: { site_url: string; url: string }) => Promise<unknown>;
+          }>;
+        })._registeredTools[name].handler;
+        const outboundUrls: string[] = [];
+        globalThis.fetch = async (input: RequestInfo | URL) => {
+          const url = requestUrl(input);
+          outboundUrls.push(url);
+          if (url === 'https://www.googleapis.com/webmasters/v3/sites') {
+            return new Response('transient', {
+              status: 503,
+              headers: { 'retry-after': '0' },
+            });
+          }
+          throw new Error(`Unexpected outbound request: ${url}`);
+        };
+
+        await expect(handler({
+          site_url: 'sc-domain:example.com',
+          url: 'https://example.com/careers/engineer',
+        })).rejects.toThrow('Search Console metadata retry budget exhausted');
+        expect(outboundUrls).toEqual(['https://www.googleapis.com/webmasters/v3/sites']);
+        expect(take.mock.calls.map((call) => call[1].category)).toEqual([
+          'indexing-request',
+          'search-console-metadata-read',
+          'search-console-metadata-read',
+        ]);
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('charges a separate Search Analytics budget unit before a retry', async () => {
     const take = vi.fn(async () => ({ allowed: true }));
     const server = await createGscMcpServer(
