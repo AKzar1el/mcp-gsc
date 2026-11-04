@@ -104,6 +104,23 @@ test('Indexing authorization rejects malformed, non-HTTP, and userinfo URLs', ()
   }
 });
 
+test('Indexing API URL validation rejects fragments without restricting URL Inspection', () => {
+  assert.throws(
+    () => assertIndexingRequestUrl('https://example.com/jobs/engineer#details'),
+    /fragment/,
+  );
+  assert.doesNotThrow(() =>
+    assertIndexingRequestUrl('https://example.com/jobs/engineer?ref=job'),
+  );
+  assert.doesNotThrow(() =>
+    assertUrlWithinSearchConsoleProperty(
+      'https://example.com/jobs/engineer#details',
+      'https://example.com/jobs/',
+      'inspection_url',
+    ),
+  );
+});
+
 test('Search Console URL containment accepts URL-prefix descendants and Domain-property subdomains', () => {
   assert.doesNotThrow(() =>
     assertUrlWithinSearchConsoleProperty(
