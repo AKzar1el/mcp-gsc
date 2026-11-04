@@ -2778,6 +2778,75 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('does not reuse a Google access token across distinct Worker environments', async () => {
+    const makeEnvironment = () => {
+      const users = new Map<string, string>();
+      return {
+        GSC_ACCESS_MODE: 'readonly',
+        GOOGLE_CLIENT_ID: 'test-client',
+        GOOGLE_CLIENT_SECRET: 'test-secret',
+        TOKEN_ENCRYPTION_KEY: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=',
+        USER_KV: {
+          get: async (key: string) => users.get(key) ?? null,
+          put: async (key: string, value: string) => { users.set(key, value); },
+        },
+        TOOL_RATE_LIMITER: {
+          idFromName: (name: string) => name,
+          get: () => ({ take: async () => ({ allowed: true }) }),
+        },
+      } as unknown as Env;
+    };
+    const firstEnv = makeEnvironment();
+    const secondEnv = makeEnvironment();
+    const googleId = 'same-account-in-two-environments';
+    await saveUser(firstEnv, googleId, 'user@example.test', 'refresh-first-env');
+    await saveUser(secondEnv, googleId, 'user@example.test', 'refresh-second-env');
+    const props = { google_id: googleId, email: 'user@example.test' };
+    const firstServer = await createGscMcpServer(firstEnv, props);
+    const secondServer = await createGscMcpServer(secondEnv, props);
+    const handler = (server: Awaited<ReturnType<typeof createGscMcpServer>>) =>
+      (server as unknown as {
+        _registeredTools: Record<string, {
+          handler: (args: Record<string, never>) => Promise<unknown>;
+        }>;
+      })._registeredTools['sites.list'].handler;
+
+    const originalFetch = globalThis.fetch;
+    const observedAuth: string[] = [];
+    const observedRefreshGrants: string[] = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          const refresh = new URLSearchParams(String(init?.body)).get('refresh_token');
+          observedRefreshGrants.push(refresh ?? '');
+          return response({ access_token: `access:${refresh}`, expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites') {
+          observedAuth.push(new Headers(init?.headers).get('authorization') ?? '');
+          return response({ siteEntry: [] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      await handler(firstServer)({});
+      await handler(secondServer)({});
+      const repeatedFirstServer = await createGscMcpServer(firstEnv, props);
+      await handler(repeatedFirstServer)({});
+      expect(observedAuth).toEqual([
+        'Bearer access:refresh-first-env',
+        'Bearer access:refresh-second-env',
+        'Bearer access:refresh-first-env',
+      ]);
+      expect(observedRefreshGrants).toEqual([
+        'refresh-first-env',
+        'refresh-second-env',
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('uses the normal tool token cache and preserves stored credentials on invalid_grant', async () => {
     await saveUser(
       workerEnv,
