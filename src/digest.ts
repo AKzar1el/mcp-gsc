@@ -341,7 +341,7 @@ function pickActionAndBuild(
       item: {
         headline: 'Your site recorded search impressions but no clicks',
         why: `Search Console recorded ${formatNumber(currentTotals.impressions)} impressions and zero clicks for this period. Impressions are search-result appearances, not unique people, and this aggregate alone does not show whether the cause is average position, search intent, SERP features, or snippet presentation.`,
-        how: `1. In Search Console's Performance report, keep this same date range and filter to '${topRealQuery.query}'.\n2. Review the matching page rows, CTR, and average position, then compare them with the previous period.\n3. Change the title or meta description only if that query/page evidence suggests the snippet mismatches intent. A manual Google search can differ by location, device, and personalization, so do not treat it as authoritative reproduction.`,
+        how: `1. In Search Console's Performance report, keep this same date range and filter to '${escapeMarkdownInline(topRealQuery.query)}'.\n2. Review the matching page rows, CTR, and average position, then compare them with the previous period.\n3. Change the title or meta description only if that query/page evidence suggests the snippet mismatches intent. A manual Google search can differ by location, device, and personalization, so do not treat it as authoritative reproduction.`,
       },
     };
   }
@@ -352,8 +352,8 @@ function pickActionAndBuild(
       key: 'investigate_drop',
       item: {
         headline: 'Search traffic for one of your queries dropped this week',
-        why: `Search Console recorded ${bigDrop.prevClicks} clicks for '${bigDrop.query}' last week and ${bigDrop.currentClicks} this week. That is a measured decline, but Search Console alone does not establish whether the cause was ranking movement, demand, SERP features, a site change, or competition.`,
-        how: `1. In Search Console, filter to '${bigDrop.query}' for both weeks and compare Pages, impressions, CTR, average position, Devices, and Countries.\n2. Review site changes made before the decline and treat them as hypotheses, not proven causes.\n3. If the same page lost useful visibility across supporting metrics, investigate that page and its search intent before changing it.`,
+        why: `Search Console recorded ${bigDrop.prevClicks} clicks for '${escapeMarkdownInline(bigDrop.query)}' last week and ${bigDrop.currentClicks} this week. That is a measured decline, but Search Console alone does not establish whether the cause was ranking movement, demand, SERP features, a site change, or competition.`,
+        how: `1. In Search Console, filter to '${escapeMarkdownInline(bigDrop.query)}' for both weeks and compare Pages, impressions, CTR, average position, Devices, and Countries.\n2. Review site changes made before the decline and treat them as hypotheses, not proven causes.\n3. If the same page lost useful visibility across supporting metrics, investigate that page and its search intent before changing it.`,
       },
     };
   }
@@ -366,8 +366,8 @@ function pickActionAndBuild(
       key: 'promote_rising',
       item: {
         headline: 'One of your queries is gaining clicks — inspect the opportunity',
-        why: `'${risingWithWeakerAveragePosition.query}' is bringing more clicks than last week and has an average Search Console position of ${risingWithWeakerAveragePosition.currentPosition.toFixed(1)}. Average position is not a literal current rank or page number; it averages the topmost result position across recorded impressions.`,
-        how: `1. In Search Console, filter to '${risingWithWeakerAveragePosition.query}' for the same date range.\n2. Review the Pages, Devices, and Countries dimensions to see where the extra clicks and impressions came from.\n3. If one page is clearly gaining useful visibility, improve that page based on the query intent and evidence you see rather than assuming an average position maps to a specific results page.`,
+        why: `'${escapeMarkdownInline(risingWithWeakerAveragePosition.query)}' is bringing more clicks than last week and has an average Search Console position of ${risingWithWeakerAveragePosition.currentPosition.toFixed(1)}. Average position is not a literal current rank or page number; it averages the topmost result position across recorded impressions.`,
+        how: `1. In Search Console, filter to '${escapeMarkdownInline(risingWithWeakerAveragePosition.query)}' for the same date range.\n2. Review the Pages, Devices, and Countries dimensions to see where the extra clicks and impressions came from.\n3. If one page is clearly gaining useful visibility, improve that page based on the query intent and evidence you see rather than assuming an average position maps to a specific results page.`,
       },
     };
   }
@@ -394,6 +394,14 @@ function pickActionAndBuild(
   };
 }
 
+function escapeMarkdownInline(value: string): string {
+  return value.replace(/[\x00-\x1f\x7f]+/g, ' ')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/([\\`*_{}\[\]()#+.!|~-])/g, '\\$1');
+}
+
 function renderMarkdown(data: {
   siteUrl: string;
   dates: DateRanges;
@@ -414,7 +422,7 @@ function renderMarkdown(data: {
     lines.push('');
   }
 
-  lines.push(`# Your weekly site report — ${siteName}`);
+  lines.push(`# Your weekly site report — ${escapeMarkdownInline(siteName)}`);
   lines.push(`### Week of ${dates.currentStart} to ${dates.currentEnd}`);
   lines.push('');
   lines.push('## Quick numbers');
@@ -447,7 +455,7 @@ function renderMarkdown(data: {
     lines.push('');
     for (const m of movers.rising) {
       lines.push(
-        `- **"${m.query}"** — ${m.currentClicks} clicks this week (was ${m.prevClicks} last week). Average position ${m.currentPosition.toFixed(1)}.`,
+        `- **"${escapeMarkdownInline(m.query)}"** — ${m.currentClicks} clicks this week (was ${m.prevClicks} last week). Average position ${m.currentPosition.toFixed(1)}.`,
       );
     }
     lines.push('');
@@ -458,7 +466,7 @@ function renderMarkdown(data: {
     lines.push('');
     for (const m of movers.falling) {
       lines.push(
-        `- **"${m.query}"** — ${m.currentClicks} clicks this week (was ${m.prevClicks} last week). Average position ${m.currentPosition.toFixed(1)}.`,
+        `- **"${escapeMarkdownInline(m.query)}"** — ${m.currentClicks} clicks this week (was ${m.prevClicks} last week). Average position ${m.currentPosition.toFixed(1)}.`,
       );
     }
     lines.push('');
@@ -469,7 +477,7 @@ function renderMarkdown(data: {
     lines.push('');
     for (const m of movers.newImpressions) {
       lines.push(
-        `- **"${m.query}"** — ${m.currentImpressions} impressions this week (was ${m.prevImpressions} last week).`,
+        `- **"${escapeMarkdownInline(m.query)}"** — ${m.currentImpressions} impressions this week (was ${m.prevImpressions} last week).`,
       );
     }
     lines.push('');
@@ -516,7 +524,7 @@ function renderMarkdown(data: {
   } else {
     for (const p of topPages) {
       lines.push(
-        `- **${relativePagePath(p.page)}** — ${formatNumber(p.clicks)} clicks, ${formatNumber(p.impressions)} times shown.`,
+        `- **${escapeMarkdownInline(relativePagePath(p.page))}** — ${formatNumber(p.clicks)} clicks, ${formatNumber(p.impressions)} times shown.`,
       );
     }
   }
@@ -533,7 +541,7 @@ function renderMarkdown(data: {
   lines.push('---');
   lines.push('');
   lines.push(
-    `*This report covers ${siteUrl} from ${dates.currentStart} to ${dates.currentEnd}. Data comes from Google Search Console.*`,
+    `*This report covers ${escapeMarkdownInline(siteUrl)} from ${dates.currentStart} to ${dates.currentEnd}. Data comes from Google Search Console.*`,
   );
   lines.push('');
   lines.push('<details>');
