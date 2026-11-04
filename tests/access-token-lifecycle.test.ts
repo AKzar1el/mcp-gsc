@@ -153,6 +153,52 @@ test('GoogleAccessTokenLifecycle refreshes when the cached token is no longer sa
   assert.equal(refreshCalls, 2);
 });
 
+test('GoogleAccessTokenLifecycle invalidates only the reconnected user cache', async () => {
+  const refreshTokens = new Map([['user-a', 'old-grant'], ['user-b', 'other-grant']]);
+  const calls: string[] = [];
+  const fixture = createLifecycle({
+    getDecryptedRefreshToken: async (_env, googleId) => refreshTokens.get(googleId) ?? null,
+    refreshAccessToken: async (refreshToken) => {
+      calls.push(refreshToken);
+      return { access_token: `access:${refreshToken}`, expires_in: 3_600 };
+    },
+  });
+
+  assert.equal(await fixture.lifecycle.getAccessToken('user-a'), 'access:old-grant');
+  assert.equal(await fixture.lifecycle.getAccessToken('user-b'), 'access:other-grant');
+  refreshTokens.set('user-a', 'new-grant');
+  fixture.lifecycle.invalidate('user-a');
+  assert.equal(await fixture.lifecycle.getAccessToken('user-a'), 'access:new-grant');
+  assert.equal(await fixture.lifecycle.getAccessToken('user-b'), 'access:other-grant');
+  assert.deepEqual(calls, ['old-grant', 'other-grant', 'new-grant']);
+});
+
+test('GoogleAccessTokenLifecycle cannot restore an old in-flight token after reconnection', async () => {
+  let grant = 'old-grant';
+  let finishOld!: (value: { access_token: string; expires_in: number }) => void;
+  let oldStarted!: () => void;
+  const oldStartedPromise = new Promise<void>((resolve) => { oldStarted = resolve; });
+  const fixture = createLifecycle({
+    getDecryptedRefreshToken: async () => grant,
+    refreshAccessToken: async (refreshToken) => {
+      if (refreshToken === 'old-grant') {
+        oldStarted();
+        return new Promise((resolve) => { finishOld = resolve; });
+      }
+      return { access_token: 'new-access', expires_in: 3_600 };
+    },
+  });
+
+  const earlier = fixture.lifecycle.getAccessToken('user-a');
+  await oldStartedPromise;
+  grant = 'new-grant';
+  fixture.lifecycle.invalidate('user-a');
+  assert.equal(await fixture.lifecycle.getAccessToken('user-a'), 'new-access');
+  finishOld({ access_token: 'old-access', expires_in: 3_600 });
+  assert.equal(await earlier, 'new-access');
+  assert.equal(await fixture.lifecycle.getAccessToken('user-a'), 'new-access');
+});
+
 test('GoogleAccessTokenLifecycle gives reconnect guidance without deleting stored credentials', async () => {
   const fixture = createLifecycle({
     refreshAccessToken: async () => {
