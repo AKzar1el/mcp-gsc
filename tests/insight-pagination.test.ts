@@ -237,3 +237,19 @@ test('byte-limited insight continuation counts the last emitted source index', (
   assert.equal(page.resultPage.byte_limit_reached, true);
   assert.equal(page.resultPage.next_start_row, 42);
 });
+
+test('oversized first source row still provides a progressing continuation cursor', () => {
+  const oversized = 'x'.repeat(48_000);
+  const page = windowSourceRows([oversized, 'next-row'], 10, 2, false);
+  assert.deepEqual(page.items, []);
+  assert.equal(page.resultPage.byte_limit_reached, true);
+  assert.equal(page.resultPage.has_more, true);
+  assert.equal(page.resultPage.next_start_row, 11);
+
+  // Insight results can filter source rows before applying the byte limit.
+  const filtered = windowSourceRows([oversized, 'next-row'], 40, 2, false, undefined, [2, 4]);
+  assert.equal(filtered.resultPage.next_start_row, 43);
+  const continuation = windowSourceRows(['next-row'], 43, 2, false);
+  assert.deepEqual(continuation.items, ['next-row']);
+  assert.equal(continuation.resultPage.has_more, false);
+});

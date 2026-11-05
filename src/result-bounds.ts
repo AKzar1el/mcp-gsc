@@ -138,6 +138,10 @@ export function windowSourceRows<T>(
     resultPage.next_start_row = sourceNextStartRow;
   } else if (localContinuation && returnedCount > 0 && sourceRowOffsets) {
     resultPage.next_start_row = sourceStartRow + sourceRowOffsets[returnedCount - 1] + 1;
+  } else if (localContinuation && bounded.byteLimitReached && returnedCount === 0 && items.length > 0) {
+    // One oversized source row cannot be returned within the byte ceiling.
+    // Advance past it instead of leaving clients stuck on an unpageable offset.
+    resultPage.next_start_row = sourceStartRow + (sourceRowOffsets?.[0] ?? 0) + 1;
   }
   return { items: bounded.items, resultPage };
 }
