@@ -103,6 +103,33 @@ test('eligibility fetch ignores structured-data-looking markup inside inert text
   assert.equal(result.eligible, false);
 });
 
+test('eligibility rejects structured data hidden after an inner template closes', async () => {
+  const hiddenJsonLd = '<template><template></template>' +
+    '<script type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting"}</script>' +
+    '</template>';
+  const hiddenMicrodata = '<template><template></template>' +
+    '<main itemscope itemtype="https://schema.org/JobPosting">Not active</main>' +
+    '</template>';
+  for (const html of [hiddenJsonLd, hiddenMicrodata]) {
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingEligibility('https://example.com/jobs/hidden'),
+    );
+    assert.equal(result.eligible, false, html);
+  }
+});
+
+test('eligibility still accepts active JSON-LD after nested templates', async () => {
+  const html = '<template><template></template><p>Inactive</p></template>' +
+    '<script>const example = "<template>";</script>' +
+    jobPostingHtml();
+  const result = await withMockFetch(
+    async () => htmlResponse(html),
+    () => checkIndexingEligibility('https://example.com/jobs/active'),
+  );
+  assert.deepEqual(result, { eligible: true });
+});
+
 test('eligibility ignores commented and inert JSON-LD and prefixed schema attributes', async () => {
   for (const html of [
     '<!-- <script type="application/ld+json">{"@type":"JobPosting"}</script> -->',
@@ -268,6 +295,7 @@ test('removal eligibility ignores inert and prefixed robots meta attributes', as
     '<html><head><meta data-name="robots" content="noindex"></head><body>Live</body></html>',
     '<html><head><script>const sample = \'<meta name="robots" content="noindex">\';</script></head><body>Live</body></html>',
     '<html><head><template><meta name="robots" content="noindex"></template></head><body>Live</body></html>',
+    '<html><head><template><template></template><meta name="robots" content="noindex"></template></head><body>Live</body></html>',
   ]) {
     const result = await withMockFetch(
       async () => htmlResponse(html),

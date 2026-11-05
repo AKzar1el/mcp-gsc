@@ -1476,9 +1476,34 @@ function stripHtmlComments(html: string): string {
   return html.replace(/<!--[\s\S]*?-->/g, '');
 }
 
+function stripTemplateContents(html: string): string {
+  // An outer <template> stays inert after an inner template closes. Match
+  // script/style blocks as a unit so their literal tag text cannot affect depth.
+  const tokens = /<script\b[^>]*>[\s\S]*?<\/script\s*>|<style\b[^>]*>[\s\S]*?<\/style\s*>|<\/?template\b[^>]*>/gi;
+  const visible: string[] = [];
+  let depth = 0;
+  let consumed = 0;
+  let match: RegExpExecArray | null;
+  while ((match = tokens.exec(html)) !== null) {
+    if (depth === 0) visible.push(html.slice(consumed, match.index));
+    if (/^<\/template\b/i.test(match[0])) {
+      if (depth > 0) depth -= 1;
+      else visible.push(match[0]);
+    } else if (/^<template\b/i.test(match[0])) {
+      depth += 1;
+    } else if (depth === 0) {
+      visible.push(match[0]);
+    }
+    consumed = tokens.lastIndex;
+  }
+  // An unclosed template is not evidence of active structured data.
+  if (depth === 0) visible.push(html.slice(consumed));
+  return visible.join('');
+}
+
 function stripInertHtml(html: string): string {
-  return stripHtmlComments(html).replace(
-    /<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+  return stripTemplateContents(stripHtmlComments(html)).replace(
+    /<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
     '',
   );
 }
@@ -1642,10 +1667,7 @@ export async function checkIndexingEligibility(
   }
 
   // A script in a comment or inert template is not page structured data.
-  const activeHtml = stripHtmlComments(html).replace(
-    /<template\b[^>]*>[\s\S]*?<\/template\s*>/gi,
-    '',
-  );
+  const activeHtml = stripTemplateContents(stripHtmlComments(html));
   const types = new Set<string>();
   let hasVideoBroadcast = false;
   const scriptPattern = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
