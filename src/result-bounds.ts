@@ -101,8 +101,10 @@ export function resultPageMetadata(input: {
     has_more: hasMore,
     truncated: hasMore || byteLimitReached,
     byte_limit_reached: byteLimitReached,
-    ...(hasMore && returnedCount > 0
-      ? { next_start_row: startRow + returnedCount }
+    // A byte-limit hit with zero returned items means the first candidate is
+    // unrepresentable; skip that item so known-result pagination can progress.
+    ...(hasMore && (returnedCount > 0 || byteLimitReached)
+      ? { next_start_row: startRow + Math.max(1, returnedCount) }
       : {}),
   };
 }
