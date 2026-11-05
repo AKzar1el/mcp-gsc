@@ -276,7 +276,7 @@ test('weekly digest ranks impression-only queries by net growth, not current imp
     ),
   );
 
-  const moversSection = report.split('### New searches showing your site')[1] ?? '';
+  const moversSection = report.split('### Queries gaining impressions without clicks')[1] ?? '';
   const higherGrowth = moversSection.indexOf('**"gain\\-98"**');
   const lowerGrowth = moversSection.indexOf('**"gain\\-96"**');
   assert.ok(higherGrowth >= 0 && lowerGrowth >= 0, 'both impression movers are reported');

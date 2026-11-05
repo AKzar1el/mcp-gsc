@@ -327,6 +327,16 @@ function pickActionAndBuild(
     )[0];
 
     if (!topRealQuery) {
+      if (currentQueries.length === 0) {
+        return {
+          key: 'ctr_zero',
+          item: {
+            headline: 'Search impressions recorded without visible query rows',
+            why: "Search Console recorded " + formatNumber(currentTotals.impressions) + " impressions and zero clicks, but returned no query rows in this bounded result. Missing rows do not establish which searches produced the impressions.",
+            how: "1. Open Search Console's Performance report for the same date range and review Queries and Pages together.\n2. Compare impressions, CTR, and average position for visible query/page pairs before changing content or snippets.\n3. Treat missing query rows as limited evidence, not proof that impressions came from search-operator checks.",
+          },
+        };
+      }
       return {
         key: 'ctr_zero',
         item: {
@@ -474,7 +484,7 @@ function renderMarkdown(data: {
   }
 
   if (movers.newImpressions.length > 0) {
-    lines.push('### New searches showing your site');
+    lines.push('### Queries gaining impressions without clicks');
     lines.push('');
     for (const m of movers.newImpressions) {
       lines.push(
