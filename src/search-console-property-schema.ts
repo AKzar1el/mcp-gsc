@@ -11,15 +11,21 @@ export type SearchConsolePropertyIdentifierKind =
 function isDomainPropertyIdentifier(value: string): boolean {
   if (!value.startsWith('sc-domain:')) return false;
   const domain = value.slice('sc-domain:'.length);
-  return (
-    domain.length > 0 &&
-    !/\s/.test(domain) &&
-    !domain.includes('/') &&
-    !domain.includes('?') &&
-    !domain.includes('#') &&
-    !domain.includes('@') &&
-    !domain.includes(':')
-  );
+  if (!domain || /[\s/?#@:%\\]/.test(domain)) return false;
+  try {
+    // IDN hosts need ASCII label-length validation, but the original property ID
+    // must still be sent to Google unchanged.
+    const hostname = new URL(`https://${domain}/`).hostname;
+    const asciiDomain = hostname.endsWith('.') ? hostname.slice(0, -1) : hostname;
+    if (asciiDomain.length > 253) return false;
+    return asciiDomain.split('.').every(
+      (label) =>
+        label.length <= 63 &&
+        /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(label),
+    );
+  } catch {
+    return false;
+  }
 }
 
 function isUrlPrefixPropertyIdentifier(value: string): boolean {
