@@ -103,6 +103,28 @@ test('eligibility fetch ignores structured-data-looking markup inside inert text
   assert.equal(result.eligible, false);
 });
 
+test('eligibility ignores structured-data examples in HTML raw-text containers', async () => {
+  const samples = [
+    '<textarea>' + jobPostingHtml() + '</textarea>',
+    '<xmp><main itemscope itemtype="https://schema.org/JobPosting"></main></xmp>',
+    '<title><main itemscope itemtype="https://schema.org/JobPosting"></main></title>',
+    '<iframe>' + jobPostingHtml() + '</iframe>',
+    '<template><textarea>literal </template><main itemscope itemtype="https://schema.org/JobPosting"></main></textarea></template>',
+  ];
+  for (const html of samples) {
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingEligibility('https://example.com/jobs/raw-text-sample'),
+    );
+    assert.equal(result.eligible, false, html);
+  }
+  const activeAfterSample = await withMockFetch(
+    async () => htmlResponse('<textarea>' + jobPostingHtml() + '</textarea>' + jobPostingHtml()),
+    () => checkIndexingEligibility('https://example.com/jobs/active-after-sample'),
+  );
+  assert.deepEqual(activeAfterSample, { eligible: true });
+});
+
 test('eligibility rejects structured data hidden after an inner template closes', async () => {
   const hiddenJsonLd = '<template><template></template>' +
     '<script type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting"}</script>' +
@@ -294,6 +316,7 @@ test('removal eligibility ignores inert and prefixed robots meta attributes', as
     '<html><head><meta name="robots" data-content="noindex"></head><body>Live</body></html>',
     '<html><head><meta data-name="robots" content="noindex"></head><body>Live</body></html>',
     '<html><head><script>const sample = \'<meta name="robots" content="noindex">\';</script></head><body>Live</body></html>',
+    '<html><head><title><meta name="robots" content="noindex"></title></head><body>Live</body></html>',
     '<html><head><template><meta name="robots" content="noindex"></template></head><body>Live</body></html>',
     '<html><head><template><template></template><meta name="robots" content="noindex"></template></head><body>Live</body></html>',
   ]) {

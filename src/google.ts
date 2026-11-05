@@ -1478,8 +1478,8 @@ function stripHtmlComments(html: string): string {
 
 function stripTemplateContents(html: string): string {
   // An outer <template> stays inert after an inner template closes. Match
-  // script/style blocks as a unit so their literal tag text cannot affect depth.
-  const tokens = /<script\b[^>]*>[\s\S]*?<\/script\s*>|<style\b[^>]*>[\s\S]*?<\/style\s*>|<\/?template\b[^>]*>/gi;
+  // raw-text elements as units so literal template tags cannot affect depth.
+  const tokens = /<(script|style|textarea|title|xmp|iframe|noembed|noframes)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)|<\/?template\b[^>]*>/gi;
   const visible: string[] = [];
   let depth = 0;
   let consumed = 0;
@@ -1501,9 +1501,18 @@ function stripTemplateContents(html: string): string {
   return visible.join('');
 }
 
+function stripNonScriptRawTextContainers(html: string): string {
+  // HTML parsers treat markup-looking text here as text, not active elements.
+  // Keep scripts for the separate JSON-LD scan, but discard these samples.
+  return html.replace(
+    /<(textarea|title|xmp|iframe|noembed|noframes)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi,
+    '',
+  );
+}
+
 function stripInertHtml(html: string): string {
-  return stripTemplateContents(stripHtmlComments(html)).replace(
-    /<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi,
+  return stripNonScriptRawTextContainers(stripTemplateContents(stripHtmlComments(html))).replace(
+    /<(script|style)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)/gi,
     '',
   );
 }
@@ -1667,7 +1676,7 @@ export async function checkIndexingEligibility(
   }
 
   // A script in a comment or inert template is not page structured data.
-  const activeHtml = stripTemplateContents(stripHtmlComments(html));
+  const activeHtml = stripNonScriptRawTextContainers(stripTemplateContents(stripHtmlComments(html)));
   const types = new Set<string>();
   let hasVideoBroadcast = false;
   const scriptPattern = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
