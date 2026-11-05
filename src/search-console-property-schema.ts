@@ -23,7 +23,7 @@ function isDomainPropertyIdentifier(value: string): boolean {
 }
 
 function isUrlPrefixPropertyIdentifier(value: string): boolean {
-  if (value !== value.trim() || /\s/.test(value) || /[?#]/.test(value)) return false;
+  if (value !== value.trim() || /\s/.test(value) || /[?#\\]/.test(value)) return false;
   try {
     const parsed = new URL(value);
     return (

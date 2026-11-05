@@ -138,6 +138,7 @@ test('Search Console property schema accepts documented Domain and URL-prefix fo
     'http://example.com/blog/',
     'https://example.com',
     'https://example.com/blog%3Fsection/',
+    'https://example.com/path%5Cencoded/',
   ]) {
     assert.equal(SEARCH_CONSOLE_PROPERTY_SCHEMA.safeParse(property).success, true, property);
   }
@@ -161,6 +162,8 @@ test('Search Console property schema rejects malformed and unsupported identifie
     'https://example.com/blog/#section',
     'https://example.com/?',
     'https://example.com/#',
+    'https://example.com\\unsafe/path/',
+    'https://example.com\\@other.test/',
   ]) {
     assert.equal(SEARCH_CONSOLE_PROPERTY_SCHEMA.safeParse(property).success, false, property);
   }
@@ -171,6 +174,10 @@ test('Search Console property classifier distinguishes documented API forms with
   assert.equal(
     classifySearchConsolePropertyIdentifier('https://www.example.com/blog/'),
     'url_prefix',
+  );
+  assert.equal(
+    classifySearchConsolePropertyIdentifier('https://example.com\\unsafe/path/'),
+    'undocumented',
   );
   assert.equal(
     classifySearchConsolePropertyIdentifier('instagram.com/example_creator'),
