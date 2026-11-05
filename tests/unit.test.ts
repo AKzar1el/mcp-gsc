@@ -134,6 +134,9 @@ test('Search Console property schema accepts documented Domain and URL-prefix fo
   for (const property of [
     'sc-domain:example.com',
     'sc-domain:sub.example.co.uk',
+    'sc-domain:xn--bcher-kva.example',
+    'sc-domain:bücher.example',
+    'sc-domain:example.com.',
     'https://www.example.com/',
     'http://example.com/blog/',
     'https://example.com',
@@ -156,6 +159,16 @@ test('Search Console property schema rejects malformed and unsupported identifie
     'sc-domain:https://example.com',
     'sc-domain:example.com/path',
     'sc-domain:example.com:443',
+    'sc-domain:.example.com',
+    'sc-domain:example..com',
+    'sc-domain:example.com..',
+    'sc-domain:-example.com',
+    'sc-domain:example-.com',
+    'sc-domain:example.-com',
+    'sc-domain:exa_mple.com',
+    'sc-domain:exa%mple.com',
+    `sc-domain:${'a'.repeat(64)}.example`,
+    `sc-domain:${Array(5).fill('a'.repeat(51)).join('.')}`,
     'https://example.com/?utm_source=test',
     'https://example.com/blog/?page=2',
     'https://example.com/#section',
@@ -171,6 +184,7 @@ test('Search Console property schema rejects malformed and unsupported identifie
 
 test('Search Console property classifier distinguishes documented API forms without guessing platform-property identifiers', () => {
   assert.equal(classifySearchConsolePropertyIdentifier('sc-domain:example.com'), 'domain');
+  assert.equal(classifySearchConsolePropertyIdentifier('sc-domain:example..com'), 'undocumented');
   assert.equal(
     classifySearchConsolePropertyIdentifier('https://www.example.com/blog/'),
     'url_prefix',
