@@ -100,6 +100,8 @@ describe('OAuth discovery', () => {
     expect(metadata.code_challenge_methods_supported).toEqual(['S256']);
   });
 
+  // These multi-step flows replace global fetch; avoid a short timeout that
+  // lets the next test start before the previous flow restores its mock.
   it('completes a DCR authorization flow and revokes the previous bearer token on reconnect', async () => {
     const redirectUri = 'https://client.example/callback';
     const resource = 'https://worker.example/mcp';
@@ -235,7 +237,7 @@ describe('OAuth discovery', () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
-  });
+  }, 15_000);
 
   it('keeps CIMD installations independent while revoking only the reconnected installation', async () => {
     const clientId = 'https://client.example/oauth/client.json';
@@ -359,7 +361,7 @@ describe('OAuth discovery', () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
-  });
+  }, 15_000);
 
   it('requires explicit client consent and returns denial to the validated OAuth client', async () => {
     const redirectUri = 'https://client.example/callback';
