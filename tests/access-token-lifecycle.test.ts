@@ -566,6 +566,42 @@ test('weekly digest does not infer zero page impressions from an empty Pages res
   }
 });
 
+test('weekly digest does not infer query distribution from missing query rows on growth', async () => {
+  const restoreFetch = installDigestAnalyticsMock([], {
+    currentTotals: { clicks: 2, impressions: 40, ctr: 0.05, position: 8 },
+    previousTotals: { clicks: 2, impressions: 10, ctr: 0.2, position: 8 },
+    previousQueryRows: [],
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.match(digest, /search impressions this week \(\+300%\)/i);
+    assert.match(digest, /aggregate does not identify which queries drove this change/i);
+    assert.doesNotMatch(digest, /spread across lots of small queries|no single query stood out/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest does not infer query distribution from missing query rows on decline', async () => {
+  const restoreFetch = installDigestAnalyticsMock([], {
+    currentTotals: { clicks: 2, impressions: 10, ctr: 0.2, position: 8 },
+    previousTotals: { clicks: 2, impressions: 40, ctr: 0.05, position: 8 },
+    previousQueryRows: [],
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.match(digest, /fewer search impressions this week \(-75%\)/i);
+    assert.match(digest, /aggregate does not identify which queries drove this change/i);
+    assert.doesNotMatch(digest, /spread across many queries|no single query stood out/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test('weekly digest does not treat a query missing from one bounded response as zero', async () => {
   const fixture = createLifecycle();
   const restoreFetch = installDigestAnalyticsMock(
