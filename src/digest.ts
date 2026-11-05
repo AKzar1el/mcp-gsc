@@ -90,17 +90,9 @@ export async function generateWeeklyDigest(
   const latestConservativeEndDate = resolveWeeklyDigestEndDate(
     undefined, getSearchConsoleCalendarDate(),
   );
-  if (endDate > latestConservativeEndDate) {
-    return [
-      `# Your weekly site report - ${escapeMarkdownInline(siteDisplayName(siteUrl))}`,
-      `### Requested week ending ${endDate}`,
-      '',
-      '## Data availability',
-      `The requested end date is newer than the conservative finalized-data cutoff ${latestConservativeEndDate}.`,
-      'A complete week-over-week comparison cannot be established while recent Search Console dates may still be processing.',
-      `No traffic-change claims or SEO action recommendations are provided. Choose an end date on or before ${latestConservativeEndDate} and retry.`,
-    ].join('\n');
-  }
+  const isPreliminary = endDate > latestConservativeEndDate;
+  // Explicit recent dates opt into Google's fresh rows; historical/default dates remain finalized-only.
+  const requestedDataState = isPreliminary ? 'all' : 'final';
   const accessToken = await accessTokens.getAccessToken(googleId);
 
   const [
@@ -115,37 +107,82 @@ export async function generateWeeklyDigest(
       endDate: dates.currentEnd,
       dimensions: [],
       rowLimit: 1,
-      dataState: 'final',
+      dataState: requestedDataState,
     }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.prevStart,
       endDate: dates.prevEnd,
       dimensions: [],
       rowLimit: 1,
-      dataState: 'final',
+      dataState: requestedDataState,
     }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.currentStart,
       endDate: dates.currentEnd,
       dimensions: ['query'],
       rowLimit: 25,
-      dataState: 'final',
+      dataState: requestedDataState,
     }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.prevStart,
       endDate: dates.prevEnd,
       dimensions: ['query'],
       rowLimit: 25,
-      dataState: 'final',
+      dataState: requestedDataState,
     }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.currentStart,
       endDate: dates.currentEnd,
       dimensions: ['page'],
       rowLimit: 10,
-      dataState: 'final',
+      dataState: requestedDataState,
     }, beforeRetry),
   ]);
+
+  // Fresh totals cannot support finalized week-on-week claims. Show only directly
+  // observed current-week values and clearly mark their provisional nature.
+  if (isPreliminary) {
+    const lines = [
+      `# Your weekly site report - ${escapeMarkdownInline(siteDisplayName(siteUrl))}`,
+      `### Preliminary snapshot for ${dates.currentStart} to ${dates.currentEnd}`,
+      '',
+      '> **Preliminary Search Console data:** Explicitly requested recent dates may include incomplete metrics. Google may revise these values as reporting finishes.',
+      '',
+    ];
+    if (currentTotalsResponse.rows.length === 0) {
+      lines.push(
+        '## Data availability',
+        'Search Console returned no aggregate row yet for the requested week; missing data is not a measured zero.',
+      );
+    } else {
+      const totals = totalsFromRow(currentTotalsResponse.rows[0]);
+      lines.push(
+        '## Available current-week metrics',
+        `- ${formatNumber(totals.clicks)} clicks`,
+        `- ${formatNumber(totals.impressions)} impressions`,
+      );
+      const pages = rowsToPages(currentPagesResponse.rows).slice(0, 3);
+      if (pages.length > 0) {
+        lines.push('', '## Selected returned page rows (not exhaustive)');
+        for (const page of pages) {
+          lines.push(`- ${escapeMarkdownInline(page.page)}: ${formatNumber(page.impressions)} impressions`);
+        }
+      }
+      const queries = rowsToQueries(currentQueriesResponse.rows).slice(0, 3);
+      if (queries.length > 0) {
+        lines.push('', '## Selected returned query rows (not exhaustive)');
+        for (const query of queries) {
+          lines.push(`- ${escapeMarkdownInline(query.query)}: ${formatNumber(query.impressions)} impressions`);
+        }
+      }
+    }
+    lines.push(
+      '',
+      '## Limitations',
+      'No week-over-week comparisons, query-mover conclusions, or SEO action recommendations are made from these preliminary numbers. Recheck after the week is finalized.',
+    );
+    return lines.join('\n');
+  }
 
   // No aggregate row is not a measured zero. Avoid manufacturing a weekly drop
   // or an indexing diagnosis when Search Console returns no data for either week.
