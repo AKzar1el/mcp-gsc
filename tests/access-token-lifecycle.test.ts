@@ -549,6 +549,23 @@ test('weekly digest distinguishes the same path across different hosts', async (
   }
 });
 
+test('weekly digest does not infer zero page impressions from an empty Pages response', async () => {
+  const restoreFetch = installDigestAnalyticsMock([], {
+    currentTotals: { clicks: 0, impressions: 40, ctr: 0, position: 8 },
+    currentPageRows: [],
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.match(digest, /No page-level rows were returned for this period/i);
+    assert.match(digest, /40/);
+    assert.doesNotMatch(digest, /No pages had impressions this week/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test('weekly digest does not treat a query missing from one bounded response as zero', async () => {
   const fixture = createLifecycle();
   const restoreFetch = installDigestAnalyticsMock(

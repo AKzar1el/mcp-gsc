@@ -521,7 +521,7 @@ function renderMarkdown(data: {
   lines.push('');
   const topPages = currentPages.slice(0, 5);
   if (topPages.length === 0) {
-    lines.push('- No pages had impressions this week.');
+    lines.push('- No page-level rows were returned for this period. This does not prove that no pages received search impressions.');
   } else {
     const pagePathCounts = new Map<string, number>();
     for (const page of topPages) {
