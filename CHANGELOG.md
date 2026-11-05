@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Run multi-URL Search Console inspections sequentially instead of three at a time, preserving per-URL safety-budget accounting and stopping immediately on access revocation.
+
 ### Fixed
 - Keep known-result pagination moving when the first insight or property-list item exceeds the structured response byte ceiling, without inventing cursors for genuinely empty pages.
 - Ensure byte-limited Search Analytics pages can continue past an oversized first source row instead of repeatedly returning an unusable cursor; preserve source-row offsets and truncation metadata.
