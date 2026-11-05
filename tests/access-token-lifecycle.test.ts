@@ -322,6 +322,24 @@ test('weekly digest does not infer branded demand from operator-only query rows'
   }
 });
 
+test('weekly digest does not label missing query rows as operator searches', async () => {
+  const restoreFetch = installDigestAnalyticsMock([], {
+    currentTotals: { clicks: 0, impressions: 40, ctr: 0, position: 9 },
+    previousTotals: { clicks: 0, impressions: 35, ctr: 0, position: 10 },
+    previousQueryRows: [],
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.match(digest, /recorded 40 impressions and zero clicks, but returned no query rows/i);
+    assert.doesNotMatch(digest, /visible query rows are search-operator checks|operator-style searches/i);
+    assert.match(digest, /review Queries and Pages together/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test('weekly digest grounds zero-click guidance in Search Console evidence', async () => {
   const fixture = createLifecycle();
   const restoreFetch = installDigestAnalyticsMock([
@@ -653,6 +671,28 @@ test('weekly digest does not treat a query missing from one bounded response as 
     assert.doesNotMatch(digest, /New searches showing your site/i);
     assert.doesNotMatch(digest, /current-only query.*was 0/i);
     assert.doesNotMatch(digest, /previous-only query.*0 clicks this week/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest reports low-to-high returning queries as gains, not new searches', async () => {
+  const restoreFetch = installDigestAnalyticsMock([
+    { keys: ['returning query'], clicks: 0, impressions: 24, ctr: 0, position: 9 },
+  ], {
+    currentTotals: { clicks: 0, impressions: 24, ctr: 0, position: 9 },
+    previousTotals: { clicks: 0, impressions: 3, ctr: 0, position: 10 },
+    previousQueryRows: [
+      { keys: ['returning query'], clicks: 0, impressions: 3, ctr: 0, position: 10 },
+    ],
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.match(digest, /Queries gaining impressions without clicks/i);
+    assert.match(digest, /returning query.*24 impressions this week \(was 3 last week\)/i);
+    assert.doesNotMatch(digest, /New searches showing your site/i);
   } finally {
     restoreFetch();
   }
