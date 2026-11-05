@@ -217,6 +217,35 @@ test('result page metadata exposes truncation and a usable next offset', () => {
   );
 });
 
+test('byte-limited known-result pages advance past an unrepresentable first item', () => {
+  const requested = [{ query: 'x'.repeat(200) }, { query: 'small' }];
+  const bounded = takeBoundedItems(requested, 2, 60);
+  assert.equal(bounded.items.length, 0);
+  assert.equal(bounded.byteLimitReached, true);
+  const page = resultPageMetadata({
+    startRow: 12,
+    limit: 2,
+    returnedCount: bounded.items.length,
+    totalCount: 14,
+    hasMore: true,
+    byteLimitReached: bounded.byteLimitReached,
+  });
+  assert.equal(page.next_start_row, 13);
+  assert.equal(page.has_more, true);
+  assert.equal(page.byte_limit_reached, true);
+});
+
+test('empty provider pages do not manufacture a continuation without a byte-limit signal', () => {
+  const page = resultPageMetadata({
+    startRow: 12,
+    limit: 2,
+    returnedCount: 0,
+    hasMore: true,
+    byteLimitReached: false,
+  });
+  assert.equal(page.next_start_row, undefined);
+});
+
 test('source pagination advances past filtered provider rows instead of repeating them', () => {
   const rows = mapSourceRows(['first', undefined, 'third', undefined], (row) => row);
   const page = windowSourceRows(rows.items, 20, 2, true, 24, rows.sourceRowOffsets);
