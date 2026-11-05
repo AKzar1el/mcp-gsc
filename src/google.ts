@@ -1473,7 +1473,12 @@ function hasEligibleHtmlStructuredData(html: string): boolean {
 }
 
 function stripHtmlComments(html: string): string {
-  return html.replace(/<!--[\s\S]*?-->/g, '');
+  // Comment markers in raw-text/RCDATA elements are text, not HTML comments.
+  // Consume those elements first so a literal "<!--" cannot hide later markup.
+  return html.replace(
+    /<(script|style|textarea|title|xmp|iframe|noembed|noframes)\b[^>]*>[\s\S]*?(?:<\/\1\s*>|$)|<!--[\s\S]*?(?:-->|$)/gi,
+    (token) => token.startsWith('<!--') ? '' : token,
+  );
 }
 
 function stripTemplateContents(html: string): string {
