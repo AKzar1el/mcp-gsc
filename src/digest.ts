@@ -87,6 +87,20 @@ export async function generateWeeklyDigest(
   beforeRetry?: () => Promise<void>,
 ): Promise<string> {
   const dates = computeDateRanges(endDate);
+  const latestConservativeEndDate = resolveWeeklyDigestEndDate(
+    undefined, getSearchConsoleCalendarDate(),
+  );
+  if (endDate > latestConservativeEndDate) {
+    return [
+      `# Your weekly site report - ${escapeMarkdownInline(siteDisplayName(siteUrl))}`,
+      `### Requested week ending ${endDate}`,
+      '',
+      '## Data availability',
+      `The requested end date is newer than the conservative finalized-data cutoff ${latestConservativeEndDate}.`,
+      'A complete week-over-week comparison cannot be established while recent Search Console dates may still be processing.',
+      `No traffic-change claims or SEO action recommendations are provided. Choose an end date on or before ${latestConservativeEndDate} and retry.`,
+    ].join('\n');
+  }
   const accessToken = await accessTokens.getAccessToken(googleId);
 
   const [
@@ -101,35 +115,35 @@ export async function generateWeeklyDigest(
       endDate: dates.currentEnd,
       dimensions: [],
       rowLimit: 1,
-      dataState: 'all',
+      dataState: 'final',
     }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.prevStart,
       endDate: dates.prevEnd,
       dimensions: [],
       rowLimit: 1,
-      dataState: 'all',
+      dataState: 'final',
     }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.currentStart,
       endDate: dates.currentEnd,
       dimensions: ['query'],
       rowLimit: 25,
-      dataState: 'all',
+      dataState: 'final',
     }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.prevStart,
       endDate: dates.prevEnd,
       dimensions: ['query'],
       rowLimit: 25,
-      dataState: 'all',
+      dataState: 'final',
     }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.currentStart,
       endDate: dates.currentEnd,
       dimensions: ['page'],
       rowLimit: 10,
-      dataState: 'all',
+      dataState: 'final',
     }, beforeRetry),
   ]);
 

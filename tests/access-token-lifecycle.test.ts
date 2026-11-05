@@ -6,6 +6,7 @@ import {
   type GoogleAccessTokenEnv,
 } from '../src/access-token-lifecycle';
 import { generateWeeklyDigest } from '../src/digest';
+import { getSearchConsoleCalendarDate } from '../src/date-validation';
 import { GoogleRefreshTokenRevokedError } from '../src/google';
 
 const ENV: GoogleAccessTokenEnv = {
@@ -285,6 +286,41 @@ test('generateWeeklyDigest uses the shared access-token provider', async () => {
     assert.doesNotMatch(digest, /your site is JavaScript-rendered/);
     assert.equal(fixture.refreshCalls, 1);
     assert.deepEqual(authHeaders, Array(5).fill('Bearer access-token-1'));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('weekly digest queries only finalized Search Console data for all five report sections', async () => {
+  const restoreFetch = installDigestAnalyticsMock([]);
+  const originalMockFetch = globalThis.fetch;
+  const dataStates: Array<string | undefined> = [];
+  globalThis.fetch = async (input, init) => {
+    dataStates.push((JSON.parse(String(init?.body)) as { dataState?: string }).dataState);
+    return originalMockFetch(input, init);
+  };
+  try {
+    await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10');
+    assert.deepEqual(dataStates, Array(5).fill('final'));
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest withholds incomplete explicit recent weeks before any Search Analytics request', async () => {
+  const originalFetch = globalThis.fetch;
+  let analyticsCalls = 0;
+  globalThis.fetch = async () => {
+    analyticsCalls += 1;
+    throw new Error('Recent digest should not call Search Analytics');
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', getSearchConsoleCalendarDate(),
+    );
+    assert.match(digest, /recent Search Console dates may still be processing/i);
+    assert.match(digest, /No traffic-change claims or SEO action recommendations/i);
+    assert.equal(analyticsCalls, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }
