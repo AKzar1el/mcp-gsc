@@ -995,13 +995,13 @@ test('URL inspection guidance routes bounded multi-URL work to the batch tool', 
   );
   assert.match(
     indexSource,
-    /Requests use bounded concurrency of \$\{URL_INSPECTION_BATCH_CONCURRENCY\}/,
-    'runtime batch guidance must keep bounded concurrency machine-visible',
+    /Requests inspect URLs sequentially and preserve input order/,
+    'runtime batch guidance must describe sequential URL inspection',
   );
   assert.match(
     readmeSource,
-    /urls\.inspect_many[^\n]*bounded concurrency of 3/i,
-    'README must document the bounded URL inspection concurrency',
+    /urls\.inspect_many[^\n]*sequentially/i,
+    'README must document sequential URL inspection',
   );
 });
 

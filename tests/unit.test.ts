@@ -983,7 +983,7 @@ test('summarizeUrlInspectionIndexStatus: treats excluded/error verdicts as not i
   assert.deepEqual(summarizeUrlInspectionIndexStatus(null), { indexed_state: 'unknown' });
 });
 
-test('inspectUrlsBoundedConcurrently: caps in-flight inspections at three', async () => {
+test('inspectUrlsBoundedConcurrently: processes URL inspections strictly one at a time', async () => {
   let active = 0;
   let maxActive = 0;
   const urls = Array.from({ length: 7 }, (_, index) => `https://example.com/${index + 1}`);
@@ -1000,9 +1000,9 @@ test('inspectUrlsBoundedConcurrently: caps in-flight inspections at three', asyn
     () => inspectUrlsBoundedConcurrently('at', 'https://example.com/', urls, 'en-US'),
   );
 
-  assert.equal(URL_INSPECTION_BATCH_CONCURRENCY, 3);
+  assert.equal(URL_INSPECTION_BATCH_CONCURRENCY, 1);
   assert.equal(calls.length, urls.length);
-  assert.equal(maxActive, URL_INSPECTION_BATCH_CONCURRENCY);
+  assert.equal(maxActive, 1);
   assert.deepEqual(
     result.map((entry) => entry.inspectionUrl),
     urls,
@@ -1108,7 +1108,7 @@ test('querySearchAnalytics: retries a transient 429 and preserves the POST body'
   assert.deepEqual(result.rows[0]?.keys, ['retry-safe']);
 });
 
-test('inspectUrlsBoundedConcurrently: access revocation prevents later chunks from starting', async () => {
+test('inspectUrlsBoundedConcurrently: access revocation prevents later inspections from starting', async () => {
   const urls = [
     'https://example.com/a',
     'https://example.com/b',
@@ -1136,10 +1136,10 @@ test('inspectUrlsBoundedConcurrently: access revocation prevents later chunks fr
     globalThis.fetch = original;
   }
 
-  assert.equal(calls.length, URL_INSPECTION_BATCH_CONCURRENCY);
+  assert.equal(calls.length, 1);
   assert.deepEqual(
     calls.map((call) => JSON.parse(String(call.init?.body)).inspectionUrl),
-    urls.slice(0, URL_INSPECTION_BATCH_CONCURRENCY),
+    urls.slice(0, 1),
   );
 });
 
