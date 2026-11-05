@@ -152,6 +152,26 @@ test('eligibility still accepts active JSON-LD after nested templates', async ()
   assert.deepEqual(result, { eligible: true });
 });
 
+test('eligibility preserves active JSON-LD after literal HTML comment openers in CSS', async () => {
+  const html = '<style>.sample::before { content: "<!--"; }</style>' +
+    jobPostingHtml() + '<!-- unrelated actual HTML comment -->';
+  const result = await withMockFetch(
+    async () => htmlResponse(html),
+    () => checkIndexingEligibility('https://example.com/jobs/active-after-style'),
+  );
+  assert.deepEqual(result, { eligible: true });
+});
+
+test('eligibility ignores real HTML comments after literal comment pairs in CSS', async () => {
+  const html = '<style>/* <!-- --> */</style>' +
+    '<!-- ' + jobPostingHtml() + ' -->';
+  const result = await withMockFetch(
+    async () => htmlResponse(html),
+    () => checkIndexingEligibility('https://example.com/jobs/comment-only'),
+  );
+  assert.equal(result.eligible, false);
+});
+
 test('eligibility ignores commented and inert JSON-LD and prefixed schema attributes', async () => {
   for (const html of [
     '<!-- <script type="application/ld+json">{"@type":"JobPosting"}</script> -->',
@@ -293,6 +313,17 @@ test('removal eligibility accepts a robots noindex meta directive in the documen
     );
     assert.deepEqual(result, { eligible: true });
   }
+});
+
+test('removal eligibility preserves real noindex after literal comment opener in CSS', async () => {
+  const html = '<head><style>.sample::before { content: "<!--"; }</style>' +
+    '<meta name="robots" content="noindex"></head><body>Retired</body>' +
+    '<!-- unrelated actual HTML comment -->';
+  const result = await withMockFetch(
+    async () => htmlResponse(html),
+    () => checkIndexingRemovalEligibility('https://example.com/jobs/retired'),
+  );
+  assert.deepEqual(result, { eligible: true });
 });
 
 test('removal eligibility rejects an ordinary live page and noindex outside the document head', async () => {
