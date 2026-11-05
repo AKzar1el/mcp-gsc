@@ -506,7 +506,7 @@ function renderMarkdown(data: {
       lines.push('### Site-level changes');
       lines.push('');
       lines.push(
-        `Your overall numbers moved this week, but no single query stood out as the driver. ${describeSiteLevelMove(siteImpressionsChangePct, siteClicksChangePct, sitePositionDelta)}`,
+        `Your overall numbers moved this week, but the available query rows do not establish which queries drove the change. ${describeSiteLevelMove(siteImpressionsChangePct, siteClicksChangePct, sitePositionDelta)}`,
       );
       lines.push('');
     } else {
@@ -691,9 +691,9 @@ function describeSiteLevelMove(
       return 'Your site recorded search impressions this week after the previous period recorded none. A percentage change is unavailable from a zero baseline; inspect Queries and Pages to see where the new visibility appeared.';
     }
     if (impressionsChangePct >= 25) {
-      return `Your site recorded many more search impressions this week (+${impressionsChangePct.toFixed(0)}%), but the increase was spread across lots of small queries rather than one big winner.`;
+      return `Your site recorded many more search impressions this week (+${impressionsChangePct.toFixed(0)}%). The aggregate does not identify which queries drove this change; inspect Query and Page rows in Search Console.`;
     }
-    return `Your site recorded fewer search impressions this week (${impressionsChangePct.toFixed(0)}%). The drop is spread across many queries rather than one specific search losing traction.`;
+    return `Your site recorded fewer search impressions this week (${impressionsChangePct.toFixed(0)}%). The aggregate does not identify which queries drove this change; inspect Query and Page rows in Search Console.`;
   }
 
   if (winner.metric === 'position') {
