@@ -151,6 +151,23 @@ test('eligibility fetch accepts JobPosting Microdata and RDFa', async () => {
   }
 });
 
+test('eligibility requires itemscope before treating itemtype as Microdata', async () => {
+  const cases = [
+    { html: '<main itemtype="https://schema.org/JobPosting">Job listing</main>', eligible: false },
+    { html: '<main data-note="itemscope" itemtype="https://schema.org/JobPosting">Job listing</main>', eligible: false },
+    { html: '<div itemtype="https://schema.org/VideoObject"><div itemscope itemtype="https://schema.org/BroadcastEvent"></div></div>', eligible: false },
+    { html: '<main itemscope itemtype="https://schema.org/JobPosting">Job listing</main>', eligible: true },
+    { html: '<main itemscope="false" itemtype="https://schema.org/JobPosting">Job listing</main>', eligible: true },
+  ];
+  for (const { html, eligible } of cases) {
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingEligibility('https://example.com/jobs/itemscope'),
+    );
+    assert.equal(result.eligible, eligible, html);
+  }
+});
+
 test('eligibility fetch accepts nested livestream Microdata and RDFa', async () => {
   for (const html of [
     '<div itemscope itemtype="https://schema.org/VideoObject"><div itemprop="publication" itemscope itemtype="https://schema.org/BroadcastEvent"></div></div>',

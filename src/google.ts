@@ -1385,7 +1385,8 @@ function htmlAttribute(attributes: string, name: string): string | undefined {
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(attributes)) !== null) {
     if (match[1].toLowerCase() === name.toLowerCase()) {
-      return match[2] ?? match[3] ?? match[4];
+      // A valueless HTML boolean attribute is present, not absent.
+      return match[2] ?? match[3] ?? match[4] ?? '';
     }
   }
   return undefined;
@@ -1409,7 +1410,11 @@ function htmlStructuredTypes(
 ): Set<string> {
   const types = new Set<string>();
 
-  const itemType = htmlAttribute(attributes, 'itemtype');
+  // HTML Microdata only creates an item when itemscope is present. An
+  // itemtype on its own is not an eligible schema.org entity.
+  const itemType = htmlAttribute(attributes, 'itemscope') !== undefined
+    ? htmlAttribute(attributes, 'itemtype')
+    : undefined;
   if (itemType) {
     for (const token of itemType.split(/\s+/)) {
       const normalized = explicitSchemaType(token);
