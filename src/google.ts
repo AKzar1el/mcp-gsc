@@ -1321,24 +1321,19 @@ function collectSchemaTypes(node: unknown, types: Set<string>): void {
   }
 }
 
-/** True if `node` is (or contains, anywhere below it) a node typed BroadcastEvent. */
-function containsBroadcastEvent(node: unknown): boolean {
-  if (Array.isArray(node)) return node.some(containsBroadcastEvent);
+/** Only a VideoObject.publication BroadcastEvent establishes a livestream. */
+function isBroadcastPublication(node: unknown): boolean {
+  if (Array.isArray(node)) return node.some(isBroadcastPublication);
   if (!node || typeof node !== 'object') return false;
   const obj = node as Record<string, unknown>;
   if (Object.prototype.hasOwnProperty.call(obj, '@value')) return false;
-  const types = new Set<string>();
   const type = obj['@type'];
-  if (typeof type === 'string') types.add(normalizeSchemaType(type));
-  else if (Array.isArray(type)) {
-    for (const t of type) {
-      if (typeof t === 'string') types.add(normalizeSchemaType(t));
-    }
+  if (typeof type === 'string') return normalizeSchemaType(type) === 'BroadcastEvent';
+  if (Array.isArray(type)) {
+    return type.some((item) =>
+      typeof item === 'string' && normalizeSchemaType(item) === 'BroadcastEvent');
   }
-  if (types.has('BroadcastEvent')) return true;
-  return Object.entries(obj).some(
-    ([key, value]) => key !== '@context' && containsBroadcastEvent(value),
-  );
+  return false;
 }
 
 /** True if `node` is (or contains, anywhere below it) a VideoObject with a nested BroadcastEvent. */
@@ -1355,7 +1350,7 @@ function hasEligibleVideoBroadcast(node: unknown): boolean {
       if (typeof t === 'string') types.add(normalizeSchemaType(t));
     }
   }
-  if (types.has('VideoObject') && containsBroadcastEvent(obj)) return true;
+  if (types.has('VideoObject') && isBroadcastPublication(obj.publication)) return true;
   return Object.entries(obj).some(
     ([key, value]) => key !== '@context' && hasEligibleVideoBroadcast(value),
   );
@@ -1473,9 +1468,21 @@ function hasEligibleHtmlStructuredData(html: string): boolean {
     const types = htmlStructuredTypes(attributes, schemaVocabulary);
     if (types.has('JobPosting')) return true;
 
-    const videoObjectInScope =
-      types.has('VideoObject') || parent?.videoObjectInScope === true;
-    if (types.has('BroadcastEvent') && videoObjectInScope) return true;
+    // Google models a livestream as the publication of a VideoObject. Mere
+    // nesting under an unrelated relationship does not establish eligibility.
+    const relationTokens = [
+      ...(htmlAttribute(attributes, 'itemprop') ?? '').split(/\s+/),
+      ...(htmlAttribute(attributes, 'property') ?? '').split(/\s+/),
+    ];
+    const isPublication = relationTokens.some((token) =>
+      token === 'publication' || /^https?:\/\/(?:www\.)?schema\.org\/publication\/?$/i.test(token));
+    if (types.has('BroadcastEvent') && parent?.videoObjectInScope && isPublication) {
+      return true;
+    }
+    // An anonymous Microdata item has its own scope even without itemtype.
+    const videoObjectInScope = types.has('VideoObject') ||
+      (types.size === 0 && htmlAttribute(attributes, 'itemscope') === undefined &&
+        parent?.videoObjectInScope === true);
 
     const selfClosing = /\/\s*$/.test(attributes);
     if (!selfClosing && !VOID_HTML_TAGS.has(tag)) {
