@@ -569,3 +569,70 @@ test('ignored end-tag attributes cannot activate fake JSON-LD or noindex markup'
     () => checkIndexingRemovalEligibility('https://example.com/jobs/live'),
   )).eligible, false);
 });
+
+test('livestream JSON-LD requires BroadcastEvent in VideoObject publication', async () => {
+  const video = { '@type': 'VideoObject', name: 'Live video' };
+  const event = { '@type': 'BroadcastEvent', isLiveBroadcast: true };
+  const cases: Array<{ name: string; data: unknown; eligible: boolean }> = [
+    { name: 'publication', data: { ...video, publication: event }, eligible: true },
+    { name: 'publication list', data: { ...video, publication: [event] }, eligible: true },
+    { name: 'full schema.org type', data: { ...video, publication: { '@type': 'https://schema.org/BroadcastEvent' } }, eligible: true },
+    { name: 'multiple publication types', data: { ...video, publication: { '@type': ['Event', 'BroadcastEvent'] } }, eligible: true },
+    { name: 'typed-literal metadata', data: { ...video, publication: { '@value': 'sample', '@type': 'BroadcastEvent' } }, eligible: false },
+    { name: 'unrelated mentions', data: { ...video, mentions: event }, eligible: false },
+    { name: 'unrelated actor', data: { ...video, actor: { '@type': 'Person', memberOf: event } }, eligible: false },
+    { name: 'clip hasPart', data: { ...video, hasPart: event }, eligible: false },
+    { name: 'separate graph sibling', data: { '@graph': [video, event] }, eligible: false },
+    { name: 'nested valid video', data: { '@type': 'WebPage', mainEntity: { ...video, publication: event } }, eligible: true },
+    { name: 'independent job posting', data: { '@type': 'JobPosting' }, eligible: true },
+  ];
+  for (const { name, data, eligible } of cases) {
+    const html = '<script type="application/ld+json">' + JSON.stringify(data) + '</script>';
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingEligibility('https://example.com/live'),
+    );
+    assert.equal(result.eligible, eligible, name);
+  }
+});
+test('HTML livestream relations must identify VideoObject publication', async () => {
+  const samples = [
+    { html: '<div itemscope itemtype="https://schema.org/VideoObject"><div itemprop="publication" itemscope itemtype="https://schema.org/BroadcastEvent"></div></div>', eligible: true },
+    { html: '<div itemscope itemtype="https://schema.org/VideoObject"><div itemprop="mentions" itemscope itemtype="https://schema.org/BroadcastEvent"></div></div>', eligible: false },
+    { html: '<div itemscope itemtype="https://schema.org/VideoObject"><div itemscope itemtype="https://schema.org/BroadcastEvent"></div></div>', eligible: false },
+    { html: '<div vocab="https://schema.org/" typeof="VideoObject"><div property="publication" typeof="BroadcastEvent"></div></div>', eligible: true },
+    { html: '<div vocab="https://schema.org/" typeof="VideoObject"><div property="mentions" typeof="BroadcastEvent"></div></div>', eligible: false },
+    { html: '<div vocab="http://schema.org/" typeof="VideoObject"><div property="http://schema.org/publication" typeof="BroadcastEvent"></div></div>', eligible: true },
+    { html: '<div vocab="https://schema.org/" typeof="VideoObject"><div property="https://www.schema.org/publication" typeof="BroadcastEvent"></div></div>', eligible: true },
+    { html: '<div vocab="http://schema.org/" typeof="VideoObject"><div property="http://schema.org/publicationExtra" typeof="BroadcastEvent"></div></div>', eligible: false },
+  ];
+  for (const { html, eligible } of samples) {
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingEligibility('https://example.com/live'),
+    );
+    assert.equal(result.eligible, eligible, html);
+  }
+});
+
+test('anonymous Microdata items must not inherit a parent VideoObject publication scope', async () => {
+  const video = '<div itemscope itemtype="https://schema.org/VideoObject">';
+  const publication = '<span itemprop="publication" itemscope itemtype="https://schema.org/BroadcastEvent"></span>';
+  const cases = [
+    { html: video + publication + '</div>', eligible: true },
+    { html: video + '<div class="wrapper">' + publication + '</div></div>', eligible: true },
+    { html: video + '<div itemprop="actor" itemscope>' + publication + '</div></div>', eligible: false },
+    { html: video + '<div itemscope>' + publication + '</div></div>', eligible: false },
+    { html: video + '<div itemprop="publication" itemscope>' + publication + '</div></div>', eligible: false },
+    { html: video + '<div itemscope itemtype="https://schema.org/Person">' + publication + '</div></div>', eligible: false },
+    { html: video + '<div itemscope itemtype="https://schema.org/VideoObject">' + publication + '</div></div>', eligible: true },
+    { html: video + '<div itemscope>' + publication + '</div>' + publication + '</div>', eligible: true },
+  ];
+  for (const { html, eligible } of cases) {
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingEligibility('https://example.com/live'),
+    );
+    assert.equal(result.eligible, eligible, html);
+  }
+});
