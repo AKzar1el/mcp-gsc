@@ -358,3 +358,73 @@ test('removal eligibility ignores inert and prefixed robots meta attributes', as
     assert.equal(result.eligible, false, html);
   }
 });
+
+test('indexing eligibility respects quoted angle brackets in real structured data', async () => {
+  for (const html of [
+    '<script data-example="a>b" type="application/ld+json">{"@type":"JobPosting"}</script>',
+    '<main data-example="a>b" itemscope itemtype="https://schema.org/JobPosting"></main>',
+    '<div data-example="a<b"></div><script type="application/ld+json">{"@type":"JobPosting"}</script>',
+    `<div data-example='<script type="application/ld+json">{"@type":"JobPosting"}</script>'></div>` +
+      '<script type="application/ld+json">{"@type":"JobPosting"}</script>',
+  ]) {
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingEligibility('https://example.com/jobs/real'),
+    );
+    assert.deepEqual(result, { eligible: true }, html);
+  }
+});
+
+test('indexing eligibility rejects structured markup disguised as attribute text', async () => {
+  for (const html of [
+    `<div data-example='<script type="application/ld+json">{"@type":"JobPosting"}</script>'></div>`,
+    `<div data-example='<script type="application/ld+json">{"@type":"JobPosting"}</script></div>`,
+    '<div data-example=<script type="application/ld+json">{"@type":"JobPosting"}</script></div>',
+    `<div data-example='<main itemscope itemtype="https://schema.org/JobPosting"></main>'></div>`,
+  ]) {
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingEligibility('https://example.com/jobs/fake'),
+    );
+    assert.equal(result.eligible, false, html);
+  }
+});
+
+test('indexing eligibility preserves real structured data after raw-text fake attributes', async () => {
+  for (const prefix of [
+    `<script>const sample = "<div data-inert='";</script>`,
+    `<style>/* <div data-inert=' */</style>`,
+    `<textarea><div data-inert='</textarea>`,
+    `<!-- <div data-inert=' -->`,
+  ]) {
+    const html = prefix + '<script type="application/ld+json">{"@type":"JobPosting"}</script>';
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingEligibility('https://example.com/jobs/real'),
+    );
+    assert.deepEqual(result, { eligible: true }, prefix);
+  }
+});
+
+test('removal eligibility accepts quoted attribute angles and rejects inert robots markup', async () => {
+  for (const real of [
+    '<head><meta data-example="a>b" name="robots" content="noindex"></head>',
+    `<head><style>/* <div data-inert=' */</style><meta name="robots" content="noindex"></head>`,
+  ]) {
+    assert.deepEqual(await withMockFetch(
+      async () => htmlResponse(real),
+      () => checkIndexingRemovalEligibility('https://example.com/jobs/removed'),
+    ), { eligible: true }, real);
+  }
+
+  for (const fake of [
+    `<head><meta data-example='<meta name="robots" content="noindex"></head>`,
+    `<head><div data-example='<meta name="robots" content="noindex">'></div></head>`,
+  ]) {
+    const result = await withMockFetch(
+      async () => htmlResponse(fake),
+      () => checkIndexingRemovalEligibility('https://example.com/jobs/live'),
+    );
+    assert.equal(result.eligible, false, fake);
+  }
+});
