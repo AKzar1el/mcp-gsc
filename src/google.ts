@@ -1305,6 +1305,9 @@ function collectSchemaTypes(node: unknown, types: Set<string>): void {
   }
   if (!node || typeof node !== 'object') return;
   const obj = node as Record<string, unknown>;
+  // JSON-LD contexts define terms and @value objects describe typed literals;
+  // neither is a structured-data entity eligible for Indexing API submission.
+  if (Object.prototype.hasOwnProperty.call(obj, '@value')) return;
   const type = obj['@type'];
   if (typeof type === 'string') types.add(normalizeSchemaType(type));
   else if (Array.isArray(type)) {
@@ -1313,7 +1316,7 @@ function collectSchemaTypes(node: unknown, types: Set<string>): void {
     }
   }
   for (const [key, value] of Object.entries(obj)) {
-    if (key === '@type') continue;
+    if (key === '@type' || key === '@context') continue;
     collectSchemaTypes(value, types);
   }
 }
@@ -1323,6 +1326,7 @@ function containsBroadcastEvent(node: unknown): boolean {
   if (Array.isArray(node)) return node.some(containsBroadcastEvent);
   if (!node || typeof node !== 'object') return false;
   const obj = node as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(obj, '@value')) return false;
   const types = new Set<string>();
   const type = obj['@type'];
   if (typeof type === 'string') types.add(normalizeSchemaType(type));
@@ -1332,7 +1336,9 @@ function containsBroadcastEvent(node: unknown): boolean {
     }
   }
   if (types.has('BroadcastEvent')) return true;
-  return Object.values(obj).some(containsBroadcastEvent);
+  return Object.entries(obj).some(
+    ([key, value]) => key !== '@context' && containsBroadcastEvent(value),
+  );
 }
 
 /** True if `node` is (or contains, anywhere below it) a VideoObject with a nested BroadcastEvent. */
@@ -1340,6 +1346,7 @@ function hasEligibleVideoBroadcast(node: unknown): boolean {
   if (Array.isArray(node)) return node.some(hasEligibleVideoBroadcast);
   if (!node || typeof node !== 'object') return false;
   const obj = node as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(obj, '@value')) return false;
   const types = new Set<string>();
   const type = obj['@type'];
   if (typeof type === 'string') types.add(normalizeSchemaType(type));
@@ -1349,7 +1356,9 @@ function hasEligibleVideoBroadcast(node: unknown): boolean {
     }
   }
   if (types.has('VideoObject') && containsBroadcastEvent(obj)) return true;
-  return Object.values(obj).some(hasEligibleVideoBroadcast);
+  return Object.entries(obj).some(
+    ([key, value]) => key !== '@context' && hasEligibleVideoBroadcast(value),
+  );
 }
 
 const VOID_HTML_TAGS = new Set([

@@ -51,6 +51,93 @@ test('eligibility fetch accepts schema.org URL types and flexible JSON-LD script
   assert.deepEqual(result, { eligible: true });
 });
 
+test('eligibility ignores JSON-LD context coercion and typed literal metadata', async () => {
+  const contextOnly = {
+    '@context': {
+      '@vocab': 'https://schema.org/',
+      example: {
+        '@id': 'https://schema.org/description',
+        '@type': 'https://schema.org/JobPosting',
+      },
+    },
+    '@type': 'WebPage',
+    example: 'A description value, not a job posting node',
+  };
+  const typedLiteral = {
+    '@context': { '@vocab': 'https://schema.org/' },
+    '@type': 'WebPage',
+    description: {
+      '@value': 'A description value, not a job posting node',
+      '@type': 'https://schema.org/JobPosting',
+    },
+  };
+  for (const data of [contextOnly, typedLiteral]) {
+    const html = `<script type="application/ld+json">${JSON.stringify(data)}</script>`;
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingEligibility('https://example.com/about'),
+    );
+    assert.equal(result.eligible, false, html);
+  }
+});
+
+test('eligibility still accepts actual JobPosting nodes in JSON-LD graphs', async () => {
+  const data = {
+    '@context': { '@vocab': 'https://schema.org/' },
+    '@graph': [
+      { '@type': 'WebPage', name: 'Careers' },
+      { '@type': 'JobPosting', title: 'Engineer' },
+    ],
+  };
+  const html = `<script type="application/ld+json">${JSON.stringify(data)}</script>`;
+  const result = await withMockFetch(
+    async () => htmlResponse(html),
+    () => checkIndexingEligibility('https://example.com/jobs/engineer'),
+  );
+  assert.deepEqual(result, { eligible: true });
+});
+
+test('eligibility does not mistake scoped JSON-LD context definitions for livestream entities', async () => {
+  const data = {
+    '@context': {
+      '@vocab': 'https://schema.org/',
+      clip: {
+        '@id': 'https://schema.org/video',
+        '@type': 'https://schema.org/VideoObject',
+        '@context': {
+          event: {
+            '@id': 'https://schema.org/publication',
+            '@type': 'https://schema.org/BroadcastEvent',
+          },
+        },
+      },
+    },
+    '@type': 'WebPage',
+  };
+  const html = `<script type="application/ld+json">${JSON.stringify(data)}</script>`;
+  const result = await withMockFetch(
+    async () => htmlResponse(html),
+    () => checkIndexingEligibility('https://example.com/about'),
+  );
+  assert.equal(result.eligible, false);
+});
+
+test('eligibility still accepts actual JSON-LD VideoObject with nested BroadcastEvent', async () => {
+  const data = {
+    '@context': 'https://schema.org',
+    '@graph': [{
+      '@type': 'VideoObject',
+      publication: { '@type': 'BroadcastEvent' },
+    }],
+  };
+  const html = `<script type="application/ld+json">${JSON.stringify(data)}</script>`;
+  const result = await withMockFetch(
+    async () => htmlResponse(html),
+    () => checkIndexingEligibility('https://example.com/live/event'),
+  );
+  assert.deepEqual(result, { eligible: true });
+});
+
 test('eligibility fetch accepts JobPosting Microdata and RDFa', async () => {
   for (const html of [
     '<main itemscope itemtype="https://schema.org/JobPosting"><h1>Engineer</h1></main>',
