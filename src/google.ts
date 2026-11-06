@@ -241,7 +241,7 @@ export async function exchangeCodeForTokens(
     const text = await readBoundedGoogleError(resp);
     throw new Error(`Token exchange failed: ${resp.status} ${text}`);
   }
-  const data: unknown = await resp.json();
+  const data: unknown = await readBoundedGoogleSuccessJson(resp, 'OAuth');
   assertGoogleAccessTokenResponse(data);
   if (
     !('refresh_token' in data) ||
@@ -269,7 +269,7 @@ export async function fetchGoogleUserInfo(
     const text = await readBoundedGoogleError(resp);
     throw new Error(`Userinfo fetch failed: ${resp.status} ${text}`);
   }
-  const profile: unknown = await resp.json();
+  const profile: unknown = await readBoundedGoogleSuccessJson(resp, 'OAuth');
   if (
     !profile ||
     typeof profile !== 'object' ||
@@ -307,7 +307,7 @@ export async function refreshAccessToken(
   if (!resp.ok) {
     let parsedError: string | undefined;
     try {
-      const errBody = (await resp.json()) as { error?: string };
+      const errBody = JSON.parse(await readBoundedGoogleError(resp)) as { error?: string };
       parsedError = errBody.error;
     } catch {
       // body was not JSON
@@ -317,7 +317,7 @@ export async function refreshAccessToken(
     }
     throw new Error(`Failed to refresh Google access token: ${resp.status}`);
   }
-  const data: unknown = await resp.json();
+  const data: unknown = await readBoundedGoogleSuccessJson(resp, 'OAuth');
   assertGoogleAccessTokenResponse(data);
   return { access_token: data.access_token, expires_in: data.expires_in };
 }
@@ -328,9 +328,11 @@ const GOOGLE_SUCCESS_JSON_MAX_BYTES = 2 * 1024 * 1024;
 
 async function readBoundedGoogleSuccessJson<T>(
   response: Response,
-  context: 'metadata' | 'URL Inspection' = 'metadata',
+  context: 'metadata' | 'URL Inspection' | 'OAuth' = 'metadata',
 ): Promise<T> {
-  const description = context === 'metadata' ? 'metadata response' : 'URL Inspection response';
+  const description = context === 'metadata' ? 'metadata response'
+    : context === 'OAuth' ? 'OAuth response' : 'URL Inspection response';
+  const service = context === 'OAuth' ? 'Google' : 'Google Search Console';
   const advertised = Number(response.headers.get('content-length'));
   if (Number.isFinite(advertised) && advertised > GOOGLE_SUCCESS_JSON_MAX_BYTES) {
     try {
@@ -338,10 +340,10 @@ async function readBoundedGoogleSuccessJson<T>(
     } catch {
       // The size-limit error remains authoritative even if cleanup fails.
     }
-    throw new Error(`Google Search Console ${description} exceeds the 2 MiB byte limit.`);
+    throw new Error(`${service} ${description} exceeds the 2 MiB byte limit.`);
   }
   const reader = response.body?.getReader();
-  if (!reader) throw new Error(`Google Search Console ${description} body is empty.`);
+  if (!reader) throw new Error(`${service} ${description} body is empty.`);
 
   const chunks: Uint8Array[] = [];
   let size = 0;
@@ -354,7 +356,7 @@ async function readBoundedGoogleSuccessJson<T>(
         break;
       }
       if (value.byteLength > GOOGLE_SUCCESS_JSON_MAX_BYTES - size) {
-        throw new Error(`Google Search Console ${description} exceeds the 2 MiB byte limit.`);
+        throw new Error(`${service} ${description} exceeds the 2 MiB byte limit.`);
       }
       chunks.push(value);
       size += value.byteLength;
