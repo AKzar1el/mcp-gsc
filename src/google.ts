@@ -98,13 +98,13 @@ function googleErrorDetailsFromText(text: string): { reasons: string[]; message?
   }
 }
 
-const GOOGLE_ANALYTICS_ERROR_MAX_BYTES = 16_384;
+const GOOGLE_ERROR_MAX_BYTES = 16_384;
 
-async function readBoundedAnalyticsError(response: Response): Promise<string> {
+async function readBoundedGoogleError(response: Response): Promise<string> {
   const reader = response.body?.getReader();
   if (!reader) return '';
 
-  const buffer = new Uint8Array(GOOGLE_ANALYTICS_ERROR_MAX_BYTES + 1);
+  const buffer = new Uint8Array(GOOGLE_ERROR_MAX_BYTES + 1);
   let received = 0;
   let completed = false;
   try {
@@ -129,29 +129,37 @@ async function readBoundedAnalyticsError(response: Response): Promise<string> {
     reader.releaseLock();
   }
 
-  const truncated = received > GOOGLE_ANALYTICS_ERROR_MAX_BYTES;
+  const truncated = received > GOOGLE_ERROR_MAX_BYTES;
   const text = new TextDecoder().decode(
-    buffer.subarray(0, Math.min(received, GOOGLE_ANALYTICS_ERROR_MAX_BYTES)),
+    buffer.subarray(0, Math.min(received, GOOGLE_ERROR_MAX_BYTES)),
   );
   return truncated ? `${text} [Google error body truncated]` : text;
 }
 
-async function isGoogleReadRetryableResponse(response: Response): Promise<boolean> {
-  if (GOOGLE_READ_RETRYABLE_STATUSES.has(response.status)) return true;
-  if (response.status !== 403) return false;
-
-  try {
-    const data = (await response.clone().json()) as {
-      error?: { errors?: Array<{ reason?: unknown }> };
-    };
-    return data.error?.errors?.some(
-      (entry) =>
-        typeof entry.reason === 'string' &&
-        GOOGLE_READ_RETRYABLE_403_REASONS.has(entry.reason),
-    ) ?? false;
-  } catch {
-    return false;
+async function classifyGoogleReadResponse(
+  response: Response,
+): Promise<{ response: Response; retryable: boolean }> {
+  if (GOOGLE_READ_RETRYABLE_STATUSES.has(response.status)) {
+    return { response, retryable: true };
   }
+  if (response.status !== 403) return { response, retryable: false };
+
+  // Consume the original 403 body once; cloning and parsing the whole stream
+  // before error handling bypasses the diagnostic limit.
+  const text = await readBoundedGoogleError(response);
+  const headers = new Headers(response.headers);
+  headers.delete('content-length');
+  headers.delete('content-encoding');
+  const boundedResponse = new Response(text, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+  const { reasons } = googleErrorDetailsFromText(text);
+  return {
+    response: boundedResponse,
+    retryable: reasons.some((reason) => GOOGLE_READ_RETRYABLE_403_REASONS.has(reason)),
+  };
 }
 
 function googleReadRetryDelayMs(response: Response, retryNumber: number): number | null {
@@ -183,8 +191,8 @@ async function fetchGoogleRead(
     // Keep this outside the fetch catch so a denied reservation is never retried.
     if (attempt > 1) await beforeRetry?.();
     try {
-      const response = await fetch(url, init);
-      const retryable = await isGoogleReadRetryableResponse(response);
+      const providerResponse = await fetch(url, init);
+      const { response, retryable } = await classifyGoogleReadResponse(providerResponse);
       if (!retryable || attempt === GOOGLE_READ_MAX_ATTEMPTS) {
         return response;
       }
@@ -230,7 +238,7 @@ export async function exchangeCodeForTokens(
     body,
   });
   if (!resp.ok) {
-    const text = await resp.text();
+    const text = await readBoundedGoogleError(resp);
     throw new Error(`Token exchange failed: ${resp.status} ${text}`);
   }
   const data: unknown = await resp.json();
@@ -258,7 +266,7 @@ export async function fetchGoogleUserInfo(
     headers: { authorization: `Bearer ${accessToken}` },
   });
   if (!resp.ok) {
-    const text = await resp.text();
+    const text = await readBoundedGoogleError(resp);
     throw new Error(`Userinfo fetch failed: ${resp.status} ${text}`);
   }
   const profile: unknown = await resp.json();
@@ -330,7 +338,7 @@ export async function listSites(
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
   }
   if (!resp.ok) {
-    const text = await resp.text();
+    const text = await readBoundedGoogleError(resp);
     throw new Error(`List sites failed: ${resp.status} ${text}`);
   }
   const data = (await resp.json()) as { siteEntry?: SiteEntry[] };
@@ -354,7 +362,7 @@ export async function getSite(
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
   }
   if (!resp.ok) {
-    const text = await resp.text();
+    const text = await readBoundedGoogleError(resp);
     throw new Error(`Get site failed: ${resp.status} ${text}`);
   }
   return (await resp.json()) as SiteEntry;
@@ -636,7 +644,7 @@ export async function inspectUrl(
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
   }
   if (!resp.ok) {
-    const text = await resp.text();
+    const text = await readBoundedGoogleError(resp);
     throw new Error(`URL inspection failed: ${resp.status} ${text}`);
   }
   const data = (await resp.json()) as { inspectionResult?: unknown };
@@ -801,7 +809,7 @@ export async function listSitemaps(
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
   }
   if (!resp.ok) {
-    const text = await resp.text();
+    const text = await readBoundedGoogleError(resp);
     throw new Error(`List sitemaps failed: ${resp.status} ${text}`);
   }
   const data = (await resp.json()) as { sitemap?: SitemapEntry[] };
@@ -832,7 +840,7 @@ export async function querySearchAnalytics(
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
   }
   if (!resp.ok) {
-    const text = await readBoundedAnalyticsError(resp);
+    const text = await readBoundedGoogleError(resp);
     const { reasons, message } = googleErrorDetailsFromText(text);
     // Search Console also sends load-quota errors with a message but no legacy
     // error.errors[] reason. Do not misclassify unrelated permission denials.
@@ -935,7 +943,7 @@ export async function addSite(
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
   }
   if (!resp.ok) {
-    const text = await resp.text();
+    const text = await readBoundedGoogleError(resp);
     throw new Error(`Add site failed: ${resp.status} ${text}`);
   }
 }
@@ -956,7 +964,7 @@ export async function deleteSite(
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
   }
   if (!resp.ok) {
-    const text = await resp.text();
+    const text = await readBoundedGoogleError(resp);
     throw new Error(`Delete site failed: ${resp.status} ${text}`);
   }
 }
@@ -979,7 +987,7 @@ export async function submitSitemap(
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
   }
   if (!resp.ok) {
-    const text = await resp.text();
+    const text = await readBoundedGoogleError(resp);
     throw new Error(`Submit sitemap failed: ${resp.status} ${text}`);
   }
 }
@@ -1002,7 +1010,7 @@ export async function deleteSitemap(
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
   }
   if (!resp.ok) {
-    const text = await resp.text();
+    const text = await readBoundedGoogleError(resp);
     throw new Error(`Delete sitemap failed: ${resp.status} ${text}`);
   }
 }
@@ -1026,7 +1034,7 @@ export async function getSitemap(
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
   }
   if (!resp.ok) {
-    const text = await resp.text();
+    const text = await readBoundedGoogleError(resp);
     throw new Error(`Get sitemap failed: ${resp.status} ${text}`);
   }
   return normalizeSitemap((await resp.json()) as SitemapEntry);
@@ -1980,7 +1988,7 @@ async function publishIndexingNotification(
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
   }
   if (!resp.ok) {
-    const text = await resp.text();
+    const text = await readBoundedGoogleError(resp);
     throw new Error(`${actionLabel} failed: ${resp.status} ${text}`);
   }
   return await resp.json();
@@ -2042,7 +2050,7 @@ export async function getIndexingNotificationMetadata(
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
   }
   if (!resp.ok) {
-    const text = await resp.text();
+    const text = await readBoundedGoogleError(resp);
     throw new Error(
       `Get indexing notification status failed: ${resp.status} ${text}`,
     );

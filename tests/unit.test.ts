@@ -807,6 +807,92 @@ test('listSites: does not retry non-transient Google 403 permission errors', asy
   assert.equal(calls.length, 1);
 });
 
+test('listSites: bounds oversized 403 bodies before retry classification', async () => {
+  let chunksProduced = 0;
+  let cancelled = false;
+  const chunk = new TextEncoder().encode('x'.repeat(4096));
+  const { calls } = await withMockFetch(
+    () => new Response(new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (chunksProduced === 300) {
+          controller.close();
+          return;
+        }
+        chunksProduced += 1;
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }), { status: 403 }),
+    () => assert.rejects(
+      listSites('at'),
+      (error: Error) => {
+        assert.match(error.message, /List sites failed: 403/);
+        assert.match(error.message, /truncated/);
+        assert.ok(error.message.length < 20_000);
+        return true;
+      },
+    ),
+  );
+  assert.equal(calls.length, 1, 'unknown 403 bodies must not trigger a retry');
+  assert.ok(chunksProduced < 30, '403 classification must not drain the provider stream');
+  assert.equal(cancelled, true);
+});
+
+test('listSites: retains retry of small transient 403 quota reasons', async () => {
+  let attempts = 0;
+  let reservations = 0;
+  const { calls, result } = await withMockFetch(
+    () => {
+      attempts += 1;
+      if (attempts === 1) {
+        return new Response(JSON.stringify({
+          error: { errors: [{ reason: 'rateLimitExceeded' }] },
+        }), { status: 403, headers: { 'retry-after': '0' } });
+      }
+      return json(200, { siteEntry: [{ siteUrl: 'sc-domain:example.com', permissionLevel: 'siteOwner' }] });
+    },
+    () => listSites('at', async () => { reservations += 1; }),
+  );
+  assert.equal(calls.length, 2);
+  assert.equal(reservations, 1);
+  assert.equal(result[0]?.siteUrl, 'sc-domain:example.com');
+});
+
+test('getSite: limits oversized non-403 Google error diagnostics', async () => {
+  let chunksProduced = 0;
+  let cancelled = false;
+  const chunk = new TextEncoder().encode('e'.repeat(4096));
+  const { calls } = await withMockFetch(
+    () => new Response(new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (chunksProduced === 300) {
+          controller.close();
+          return;
+        }
+        chunksProduced += 1;
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }), { status: 400 }),
+    () => assert.rejects(
+      getSite('at', 'sc-domain:example.com'),
+      (error: Error) => {
+        assert.match(error.message, /Get site failed: 400/);
+        assert.match(error.message, /truncated/);
+        assert.ok(error.message.length < 20_000);
+        return true;
+      },
+    ),
+  );
+  assert.equal(calls.length, 1);
+  assert.ok(chunksProduced < 30);
+  assert.equal(cancelled, true);
+});
+
 test('listSites: does not retry when Retry-After exceeds the MCP retry budget', async () => {
   const original = globalThis.fetch;
   const calls: CapturedRequest[] = [];
