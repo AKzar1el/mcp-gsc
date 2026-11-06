@@ -1472,6 +1472,65 @@ function hasEligibleHtmlStructuredData(html: string): boolean {
   return false;
 }
 
+/**
+ * Keep literal angle brackets inside attributes from becoming active markup.
+ * Scan only actual start tags: script-like raw text and HTML comments can
+ * contain arbitrary fake tags and must not affect later document parsing.
+ */
+function neutralizeQuotedAttributeAngles(html: string): string {
+  const output = html.split('');
+  const rawTextTags = new Set([
+    'script', 'style', 'textarea', 'title', 'xmp', 'iframe', 'noembed', 'noframes',
+  ]);
+  let index = 0;
+  while (index < html.length) {
+    const start = html.indexOf('<', index);
+    if (start < 0) break;
+    if (html.startsWith('<!--', start)) {
+      const end = html.indexOf('-->', start + 4);
+      index = end < 0 ? html.length : end + 3;
+      continue;
+    }
+    let cursor = start + 1;
+    if (!/[a-z]/i.test(html[cursor] ?? '')) {
+      index = cursor;
+      continue;
+    }
+    const nameStart = cursor;
+    while (cursor < html.length && /[\w:-]/.test(html[cursor])) cursor += 1;
+    const tag = html.slice(nameStart, cursor).toLowerCase();
+
+    let quote = '';
+    let closed = false;
+    while (cursor < html.length) {
+      const ch = html[cursor];
+      if (quote) {
+        if (ch === quote) quote = '';
+        else if (ch === '<' || ch === '>') output[cursor] = ' ';
+      } else if (ch === '"' || ch === "'") {
+        quote = ch;
+      } else if (ch === '<') {
+        // An unquoted '<' cannot start another element inside this tag.
+        output[cursor] = ' ';
+      } else if (ch === '>') {
+        closed = true;
+        cursor += 1;
+        break;
+      }
+      cursor += 1;
+    }
+    index = cursor;
+    if (closed && rawTextTags.has(tag)) {
+      const closingTag = new RegExp(`</${tag}\\s*>`, 'gi');
+      closingTag.lastIndex = cursor;
+      const end = closingTag.exec(html);
+      // An unclosed raw-text element makes all remaining content inert.
+      index = end ? closingTag.lastIndex : html.length;
+    }
+  }
+  return output.join('');
+}
+
 function stripHtmlComments(html: string): string {
   // Comment markers in raw-text/RCDATA elements are text, not HTML comments.
   // Consume those elements first so a literal "<!--" cannot hide later markup.
@@ -1681,7 +1740,7 @@ export async function checkIndexingEligibility(
   }
 
   // A script in a comment or inert template is not page structured data.
-  const activeHtml = stripNonScriptRawTextContainers(stripTemplateContents(stripHtmlComments(html)));
+  const activeHtml = stripNonScriptRawTextContainers(stripTemplateContents(stripHtmlComments(neutralizeQuotedAttributeAngles(html))));
   const types = new Set<string>();
   let hasVideoBroadcast = false;
   const scriptPattern = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
@@ -1808,7 +1867,7 @@ export async function checkIndexingRemovalEligibility(
     }
 
     const html = await readBoundedResponseText(resp);
-    if (hasRobotsNoindexMeta(html)) return { eligible: true };
+    if (hasRobotsNoindexMeta(neutralizeQuotedAttributeAngles(html))) return { eligible: true };
 
     return {
       eligible: false,
