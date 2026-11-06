@@ -98,6 +98,44 @@ function googleErrorDetailsFromText(text: string): { reasons: string[]; message?
   }
 }
 
+const GOOGLE_ANALYTICS_ERROR_MAX_BYTES = 16_384;
+
+async function readBoundedAnalyticsError(response: Response): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return '';
+
+  const buffer = new Uint8Array(GOOGLE_ANALYTICS_ERROR_MAX_BYTES + 1);
+  let received = 0;
+  let completed = false;
+  try {
+    while (received < buffer.length) {
+      const { done, value } = await reader.read();
+      if (done) {
+        completed = true;
+        break;
+      }
+      const toCopy = Math.min(value.byteLength, buffer.length - received);
+      buffer.set(value.subarray(0, toCopy), received);
+      received += toCopy;
+    }
+  } finally {
+    if (!completed) {
+      try {
+        await reader.cancel();
+      } catch {
+        // The upstream response may already be closed.
+      }
+    }
+    reader.releaseLock();
+  }
+
+  const truncated = received > GOOGLE_ANALYTICS_ERROR_MAX_BYTES;
+  const text = new TextDecoder().decode(
+    buffer.subarray(0, Math.min(received, GOOGLE_ANALYTICS_ERROR_MAX_BYTES)),
+  );
+  return truncated ? `${text} [Google error body truncated]` : text;
+}
+
 async function isGoogleReadRetryableResponse(response: Response): Promise<boolean> {
   if (GOOGLE_READ_RETRYABLE_STATUSES.has(response.status)) return true;
   if (response.status !== 403) return false;
@@ -794,7 +832,7 @@ export async function querySearchAnalytics(
     throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
   }
   if (!resp.ok) {
-    const text = await resp.text();
+    const text = await readBoundedAnalyticsError(resp);
     const { reasons, message } = googleErrorDetailsFromText(text);
     // Search Console also sends load-quota errors with a message but no legacy
     // error.errors[] reason. Do not misclassify unrelated permission denials.
