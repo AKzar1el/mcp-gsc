@@ -428,3 +428,40 @@ test('removal eligibility accepts quoted attribute angles and rejects inert robo
     assert.equal(result.eligible, false, fake);
   }
 });
+
+test('indexing eligibility accepts active JSON-LD after raw-text closing tags with ignored attributes', async () => {
+  for (const tag of ['script', 'style', 'textarea', 'title', 'xmp', 'iframe', 'noembed', 'noframes']) {
+    for (const closing of [`</${tag} data-test="ignored">`, `</${tag} data-test=">">`]) {
+      const html = `<${tag}>inert ${tag} content${closing}` + jobPostingHtml();
+      const result = await withMockFetch(
+        async () => htmlResponse(html),
+        () => checkIndexingEligibility('https://example.com/jobs/active'),
+      );
+      assert.deepEqual(result, { eligible: true }, closing);
+    }
+  }
+});
+
+test('removal eligibility accepts active noindex after style close with ignored attributes', async () => {
+  for (const closing of ['</style data-test="ignored">', '</style data-test=">">']) {
+    const html = `<html><head><style>body{color:black}${closing}<meta name="robots" content="noindex"></head></html>`;
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingRemovalEligibility('https://example.com/jobs/removed'),
+    );
+    assert.deepEqual(result, { eligible: true }, closing);
+  }
+});
+
+test('ignored end-tag attributes cannot activate fake JSON-LD or noindex markup', async () => {
+  const fakeJob = `<main></main data-note='<script type="application/ld+json">{"@type":"JobPosting"}</script>'>`;
+  const fakeNoindex = `<head><div></div data-note='<meta name="robots" content="noindex">'></head>`;
+  assert.equal((await withMockFetch(
+    async () => htmlResponse(fakeJob),
+    () => checkIndexingEligibility('https://example.com/jobs/inert'),
+  )).eligible, false);
+  assert.equal((await withMockFetch(
+    async () => htmlResponse(fakeNoindex),
+    () => checkIndexingRemovalEligibility('https://example.com/jobs/live'),
+  )).eligible, false);
+});

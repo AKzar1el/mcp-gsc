@@ -1482,6 +1482,23 @@ function neutralizeQuotedAttributeAngles(html: string): string {
   const rawTextTags = new Set([
     'script', 'style', 'textarea', 'title', 'xmp', 'iframe', 'noembed', 'noframes',
   ]);
+  const scanTagEnd = (from: number): number | undefined => {
+    let quote = '';
+    for (let cursor = from; cursor < html.length; cursor += 1) {
+      const ch = html[cursor];
+      if (quote) {
+        if (ch === quote) quote = '';
+        else if (ch === '<' || ch === '>') output[cursor] = ' ';
+      } else if (ch === '"' || ch === "'") {
+        quote = ch;
+      } else if (ch === '<') {
+        output[cursor] = ' ';
+      } else if (ch === '>') {
+        return cursor + 1;
+      }
+    }
+    return undefined;
+  };
   let index = 0;
   while (index < html.length) {
     const start = html.indexOf('<', index);
@@ -1492,40 +1509,37 @@ function neutralizeQuotedAttributeAngles(html: string): string {
       continue;
     }
     let cursor = start + 1;
+    const closing = html[cursor] === '/';
+    if (closing) cursor += 1;
     if (!/[a-z]/i.test(html[cursor] ?? '')) {
-      index = cursor;
+      index = start + 1;
       continue;
     }
     const nameStart = cursor;
     while (cursor < html.length && /[\w:-]/.test(html[cursor])) cursor += 1;
     const tag = html.slice(nameStart, cursor).toLowerCase();
 
-    let quote = '';
-    let closed = false;
-    while (cursor < html.length) {
-      const ch = html[cursor];
-      if (quote) {
-        if (ch === quote) quote = '';
-        else if (ch === '<' || ch === '>') output[cursor] = ' ';
-      } else if (ch === '"' || ch === "'") {
-        quote = ch;
-      } else if (ch === '<') {
-        // An unquoted '<' cannot start another element inside this tag.
-        output[cursor] = ' ';
-      } else if (ch === '>') {
-        closed = true;
-        cursor += 1;
-        break;
-      }
-      cursor += 1;
-    }
-    index = cursor;
-    if (closed && rawTextTags.has(tag)) {
-      const closingTag = new RegExp(`</${tag}\\s*>`, 'gi');
-      closingTag.lastIndex = cursor;
+    const tagEnd = scanTagEnd(cursor);
+    index = tagEnd ?? html.length;
+    if (tagEnd !== undefined && !closing && rawTextTags.has(tag)) {
+      // HTML ignores attributes on raw-text end tags, including quoted '>'.
+      // Normalize only the matching real closer, keeping the remaining text inert.
+      const closingTag = new RegExp(`</${tag}(?=[\\s/>])`, 'gi');
+      closingTag.lastIndex = tagEnd;
       const end = closingTag.exec(html);
-      // An unclosed raw-text element makes all remaining content inert.
-      index = end ? closingTag.lastIndex : html.length;
+      if (end) {
+        const attributesStart = closingTag.lastIndex;
+        const closeEnd = scanTagEnd(attributesStart);
+        if (closeEnd !== undefined) {
+          for (let i = attributesStart; i < closeEnd - 1; i += 1) output[i] = ' ';
+          index = closeEnd;
+        } else {
+          index = html.length;
+        }
+      } else {
+        // An unclosed raw-text element makes all remaining content inert.
+        index = html.length;
+      }
     }
   }
   return output.join('');
