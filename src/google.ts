@@ -322,6 +322,63 @@ export async function refreshAccessToken(
   return { access_token: data.access_token, expires_in: data.expires_in };
 }
 
+// Successful Google JSON payloads are not inherently small: an upstream
+// response without Content-Length must not be fully materialized by .json().
+const GOOGLE_SUCCESS_JSON_MAX_BYTES = 2 * 1024 * 1024;
+
+async function readBoundedGoogleSuccessJson<T>(
+  response: Response,
+  context: 'metadata' | 'URL Inspection' = 'metadata',
+): Promise<T> {
+  const description = context === 'metadata' ? 'metadata response' : 'URL Inspection response';
+  const advertised = Number(response.headers.get('content-length'));
+  if (Number.isFinite(advertised) && advertised > GOOGLE_SUCCESS_JSON_MAX_BYTES) {
+    try {
+      await response.body?.cancel();
+    } catch {
+      // The size-limit error remains authoritative even if cleanup fails.
+    }
+    throw new Error(`Google Search Console ${description} exceeds the 2 MiB byte limit.`);
+  }
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error(`Google Search Console ${description} body is empty.`);
+
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  let finished = false;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        finished = true;
+        break;
+      }
+      if (value.byteLength > GOOGLE_SUCCESS_JSON_MAX_BYTES - size) {
+        throw new Error(`Google Search Console ${description} exceeds the 2 MiB byte limit.`);
+      }
+      chunks.push(value);
+      size += value.byteLength;
+    }
+  } finally {
+    if (!finished) {
+      try {
+        await reader.cancel();
+      } catch {
+        // The upstream response may already be closed.
+      }
+    }
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return JSON.parse(new TextDecoder().decode(bytes)) as T;
+}
+
 export interface SiteEntry {
   siteUrl: string;
   permissionLevel: string;
@@ -341,7 +398,7 @@ export async function listSites(
     const text = await readBoundedGoogleError(resp);
     throw new Error(`List sites failed: ${resp.status} ${text}`);
   }
-  const data = (await resp.json()) as { siteEntry?: SiteEntry[] };
+  const data = await readBoundedGoogleSuccessJson<{ siteEntry?: SiteEntry[] }>(resp);
   return data.siteEntry ?? [];
 }
 
@@ -365,7 +422,7 @@ export async function getSite(
     const text = await readBoundedGoogleError(resp);
     throw new Error(`Get site failed: ${resp.status} ${text}`);
   }
-  return (await resp.json()) as SiteEntry;
+  return readBoundedGoogleSuccessJson<SiteEntry>(resp);
 }
 
 export type SearchDimension =
@@ -647,7 +704,10 @@ export async function inspectUrl(
     const text = await readBoundedGoogleError(resp);
     throw new Error(`URL inspection failed: ${resp.status} ${text}`);
   }
-  const data = (await resp.json()) as { inspectionResult?: unknown };
+  const data = await readBoundedGoogleSuccessJson<{ inspectionResult?: unknown }>(
+    resp,
+    'URL Inspection',
+  );
   return data.inspectionResult ?? null;
 }
 
@@ -812,7 +872,7 @@ export async function listSitemaps(
     const text = await readBoundedGoogleError(resp);
     throw new Error(`List sitemaps failed: ${resp.status} ${text}`);
   }
-  const data = (await resp.json()) as { sitemap?: SitemapEntry[] };
+  const data = await readBoundedGoogleSuccessJson<{ sitemap?: SitemapEntry[] }>(resp);
   return (data.sitemap ?? []).map(normalizeSitemap);
 }
 
@@ -1037,7 +1097,7 @@ export async function getSitemap(
     const text = await readBoundedGoogleError(resp);
     throw new Error(`Get sitemap failed: ${resp.status} ${text}`);
   }
-  return normalizeSitemap((await resp.json()) as SitemapEntry);
+  return normalizeSitemap(await readBoundedGoogleSuccessJson<SitemapEntry>(resp));
 }
 
 export interface QuickWinResult {
