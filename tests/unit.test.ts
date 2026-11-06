@@ -1794,6 +1794,46 @@ test('querySearchAnalytics: unrelated 403 permission errors are not called quota
   assert.equal(calls.length, 1);
 });
 
+test('querySearchAnalytics: bounds and cancels oversized provider error bodies', async () => {
+  let chunksProduced = 0;
+  let cancelled = false;
+  const chunk = new TextEncoder().encode('x'.repeat(4096));
+  const { calls } = await withMockFetch(
+    () => new Response(new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (chunksProduced === 300) {
+          controller.close();
+          return;
+        }
+        chunksProduced += 1;
+        controller.enqueue(chunk);
+      },
+      cancel() {
+        cancelled = true;
+      },
+    }), { status: 400 }),
+    async () => {
+      await assert.rejects(
+        querySearchAnalytics('at', 'sc-domain:example.com', {
+          startDate: '2026-05-01',
+          endDate: '2026-05-31',
+          dimensions: ['query'],
+          rowLimit: 100,
+        }),
+        (error: Error) => {
+          assert.match(error.message, /query failed: 400/i);
+          assert.match(error.message, /truncated/i);
+          assert.ok(error.message.length < 20_000, 'provider errors must not flood MCP output');
+          return true;
+        },
+      );
+    },
+  );
+  assert.equal(calls.length, 1);
+  assert.ok(chunksProduced < 30, 'the provider stream must not be fully consumed');
+  assert.equal(cancelled, true);
+});
+
 test('querySearchAnalytics: missing rows field returns an empty rows array (no data, not an error)', async () => {
   const { result } = await withMockFetch(
     () => json(200, {}),
