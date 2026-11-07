@@ -79,18 +79,21 @@ export function resolveWeeklyDigestEndDate(
   return latestCompleteDate.toISOString().slice(0, 10);
 }
 
+/** Preliminary snapshots use current-week evidence only; finalized reports compare both weeks. */
+export function weeklyDigestAnalyticsRequestCount(endDate: string, today: string): 3 | 5 {
+  return endDate > resolveWeeklyDigestEndDate(undefined, today) ? 3 : 5;
+}
+
 export async function generateWeeklyDigest(
   accessTokens: GoogleAccessTokenProvider,
   googleId: string,
   siteUrl: string,
   endDate: string,
   beforeRetry?: () => Promise<void>,
+  today: string = getSearchConsoleCalendarDate(),
 ): Promise<string> {
   const dates = computeDateRanges(endDate);
-  const latestConservativeEndDate = resolveWeeklyDigestEndDate(
-    undefined, getSearchConsoleCalendarDate(),
-  );
-  const isPreliminary = endDate > latestConservativeEndDate;
+  const isPreliminary = weeklyDigestAnalyticsRequestCount(endDate, today) === 3;
   // Explicit recent dates opt into Google's fresh rows; historical/default dates remain finalized-only.
   const requestedDataState = isPreliminary ? 'all' : 'final';
   const accessToken = await accessTokens.getAccessToken(googleId);
@@ -109,13 +112,16 @@ export async function generateWeeklyDigest(
       rowLimit: 1,
       dataState: requestedDataState,
     }, beforeRetry),
-    querySearchAnalytics(accessToken, siteUrl, {
-      startDate: dates.prevStart,
-      endDate: dates.prevEnd,
-      dimensions: [],
-      rowLimit: 1,
-      dataState: requestedDataState,
-    }, beforeRetry),
+    // Preliminary snapshots never consume previous-week evidence.
+    isPreliminary
+      ? Promise.resolve(undefined)
+      : querySearchAnalytics(accessToken, siteUrl, {
+        startDate: dates.prevStart,
+        endDate: dates.prevEnd,
+        dimensions: [],
+        rowLimit: 1,
+        dataState: requestedDataState,
+      }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.currentStart,
       endDate: dates.currentEnd,
@@ -123,13 +129,15 @@ export async function generateWeeklyDigest(
       rowLimit: 25,
       dataState: requestedDataState,
     }, beforeRetry),
-    querySearchAnalytics(accessToken, siteUrl, {
-      startDate: dates.prevStart,
-      endDate: dates.prevEnd,
-      dimensions: ['query'],
-      rowLimit: 25,
-      dataState: requestedDataState,
-    }, beforeRetry),
+    isPreliminary
+      ? Promise.resolve(undefined)
+      : querySearchAnalytics(accessToken, siteUrl, {
+        startDate: dates.prevStart,
+        endDate: dates.prevEnd,
+        dimensions: ['query'],
+        rowLimit: 25,
+        dataState: requestedDataState,
+      }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.currentStart,
       endDate: dates.currentEnd,
@@ -182,6 +190,10 @@ export async function generateWeeklyDigest(
       'No week-over-week comparisons, query-mover conclusions, or SEO action recommendations are made from these preliminary numbers. Recheck after the week is finalized.',
     );
     return lines.join('\n');
+  }
+
+  if (!prevTotalsResponse || !prevQueriesResponse) {
+    throw new Error('Finalized weekly reports require both previous-week responses.');
   }
 
   // No aggregate row is not a measured zero. Avoid manufacturing a weekly drop

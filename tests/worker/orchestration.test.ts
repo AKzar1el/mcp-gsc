@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { reset, runInDurableObject } from 'cloudflare:test';
 import { env } from 'cloudflare:workers';
 import { generateWeeklyDigest } from '../../src/digest';
+import { getSearchConsoleCalendarDate } from '../../src/date-validation';
 import { GoogleAccessTokenLifecycle } from '../../src/access-token-lifecycle';
 import {
   createGscMcpServer,
@@ -3094,6 +3095,39 @@ describe('Worker orchestration', () => {
       ['search-analytics', 5],
     ]);
     expect(getAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('reserves only three shared Search Analytics units for preliminary weekly digests', async () => {
+    const take = vi.fn(async (_bucket: string, policy: { category: string }) => ({
+      allowed: policy.category !== 'search-analytics',
+      retry_after_ms: 20_000,
+    }));
+    const limiter = {
+      idFromName: vi.fn((name: string) => name),
+      get: vi.fn(() => ({ take })),
+    };
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly', TOOL_RATE_LIMITER: limiter } as unknown as Env,
+      { google_id: 'digest-preliminary-user', email: 'preliminary@example.test' },
+      { getAccessToken: async () => {
+        throw new Error('Quota must be reserved before credentials');
+      } } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, string>) => Promise<{ isError?: boolean }>;
+      }>;
+    })._registeredTools['reports.weekly_digest'].handler;
+
+    const result = await handler({
+      site_url: 'sc-domain:example.com',
+      end_date: getSearchConsoleCalendarDate(),
+    });
+    expect(result.isError).toBe(true);
+    expect(take.mock.calls.map(([, policy, units]) => [policy.category, units])).toEqual([
+      ['weekly-digest', 1],
+      ['search-analytics', 3],
+    ]);
   });
 
   it('charges a weekly digest retry in addition to its five upfront Analytics units', async () => {
