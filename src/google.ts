@@ -179,6 +179,11 @@ function googleReadRetryDelayMs(response: Response, retryNumber: number): number
   return Math.min(exponentialDelay + jitterMs, GOOGLE_READ_MAX_DELAY_MS);
 }
 
+function isAbortError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null &&
+    'name' in error && error.name === 'AbortError';
+}
+
 async function fetchGoogleRead(
   url: string,
   init?: RequestInit,
@@ -206,6 +211,9 @@ async function fetchGoogleRead(
       }
       if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
     } catch (error) {
+      // Cancellation is not a transient network failure. Retrying a canceled
+      // request wastes time and charges additional shared quota reservations.
+      if (isAbortError(error) || init?.signal?.aborted) throw error;
       lastNetworkError = error;
       if (attempt === GOOGLE_READ_MAX_ATTEMPTS) throw error;
       const delayMs = Math.min(
@@ -808,7 +816,9 @@ export async function inspectUrlsSequentially(
         ),
       });
     } catch (error) {
-      if (error instanceof Error && error.message === GSC_ACCESS_REVOKED_MESSAGE) {
+      // A canceled batch must not inspect further URLs or consume their quotas.
+      if (isAbortError(error) ||
+          (error instanceof Error && error.message === GSC_ACCESS_REVOKED_MESSAGE)) {
         throw error;
       }
       results.push({

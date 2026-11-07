@@ -42,6 +42,7 @@ import {
   getSite,
   listSitemaps,
   inspectUrl,
+  inspectUrlsSequentially,
   inspectUrlsBoundedConcurrently,
   summarizeUrlInspectionIndexStatus,
   URL_INSPECTION_BATCH_CONCURRENCY,
@@ -1137,6 +1138,55 @@ test('inspectUrl: reserves an extra unit before retrying a network failure', asy
   assert.equal(retryReservations, 1);
   assert.equal(calls.length, 2);
   assert.deepEqual(result, { indexStatusResult: { verdict: 'PASS' } });
+});
+
+test('inspectUrl: aborts immediately without retries or additional quota reservations', async () => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  let retryReservations = 0;
+  globalThis.fetch = (async () => {
+    attempts += 1;
+    throw new DOMException('Request canceled', 'AbortError');
+  }) as typeof fetch;
+  try {
+    await assert.rejects(
+      () => inspectUrl(
+        'access-token',
+        'sc-domain:example.com',
+        'https://example.com/page',
+        undefined,
+        async () => { retryReservations += 1; },
+      ),
+      (error: unknown) => error instanceof Error && error.name === 'AbortError',
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(attempts, 1);
+  assert.equal(retryReservations, 0);
+});
+
+test('inspectUrlsSequentially: aborts the entire batch before subsequent URL inspections', async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = 0;
+  globalThis.fetch = (async () => {
+    requests += 1;
+    if (requests === 1) throw new DOMException('Request canceled', 'AbortError');
+    return json(200, { inspectionResult: { indexStatusResult: { verdict: 'PASS' } } });
+  }) as typeof fetch;
+  try {
+    await assert.rejects(
+      () => inspectUrlsSequentially(
+        'access-token',
+        'sc-domain:example.com',
+        ['https://example.com/page', 'https://example.com/next'],
+      ),
+      (error: unknown) => error instanceof Error && error.name === 'AbortError',
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(requests, 1);
 });
 
 test('inspectUrl: a non-retryable authorization failure consumes no retry units', async () => {
