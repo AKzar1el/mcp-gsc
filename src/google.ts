@@ -1432,61 +1432,165 @@ function normalizeSchemaType(value: string): string {
   return trimmed;
 }
 
-function collectSchemaTypes(node: unknown, types: Set<string>): void {
+type JsonLdSchemaContext = {
+  vocabulary: string | null;
+  terms: Record<string, string | null>;
+};
+
+const EMPTY_JSON_LD_CONTEXT: JsonLdSchemaContext = {
+  vocabulary: null,
+  terms: Object.create(null) as Record<string, string | null>,
+};
+
+/**
+ * Resolve only inline contexts. Fetching arbitrary remote JSON-LD context URLs
+ * would make a security-sensitive eligibility preflight network-dependent.
+ */
+function resolveJsonLdContext(
+  inherited: JsonLdSchemaContext,
+  local: unknown,
+): JsonLdSchemaContext {
+  if (Array.isArray(local)) {
+    return local.reduce<JsonLdSchemaContext>(
+      (context, entry) => resolveJsonLdContext(context, entry),
+      inherited,
+    );
+  }
+  if (typeof local === 'string') {
+    return {
+      vocabulary: isSchemaVocabulary(local) ? 'https://schema.org/' : null,
+      terms: Object.create(null) as Record<string, string | null>,
+    };
+  }
+  if (!local || typeof local !== 'object') return EMPTY_JSON_LD_CONTEXT;
+  const definitions = local as Record<string, unknown>;
+  // Null-prototype maps prevent JSON-LD terms such as constructor/__proto__
+  // from resolving against or mutating JavaScript object prototypes.
+  const terms = Object.assign(
+    Object.create(null) as Record<string, string | null>,
+    inherited.terms,
+  );
+  let vocabulary = inherited.vocabulary;
+  if (Object.prototype.hasOwnProperty.call(definitions, '@vocab')) {
+    vocabulary =
+      typeof definitions['@vocab'] === 'string' &&
+      isSchemaVocabulary(definitions['@vocab'])
+        ? 'https://schema.org/'
+        : null;
+  }
+  for (const [term, definition] of Object.entries(definitions)) {
+    if (term.startsWith('@')) continue;
+    const identifier = typeof definition === 'string'
+      ? definition
+      : definition && typeof definition === 'object' && !Array.isArray(definition)
+        ? (definition as Record<string, unknown>)['@id']
+        : undefined;
+    if (typeof identifier === 'string') terms[term] = identifier;
+    else terms[term] = null;
+  }
+  return { vocabulary, terms };
+}
+
+function schemaTypeInContext(
+  type: string,
+  context: JsonLdSchemaContext,
+): string | undefined {
+  const trimmed = type.trim();
+  const explicit = explicitSchemaType(trimmed);
+  if (explicit) return explicit;
+  // A local null/invalid term definition disables the term even if @vocab
+  // otherwise points to schema.org.
+  if (Object.prototype.hasOwnProperty.call(context.terms, trimmed)) {
+    const mapped = context.terms[trimmed];
+    return typeof mapped === 'string' ? explicitSchemaType(mapped) : undefined;
+  }
+  if (context.vocabulary && /^[A-Za-z][\w-]*$/.test(trimmed)) return trimmed;
+  return undefined;
+}
+
+function schemaTypesInNode(
+  node: Record<string, unknown>,
+  context: JsonLdSchemaContext,
+): Set<string> {
+  const types = new Set<string>();
+  const raw = node['@type'];
+  for (const type of Array.isArray(raw) ? raw : [raw]) {
+    if (typeof type !== 'string') continue;
+    const resolved = schemaTypeInContext(type, context);
+    if (resolved) types.add(resolved);
+  }
+  return types;
+}
+
+function collectSchemaTypes(
+  node: unknown,
+  types: Set<string>,
+  inherited: JsonLdSchemaContext = EMPTY_JSON_LD_CONTEXT,
+): void {
   if (Array.isArray(node)) {
-    for (const item of node) collectSchemaTypes(item, types);
+    for (const item of node) collectSchemaTypes(item, types, inherited);
     return;
   }
   if (!node || typeof node !== 'object') return;
   const obj = node as Record<string, unknown>;
-  // JSON-LD contexts define terms and @value objects describe typed literals;
-  // neither is a structured-data entity eligible for Indexing API submission.
+  // Context declarations and typed literals are never eligible entities.
   if (Object.prototype.hasOwnProperty.call(obj, '@value')) return;
-  const type = obj['@type'];
-  if (typeof type === 'string') types.add(normalizeSchemaType(type));
-  else if (Array.isArray(type)) {
-    for (const t of type) {
-      if (typeof t === 'string') types.add(normalizeSchemaType(t));
-    }
-  }
+  const context = Object.prototype.hasOwnProperty.call(obj, '@context')
+    ? resolveJsonLdContext(inherited, obj['@context'])
+    : inherited;
+  for (const type of schemaTypesInNode(obj, context)) types.add(type);
   for (const [key, value] of Object.entries(obj)) {
     if (key === '@type' || key === '@context') continue;
-    collectSchemaTypes(value, types);
+    collectSchemaTypes(value, types, context);
   }
 }
 
-/** Only a VideoObject.publication BroadcastEvent establishes a livestream. */
-function isBroadcastPublication(node: unknown): boolean {
-  if (Array.isArray(node)) return node.some(isBroadcastPublication);
-  if (!node || typeof node !== 'object') return false;
-  const obj = node as Record<string, unknown>;
-  if (Object.prototype.hasOwnProperty.call(obj, '@value')) return false;
-  const type = obj['@type'];
-  if (typeof type === 'string') return normalizeSchemaType(type) === 'BroadcastEvent';
-  if (Array.isArray(type)) {
-    return type.some((item) =>
-      typeof item === 'string' && normalizeSchemaType(item) === 'BroadcastEvent');
-  }
-  return false;
+function isSchemaPublicationProperty(
+  property: string,
+  context: JsonLdSchemaContext,
+): boolean {
+  return schemaTypeInContext(property, context) === 'publication';
 }
 
-/** True if `node` is (or contains, anywhere below it) a VideoObject with a nested BroadcastEvent. */
-function hasEligibleVideoBroadcast(node: unknown): boolean {
-  if (Array.isArray(node)) return node.some(hasEligibleVideoBroadcast);
+/** Only a schema.org VideoObject.publication BroadcastEvent establishes a livestream. */
+function isBroadcastPublication(
+  node: unknown,
+  inherited: JsonLdSchemaContext,
+): boolean {
+  if (Array.isArray(node)) {
+    return node.some((item) => isBroadcastPublication(item, inherited));
+  }
   if (!node || typeof node !== 'object') return false;
   const obj = node as Record<string, unknown>;
   if (Object.prototype.hasOwnProperty.call(obj, '@value')) return false;
-  const types = new Set<string>();
-  const type = obj['@type'];
-  if (typeof type === 'string') types.add(normalizeSchemaType(type));
-  else if (Array.isArray(type)) {
-    for (const t of type) {
-      if (typeof t === 'string') types.add(normalizeSchemaType(t));
+  const context = Object.prototype.hasOwnProperty.call(obj, '@context')
+    ? resolveJsonLdContext(inherited, obj['@context'])
+    : inherited;
+  return schemaTypesInNode(obj, context).has('BroadcastEvent');
+}
+
+/** Preserve each node's effective context across JSON-LD graphs and nesting. */
+function hasEligibleVideoBroadcast(
+  node: unknown,
+  inherited: JsonLdSchemaContext = EMPTY_JSON_LD_CONTEXT,
+): boolean {
+  if (Array.isArray(node)) {
+    return node.some((item) => hasEligibleVideoBroadcast(item, inherited));
+  }
+  if (!node || typeof node !== 'object') return false;
+  const obj = node as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(obj, '@value')) return false;
+  const context = Object.prototype.hasOwnProperty.call(obj, '@context')
+    ? resolveJsonLdContext(inherited, obj['@context'])
+    : inherited;
+  if (schemaTypesInNode(obj, context).has('VideoObject')) {
+    for (const [key, value] of Object.entries(obj)) {
+      if (isSchemaPublicationProperty(key, context) &&
+          isBroadcastPublication(value, context)) return true;
     }
   }
-  if (types.has('VideoObject') && isBroadcastPublication(obj.publication)) return true;
   return Object.entries(obj).some(
-    ([key, value]) => key !== '@context' && hasEligibleVideoBroadcast(value),
+    ([key, value]) => key !== '@context' && hasEligibleVideoBroadcast(value, context),
   );
 }
 
