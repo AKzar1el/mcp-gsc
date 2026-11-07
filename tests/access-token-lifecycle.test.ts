@@ -6,6 +6,7 @@ import {
   type GoogleAccessTokenEnv,
 } from '../src/access-token-lifecycle';
 import { generateWeeklyDigest } from '../src/digest';
+import { getSearchConsoleCalendarDate } from '../src/date-validation';
 import { GoogleRefreshTokenRevokedError } from '../src/google';
 
 const ENV: GoogleAccessTokenEnv = {
@@ -285,6 +286,71 @@ test('generateWeeklyDigest uses the shared access-token provider', async () => {
     assert.doesNotMatch(digest, /your site is JavaScript-rendered/);
     assert.equal(fixture.refreshCalls, 1);
     assert.deepEqual(authHeaders, Array(5).fill('Bearer access-token-1'));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('weekly digest queries only finalized Search Console data for all five report sections', async () => {
+  const restoreFetch = installDigestAnalyticsMock([]);
+  const originalMockFetch = globalThis.fetch;
+  const dataStates: Array<string | undefined> = [];
+  globalThis.fetch = async (input, init) => {
+    dataStates.push((JSON.parse(String(init?.body)) as { dataState?: string }).dataState);
+    return originalMockFetch(input, init);
+  };
+  try {
+    await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10');
+    assert.deepEqual(dataStates, Array(5).fill('final'));
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest honors explicit recent dates as preliminary snapshots without unverified trend advice', async () => {
+  const originalFetch = globalThis.fetch;
+  const requestedDataStates: Array<string | undefined> = [];
+  globalThis.fetch = async (_input, init) => {
+    const request = JSON.parse(String(init?.body)) as { dataState?: string; dimensions?: string[] };
+    requestedDataStates.push(request.dataState);
+    const rows = request.dimensions?.[0] === 'query'
+      ? [{ keys: ['example query'], clicks: 3, impressions: 30, ctr: 0.1, position: 7 }]
+      : request.dimensions?.[0] === 'page'
+        ? [{ keys: ['https://example.com/page'], clicks: 3, impressions: 30, ctr: 0.1, position: 7 }]
+        : [{ clicks: 12, impressions: 80, ctr: 0.15, position: 8 }];
+    return new Response(JSON.stringify({ rows }), { headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', getSearchConsoleCalendarDate(),
+    );
+    assert.deepEqual(requestedDataStates, Array(5).fill('all'));
+    assert.match(digest, /preliminary Search Console data/i);
+    assert.match(digest, /12 clicks/i);
+    assert.match(digest, /80 impressions/i);
+    assert.doesNotMatch(digest, /## What changed this week|## What to do this week|% vs last week/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('weekly digest never fabricates zero traffic when recent preliminary rows are missing', async () => {
+  const originalFetch = globalThis.fetch;
+  const dataStates: Array<string | undefined> = [];
+  globalThis.fetch = async (_input, init) => {
+    dataStates.push((JSON.parse(String(init?.body)) as { dataState?: string }).dataState);
+    return new Response(JSON.stringify({ rows: [] }), {
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', getSearchConsoleCalendarDate(),
+    );
+    assert.deepEqual(dataStates, Array(5).fill('all'));
+    assert.match(digest, /preliminary Search Console data/i);
+    assert.match(digest, /missing data is not a measured zero/i);
+    assert.doesNotMatch(digest, /0 clicks|0 impressions|## What to do this week/i);
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -2474,14 +2474,14 @@ class GscMcpRuntime {
       {
         title: 'Weekly GSC Performance Digest',
         description:
-          'Generate a plain-language weekly SEO report for one Google Search Console property. Returns a markdown digest covering the 7 days ending on end_date, with week-over-week comparison, top pages, queries gaining or losing traction, and one specific action item. Defaults end_date to 3 days ago so the report uses the latest usually-complete Search Console data; pass end_date explicitly to include fresher preliminary data.',
+          'Generate a plain-language weekly SEO report for one Google Search Console property. For finalized weeks, returns the 7-day comparison, top pages, query movers, and an evidence-based action. Defaults end_date to 3 days ago. Passing an explicitly newer end_date includes fresher preliminary data as a clearly labeled snapshot without week-over-week claims or SEO advice.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           end_date: SEARCH_CONSOLE_DATE_SCHEMA
             .optional()
             .describe(
               searchConsoleDateDescription(
-                'End date (inclusive) in YYYY-MM-DD format. Defaults to 3 days ago, which is usually the latest complete Search Console date. Pass a more recent date explicitly to include preliminary data.',
+                'End date (inclusive) in YYYY-MM-DD format. Defaults to 3 days ago, which is usually the latest complete Search Console date. Pass a more recent date explicitly for a preliminary snapshot without trend conclusions or SEO recommendations.',
               ),
             ),
         },
