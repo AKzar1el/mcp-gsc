@@ -802,8 +802,16 @@ export async function inspectUrlsSequentially(
   beforeRetry?: () => Promise<void>,
 ): Promise<UrlInspectionBatchResult[]> {
   const results: UrlInspectionBatchResult[] = [];
+  let quotaExhausted = false;
 
   for (const inspectionUrl of inspectionUrls) {
+    if (quotaExhausted) {
+      results.push({
+        inspectionUrl,
+        error: 'Not inspected because Google URL Inspection reported a quota or rate-limit error earlier in this batch.',
+      });
+      continue;
+    }
     try {
       results.push({
         inspectionUrl,
@@ -821,10 +829,18 @@ export async function inspectUrlsSequentially(
           (error instanceof Error && error.message === GSC_ACCESS_REVOKED_MESSAGE)) {
         throw error;
       }
-      results.push({
-        inspectionUrl,
-        error: error instanceof Error ? error.message : 'URL inspection failed.',
-      });
+      const message = error instanceof Error ? error.message : 'URL inspection failed.';
+      results.push({ inspectionUrl, error: message });
+      // A provider-wide quota failure makes subsequent inspections waste calls.
+      // Keep ordinary 403 permission failures scoped to the current URL.
+      const google403Prefix = 'URL inspection failed: 403 ';
+      const isQuota403 = message.startsWith(google403Prefix) &&
+        googleErrorDetailsFromText(message.slice(google403Prefix.length)).reasons.some(
+          (reason) => GOOGLE_READ_RETRYABLE_403_REASONS.has(reason) || reason === 'quotaExceeded',
+        );
+      if (/^URL inspection failed: 429(?:\s|$)/.test(message) || isQuota403) {
+        quotaExhausted = true;
+      }
     }
   }
 
