@@ -1052,6 +1052,46 @@ test('inspectUrlsBoundedConcurrently: preserves input order and returns per-URL 
   ]);
 });
 
+for (const scenario of [
+  { label: 'HTTP 429', status: 429, body: 'rate limited', stops: true },
+  {
+    label: 'structured HTTP 403 user quota', status: 403,
+    body: JSON.stringify({ error: { errors: [{ reason: 'userRateLimitExceeded' }] } }),
+    stops: true,
+  },
+  {
+    label: 'structured HTTP 403 overall quota', status: 403,
+    body: JSON.stringify({ error: { errors: [{ reason: 'quotaExceeded' }] } }),
+    stops: true,
+  },
+  { label: 'ordinary HTTP 403 permission', status: 403, body: 'forbidden', stops: false },
+  { label: 'HTTP 503 transient failure', status: 503, body: 'unavailable', stops: false },
+]) {
+  test(`inspectUrlsSequentially: ${scenario.label} ${scenario.stops ? 'stops' : 'does not stop'} later inspections`, async () => {
+    const urls = ['https://example.com/first', 'https://example.com/second', 'https://example.com/third'];
+    const { result, calls } = await withMockFetch(
+      (_url, init) => {
+        const inspected = JSON.parse(String(init?.body)).inspectionUrl as string;
+        return inspected === urls[0]
+          ? new Response(scenario.body, { status: scenario.status, headers: { 'retry-after': '60' } })
+          : json(200, { inspectionResult: { inspected } });
+      },
+      () => inspectUrlsSequentially('at', 'https://example.com/', urls),
+    );
+    assert.equal(calls.length, scenario.stops ? 1 : 3);
+    assert.deepEqual(result.map((entry) => entry.inspectionUrl), urls);
+    assert.match(result[0]?.error ?? '', new RegExp(`^URL inspection failed: ${scenario.status} `));
+    for (const entry of result.slice(1)) {
+      if (scenario.stops) {
+        assert.match(entry.error ?? '', /Not inspected because Google URL Inspection reported a quota/);
+        assert.equal(entry.inspectionResult, undefined);
+      } else {
+        assert.deepEqual(entry.inspectionResult, { inspected: entry.inspectionUrl });
+      }
+    }
+  });
+}
+
 test('summarizeUrlInspectionIndexStatus: exposes provider index-state evidence without changing the raw result', () => {
   const inspectionResult = {
     indexStatusResult: {
