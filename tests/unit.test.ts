@@ -1858,6 +1858,40 @@ test('querySearchAnalytics: recognizes message-only Search Analytics load quota 
   }
 });
 
+test('querySearchAnalytics: generic quotaExceeded does not imply Search Analytics load exhaustion', async () => {
+  const { calls } = await withMockFetch(
+    () => json(403, {
+      error: {
+        code: 403,
+        message: 'Quota exceeded for quota metric read_requests per minute',
+        errors: [{
+          domain: 'usageLimits',
+          reason: 'quotaExceeded',
+          message: 'Quota exceeded',
+        }],
+      },
+    }),
+    async () => {
+      await assert.rejects(
+        querySearchAnalytics('at', 'sc-domain:example.com', {
+          startDate: '2026-05-01',
+          endDate: '2026-05-31',
+          dimensions: ['query', 'page'],
+          rowLimit: 100,
+        }),
+        (error: Error) => {
+          assert.match(error.message, /Search analytics query failed: 403/i);
+          assert.match(error.message, /read_requests per minute/i);
+          assert.doesNotMatch(error.message, /15 minutes|page\/query grouping or filtering/i);
+          return true;
+        },
+      );
+    },
+  );
+
+  assert.equal(calls.length, 1, 'generic quota errors must not trigger immediate retries');
+});
+
 test('querySearchAnalytics: unrelated 403 permission errors are not called quota exhaustion', async () => {
   const { calls } = await withMockFetch(
     () => json(403, { error: { code: 403, message: 'Permission denied.' } }),

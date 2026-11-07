@@ -903,12 +903,12 @@ export async function querySearchAnalytics(
   }
   if (!resp.ok) {
     const text = await readBoundedGoogleError(resp);
-    const { reasons, message } = googleErrorDetailsFromText(text);
+    const { message } = googleErrorDetailsFromText(text);
     // Search Console also sends load-quota errors with a message but no legacy
     // error.errors[] reason. Do not misclassify unrelated permission denials.
     const loadQuotaMessage = message !== undefined &&
       /Search Analytics load quota exceeded|quota exceeded for quota metric SearchAnalyticsLoad/i.test(message);
-    if (resp.status === 403 && (reasons.includes('quotaExceeded') || loadQuotaMessage)) {
+    if (resp.status === 403 && loadQuotaMessage) {
       throw new Error(
         'Search Analytics load quota exceeded. Google recommends waiting about 15 minutes before retrying a short-term load-quota failure. If the error persists, reduce expensive page/query grouping or filtering, shorten the date range, and avoid repeatedly requesting the same data.',
       );
