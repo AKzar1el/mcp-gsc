@@ -138,6 +138,86 @@ test('eligibility still accepts actual JSON-LD VideoObject with nested Broadcast
   assert.deepEqual(result, { eligible: true });
 });
 
+test('JSON-LD indexing eligibility requires a schema.org type vocabulary', async () => {
+  const cases: Array<{ data: unknown; eligible: boolean }> = [
+    { data: { '@type': 'JobPosting' }, eligible: false },
+    { data: { '@context': 'https://foreign.example/context', '@type': 'JobPosting' }, eligible: false },
+    { data: { '@context': { '@vocab': 'https://foreign.example/' }, '@type': 'JobPosting' }, eligible: false },
+    { data: { '@context': 'https://schema.org', '@type': 'JobPosting' }, eligible: true },
+    { data: { '@type': 'https://schema.org/JobPosting' }, eligible: true },
+    { data: { '@context': { '@vocab': 'https://schema.org/' }, '@graph': [
+      { '@type': 'WebPage' }, { '@type': 'JobPosting' },
+    ] }, eligible: true },
+    { data: { '@context': { posting: 'https://schema.org/JobPosting' }, '@type': 'posting' }, eligible: true },
+    { data: { '@context': {
+      '@vocab': 'https://schema.org/',
+      JobPosting: 'https://foreign.example/JobPosting',
+    }, '@type': 'JobPosting' }, eligible: false },
+    { data: { '@context': { '@vocab': 'https://schema.org/', JobPosting: null },
+      '@type': 'JobPosting' }, eligible: false },
+    { data: { '@context': { '@vocab': 'https://schema.org/', JobPosting: { '@id': null } },
+      '@type': 'JobPosting' }, eligible: false },
+    { data: { '@context': 'https://schema.org', '@graph': [
+      { '@context': { '@vocab': 'https://foreign.example/' }, '@type': 'JobPosting' },
+    ] }, eligible: false },
+    { data: { '@context': 'https://schema.org', '@graph': [
+      { '@context': 'https://foreign.example/context', '@type': 'JobPosting' },
+    ] }, eligible: false },
+    { data: { '@context': ['https://schema.org', { '@vocab': 'https://foreign.example/' }],
+      '@type': 'JobPosting' }, eligible: false },
+    { data: { '@context': 'https://schema.org', '@type': 'constructor' }, eligible: false },
+    { data: JSON.parse('{"@context":{"__proto__":"https://foreign.example/JobPosting","@vocab":"https://schema.org/"},"@type":"JobPosting"}'),
+      eligible: true },
+  ];
+  for (const { data, eligible } of cases) {
+    const html = `<script type="application/ld+json">${JSON.stringify(data)}</script>`;
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingEligibility('https://example.com/jobs/context-test'),
+    );
+    assert.equal(result.eligible, eligible, JSON.stringify(data));
+  }
+});
+
+test('JSON-LD livestream eligibility respects nested vocabulary and publication mapping', async () => {
+  const cases: Array<{ data: unknown; eligible: boolean }> = [
+    { data: { '@context': 'https://foreign.example/context',
+      '@type': 'VideoObject', publication: { '@type': 'BroadcastEvent' } },
+      eligible: false },
+    { data: { '@context': 'https://schema.org',
+      '@type': 'VideoObject', publication: { '@type': 'BroadcastEvent' } },
+      eligible: true },
+    { data: { '@context': 'https://schema.org',
+      '@type': 'VideoObject', publication: {
+        '@context': 'https://foreign.example/context', '@type': 'BroadcastEvent',
+      } }, eligible: false },
+    { data: { '@context': {
+      '@vocab': 'https://schema.org/',
+      publication: 'https://foreign.example/publication',
+    }, '@type': 'VideoObject', publication: { '@type': 'BroadcastEvent' } },
+      eligible: false },
+    { data: { '@context': {
+      '@vocab': 'https://schema.org/',
+      publication: null,
+    }, '@type': 'VideoObject', publication: { '@type': 'BroadcastEvent' } },
+      eligible: false },
+    { data: { '@context': {
+      VideoObject: 'https://schema.org/VideoObject',
+      BroadcastEvent: 'https://schema.org/BroadcastEvent',
+      live: 'https://schema.org/publication',
+    }, '@type': 'VideoObject', live: { '@type': 'BroadcastEvent' } },
+      eligible: true },
+  ];
+  for (const { data, eligible } of cases) {
+    const html = `<script type="application/ld+json">${JSON.stringify(data)}</script>`;
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingEligibility('https://example.com/live/context-test'),
+    );
+    assert.equal(result.eligible, eligible, JSON.stringify(data));
+  }
+});
+
 test('eligibility fetch accepts JobPosting Microdata and RDFa', async () => {
   for (const html of [
     '<main itemscope itemtype="https://schema.org/JobPosting"><h1>Engineer</h1></main>',
@@ -465,11 +545,11 @@ test('removal eligibility ignores inert and prefixed robots meta attributes', as
 
 test('indexing eligibility respects quoted angle brackets in real structured data', async () => {
   for (const html of [
-    '<script data-example="a>b" type="application/ld+json">{"@type":"JobPosting"}</script>',
+    '<script data-example="a>b" type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting"}</script>',
     '<main data-example="a>b" itemscope itemtype="https://schema.org/JobPosting"></main>',
-    '<div data-example="a<b"></div><script type="application/ld+json">{"@type":"JobPosting"}</script>',
+    '<div data-example="a<b"></div><script type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting"}</script>',
     `<div data-example='<script type="application/ld+json">{"@type":"JobPosting"}</script>'></div>` +
-      '<script type="application/ld+json">{"@type":"JobPosting"}</script>',
+      '<script type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting"}</script>',
   ]) {
     const result = await withMockFetch(
       async () => htmlResponse(html),
@@ -501,7 +581,7 @@ test('indexing eligibility preserves real structured data after raw-text fake at
     `<textarea><div data-inert='</textarea>`,
     `<!-- <div data-inert=' -->`,
   ]) {
-    const html = prefix + '<script type="application/ld+json">{"@type":"JobPosting"}</script>';
+    const html = prefix + jobPostingHtml();
     const result = await withMockFetch(
       async () => htmlResponse(html),
       () => checkIndexingEligibility('https://example.com/jobs/real'),
@@ -587,7 +667,9 @@ test('livestream JSON-LD requires BroadcastEvent in VideoObject publication', as
     { name: 'independent job posting', data: { '@type': 'JobPosting' }, eligible: true },
   ];
   for (const { name, data, eligible } of cases) {
-    const html = '<script type="application/ld+json">' + JSON.stringify(data) + '</script>';
+    const html = '<script type="application/ld+json">' +
+      JSON.stringify({ '@context': 'https://schema.org', ...(data as Record<string, unknown>) }) +
+      '</script>';
     const result = await withMockFetch(
       async () => htmlResponse(html),
       () => checkIndexingEligibility('https://example.com/live'),
