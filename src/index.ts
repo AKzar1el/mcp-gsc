@@ -52,7 +52,11 @@ import {
   type RateLimitedToolName,
 } from './tool-rate-limit';
 export { ToolRateLimiter } from './tool-rate-limiter-do';
-import { generateWeeklyDigest, resolveWeeklyDigestEndDate } from './digest';
+import {
+  generateWeeklyDigest,
+  resolveWeeklyDigestEndDate,
+  weeklyDigestAnalyticsRequestCount,
+} from './digest';
 import {
   CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
   CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
@@ -2495,12 +2499,12 @@ class GscMcpRuntime {
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'reports.weekly_digest');
         if (rateLimitError) return rateLimitError;
-        // The digest makes five Search Analytics queries. Its own hourly
-        // guard does not replace the shared per-user 10-minute budget.
+        // Preliminary snapshots make three current-week queries; finalized
+        // digests make five. Reserve the exact request count up front.
         const sharedBudgetError = await this.rateLimitError(
           googleId,
           'analytics.query',
-          5,
+          weeklyDigestAnalyticsRequestCount(resolvedEndDate, today),
           'reports.weekly_digest (shared Search Analytics quota)',
         );
         if (sharedBudgetError) return sharedBudgetError;
@@ -2512,6 +2516,7 @@ class GscMcpRuntime {
             site_url,
             resolvedEndDate,
             () => this.reserveSearchAnalyticsRetry(googleId),
+            today,
           );
           return toolResponse(markdown, { markdown });
         } catch (err) {

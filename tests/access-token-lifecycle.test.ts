@@ -310,9 +310,11 @@ test('weekly digest queries only finalized Search Console data for all five repo
 test('weekly digest honors explicit recent dates as preliminary snapshots without unverified trend advice', async () => {
   const originalFetch = globalThis.fetch;
   const requestedDataStates: Array<string | undefined> = [];
+  const requestStartDates: string[] = [];
   globalThis.fetch = async (_input, init) => {
-    const request = JSON.parse(String(init?.body)) as { dataState?: string; dimensions?: string[] };
+    const request = JSON.parse(String(init?.body)) as { dataState?: string; dimensions?: string[]; startDate: string };
     requestedDataStates.push(request.dataState);
+    requestStartDates.push(request.startDate);
     const rows = request.dimensions?.[0] === 'query'
       ? [{ keys: ['example query'], clicks: 3, impressions: 30, ctr: 0.1, position: 7 }]
       : request.dimensions?.[0] === 'page'
@@ -324,7 +326,8 @@ test('weekly digest honors explicit recent dates as preliminary snapshots withou
     const digest = await generateWeeklyDigest(
       createLifecycle().lifecycle, 'user-a', 'https://example.com/', getSearchConsoleCalendarDate(),
     );
-    assert.deepEqual(requestedDataStates, Array(5).fill('all'));
+    assert.deepEqual(requestedDataStates, Array(3).fill('all'));
+    assert.deepEqual([...new Set(requestStartDates)].length, 1);
     assert.match(digest, /preliminary Search Console data/i);
     assert.match(digest, /12 clicks/i);
     assert.match(digest, /80 impressions/i);
@@ -347,7 +350,7 @@ test('weekly digest never fabricates zero traffic when recent preliminary rows a
     const digest = await generateWeeklyDigest(
       createLifecycle().lifecycle, 'user-a', 'https://example.com/', getSearchConsoleCalendarDate(),
     );
-    assert.deepEqual(dataStates, Array(5).fill('all'));
+    assert.deepEqual(dataStates, Array(3).fill('all'));
     assert.match(digest, /preliminary Search Console data/i);
     assert.match(digest, /missing data is not a measured zero/i);
     assert.doesNotMatch(digest, /0 clicks|0 impressions|## What to do this week/i);

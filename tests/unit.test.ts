@@ -20,7 +20,7 @@ import {
   searchConsoleDateDescription,
 } from '../src/date-validation';
 import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from '../src/content-decay-schema';
-import { resolveWeeklyDigestEndDate } from '../src/digest';
+import { resolveWeeklyDigestEndDate, weeklyDigestAnalyticsRequestCount } from '../src/digest';
 import { resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
 import { createQuickWinsInputSchema } from '../src/quick-wins-schema';
 import { SITEMAP_URL_SCHEMA } from '../src/sitemap-url-schema';
@@ -236,6 +236,13 @@ test('weekly digest defaults to the latest usually-complete Search Console date'
   assert.equal(resolveWeeklyDigestEndDate(undefined, '2026-09-20'), '2026-09-17');
   assert.equal(resolveWeeklyDigestEndDate(undefined, '2026-03-02'), '2026-02-27');
   assert.equal(resolveWeeklyDigestEndDate('2026-09-19', '2026-09-20'), '2026-09-19');
+});
+
+test('weekly digest reserves three preliminary or five finalized upstream requests', () => {
+  const today = '2026-09-20';
+  assert.equal(weeklyDigestAnalyticsRequestCount('2026-09-17', today), 5);
+  assert.equal(weeklyDigestAnalyticsRequestCount('2026-09-18', today), 3);
+  assert.equal(weeklyDigestAnalyticsRequestCount('2026-09-20', today), 3);
 });
 
 test('weekly digest ranks impression-only queries by net growth, not current impressions', async () => {
