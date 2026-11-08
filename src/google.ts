@@ -82,16 +82,34 @@ const GOOGLE_READ_MAX_ATTEMPTS = 3;
 const GOOGLE_READ_BASE_DELAY_MS = 1_000;
 const GOOGLE_READ_MAX_DELAY_MS = 5_000;
 
-function googleErrorDetailsFromText(text: string): { reasons: string[]; message?: string } {
+function googleErrorDetailsFromText(text: string): {
+  reasons: string[];
+  message?: string;
+  status?: string;
+} {
   try {
     const data = JSON.parse(text) as {
-      error?: { message?: unknown; errors?: Array<{ reason?: unknown }> };
+      error?: {
+        message?: unknown;
+        status?: unknown;
+        errors?: Array<{ reason?: unknown }>;
+        details?: Array<{ '@type'?: unknown; reason?: unknown }>;
+      };
     };
-    return {
-      reasons: (data.error?.errors ?? [])
+    const legacyReasons = Array.isArray(data.error?.errors)
+      ? data.error.errors.map((entry) => entry?.reason)
+      : [];
+    // Modern Google errors may carry quota reasons in google.rpc.ErrorInfo.
+    const structuredReasons = Array.isArray(data.error?.details)
+      ? data.error.details
+        .filter((entry) => entry?.['@type'] === 'type.googleapis.com/google.rpc.ErrorInfo')
         .map((entry) => entry.reason)
+      : [];
+    return {
+      reasons: [...legacyReasons, ...structuredReasons]
         .filter((reason): reason is string => typeof reason === 'string'),
       ...(typeof data.error?.message === 'string' ? { message: data.error.message } : {}),
+      ...(typeof data.error?.status === 'string' ? { status: data.error.status } : {}),
     };
   } catch {
     return { reasons: [] };
@@ -834,10 +852,15 @@ export async function inspectUrlsSequentially(
       // A provider-wide quota failure makes subsequent inspections waste calls.
       // Keep ordinary 403 permission failures scoped to the current URL.
       const google403Prefix = 'URL inspection failed: 403 ';
-      const isQuota403 = message.startsWith(google403Prefix) &&
-        googleErrorDetailsFromText(message.slice(google403Prefix.length)).reasons.some(
-          (reason) => GOOGLE_READ_RETRYABLE_403_REASONS.has(reason) || reason === 'quotaExceeded',
-        );
+      const google403 = message.startsWith(google403Prefix)
+        ? googleErrorDetailsFromText(message.slice(google403Prefix.length))
+        : undefined;
+      const isQuota403 = google403 !== undefined &&
+        (google403.status === 'RESOURCE_EXHAUSTED' ||
+          google403.reasons.some(
+            (reason) => GOOGLE_READ_RETRYABLE_403_REASONS.has(reason) ||
+              reason === 'quotaExceeded' || reason === 'RATE_LIMIT_EXCEEDED',
+          ));
       if (/^URL inspection failed: 429(?:\s|$)/.test(message) || isQuota403) {
         quotaExhausted = true;
       }

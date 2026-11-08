@@ -1064,6 +1064,35 @@ for (const scenario of [
     body: JSON.stringify({ error: { errors: [{ reason: 'quotaExceeded' }] } }),
     stops: true,
   },
+  {
+    label: 'modern HTTP 403 RESOURCE_EXHAUSTED', status: 403,
+    body: JSON.stringify({ error: { status: 'RESOURCE_EXHAUSTED', message: 'Quota exceeded' } }),
+    stops: true,
+  },
+  {
+    label: 'modern HTTP 403 Google ErrorInfo rate limit', status: 403,
+    body: JSON.stringify({ error: {
+      status: 'PERMISSION_DENIED',
+      details: [{ '@type': 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'RATE_LIMIT_EXCEEDED' }],
+    } }),
+    stops: true,
+  },
+  {
+    label: 'unrelated HTTP 403 detail type is not a quota reason', status: 403,
+    body: JSON.stringify({ error: {
+      status: 'PERMISSION_DENIED',
+      details: [{ '@type': 'type.googleapis.com/example.OtherInfo', reason: 'RATE_LIMIT_EXCEEDED' }],
+    } }),
+    stops: false,
+  },
+  {
+    label: 'modern HTTP 403 Google ErrorInfo permission denial', status: 403,
+    body: JSON.stringify({ error: {
+      status: 'PERMISSION_DENIED',
+      details: [{ '@type': 'type.googleapis.com/google.rpc.ErrorInfo', reason: 'ACCESS_TOKEN_SCOPE_INSUFFICIENT' }],
+    } }),
+    stops: false,
+  },
   { label: 'ordinary HTTP 403 permission', status: 403, body: 'forbidden', stops: false },
   { label: 'HTTP 503 transient failure', status: 503, body: 'unavailable', stops: false },
 ]) {
