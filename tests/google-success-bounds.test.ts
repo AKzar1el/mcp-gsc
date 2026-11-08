@@ -433,3 +433,61 @@ test('Search Analytics accepts an exactly 16 MiB valid JSON response', async () 
   );
   assert.deepEqual(result.rows, []);
 });
+
+test('Search Analytics rejects a successful response with non-array rows', async () => {
+  await assert.rejects(
+    withMockFetch(
+      () => jsonResponse({ rows: { clicks: 1, impressions: 2 } }),
+      () => querySearchAnalytics('offline-token', SITE, ANALYTICS_QUERY),
+    ),
+    /Search Analytics response contains invalid rows/,
+  );
+});
+
+test('Search Analytics rejects non-finite and missing row metrics', async () => {
+  for (const invalidRow of [
+    { keys: ['example'], clicks: '1', impressions: 2, ctr: 0.5 },
+    { keys: ['example'], clicks: 1, impressions: 2, ctr: null },
+    { keys: [null], clicks: 1, impressions: 2, ctr: 0.5 },
+    { keys: ['example'], clicks: 1, impressions: 2, ctr: 0.5, position: '3' },
+  ]) {
+    await assert.rejects(
+      withMockFetch(
+        () => jsonResponse({ rows: [invalidRow] }),
+        () => querySearchAnalytics('offline-token', SITE, ANALYTICS_QUERY),
+      ),
+      /Search Analytics response contains invalid rows/,
+    );
+  }
+});
+
+test('Search Analytics rejects malformed successful metadata', async () => {
+  for (const payload of [
+    { rows: [], metadata: null },
+    { rows: [], metadata: { firstIncompleteDate: 20261108 } },
+    { rows: [], responseAggregationType: 3 },
+  ]) {
+    await assert.rejects(
+      withMockFetch(
+        () => jsonResponse(payload),
+        () => querySearchAnalytics('offline-token', SITE, ANALYTICS_QUERY),
+      ),
+      /Search Analytics response contains invalid metadata/,
+    );
+  }
+});
+
+test('Search Analytics preserves omitted rows and optional position for Discover results', async () => {
+  const empty = await withMockFetch(
+    () => jsonResponse({}),
+    () => querySearchAnalytics('offline-token', SITE, ANALYTICS_QUERY),
+  );
+  assert.deepEqual(empty.rows, []);
+  const row = { keys: ['example'], clicks: 2, impressions: 5, ctr: 0.4 };
+  const result = await withMockFetch(
+    () => jsonResponse({ rows: [row], metadata: { firstIncompleteDate: '2026-11-08' } }),
+    () => querySearchAnalytics('offline-token', SITE, ANALYTICS_QUERY),
+  );
+  assert.deepEqual(result.rows, [row]);
+  assert.deepEqual(result.metadata, { first_incomplete_date: '2026-11-08' });
+});
