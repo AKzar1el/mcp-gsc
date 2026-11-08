@@ -988,7 +988,7 @@ export async function querySearchAnalytics(
     // Search Console also sends load-quota errors with a message but no legacy
     // error.errors[] reason. Do not misclassify unrelated permission denials.
     const loadQuotaMessage = message !== undefined &&
-      /Search Analytics load quota exceeded|quota exceeded for quota metric SearchAnalyticsLoad/i.test(message);
+      /Search Analytics load quota exceeded|quota exceeded for quota metric SearchAnalyticsLoad(?![\w./-])/i.test(message);
     const structuredLoadQuota = quotaMetrics?.some(
       (metric) => /(?:^|\/)SearchAnalyticsLoad$/i.test(metric),
     );

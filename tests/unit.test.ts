@@ -1984,6 +1984,28 @@ test('querySearchAnalytics: recognizes message-only Search Analytics load quota 
   }
 });
 
+test('querySearchAnalytics: prefix-sharing quota metrics are not SearchAnalyticsLoad', async () => {
+  for (const metric of ['SearchAnalyticsLoadBudget', 'SearchAnalyticsLoad_daily', 'SearchAnalyticsLoad.requests', 'SearchAnalyticsLoad/Burst']) {
+    const { calls } = await withMockFetch(
+      () => json(403, { error: { code: 403, message: `Quota exceeded for quota metric ${metric}` } }),
+      async () => {
+        await assert.rejects(
+          querySearchAnalytics('at', 'sc-domain:example.com', {
+            startDate: '2026-05-01', endDate: '2026-05-31',
+            dimensions: ['query', 'page'], rowLimit: 100,
+          }),
+          (error: Error) => {
+            assert.match(error.message, /Search analytics query failed: 403/i);
+            assert.doesNotMatch(error.message, /15 minutes|page\/query grouping or filtering/i);
+            return true;
+          },
+        );
+      },
+    );
+    assert.equal(calls.length, 1, 'unrelated metric must not be retried');
+  }
+});
+
 test('querySearchAnalytics: generic quotaExceeded does not imply Search Analytics load exhaustion', async () => {
   const { calls } = await withMockFetch(
     () => json(403, {
