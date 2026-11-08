@@ -444,6 +444,15 @@ export interface SiteEntry {
   permissionLevel: string;
 }
 
+function isSiteEntry(value: unknown): value is SiteEntry {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const entry = value as Record<string, unknown>;
+  return (
+    typeof entry.siteUrl === 'string' && entry.siteUrl.trim().length > 0 &&
+    typeof entry.permissionLevel === 'string' && entry.permissionLevel.trim().length > 0
+  );
+}
+
 export async function listSites(
   accessToken: string,
   beforeRetry?: () => Promise<void>,
@@ -458,8 +467,16 @@ export async function listSites(
     const text = await readBoundedGoogleError(resp);
     throw new Error(`List sites failed: ${resp.status} ${text}`);
   }
-  const data = await readBoundedGoogleSuccessJson<{ siteEntry?: SiteEntry[] }>(resp);
-  return data.siteEntry ?? [];
+  const data: unknown = await readBoundedGoogleSuccessJson(resp);
+  if (!data || typeof data !== 'object' || Array.isArray(data)) {
+    throw new Error('Google Search Console sites.list response contains invalid siteEntry data.');
+  }
+  const entries = (data as { siteEntry?: unknown }).siteEntry;
+  if (entries == null) return [];
+  if (!Array.isArray(entries) || !entries.every(isSiteEntry)) {
+    throw new Error('Google Search Console sites.list response contains invalid siteEntry data.');
+  }
+  return entries;
 }
 
 export async function getSite(
@@ -482,7 +499,11 @@ export async function getSite(
     const text = await readBoundedGoogleError(resp);
     throw new Error(`Get site failed: ${resp.status} ${text}`);
   }
-  return readBoundedGoogleSuccessJson<SiteEntry>(resp);
+  const data: unknown = await readBoundedGoogleSuccessJson(resp);
+  if (!isSiteEntry(data)) {
+    throw new Error('Google Search Console sites.get response contains invalid property data.');
+  }
+  return data;
 }
 
 export type SearchDimension =
