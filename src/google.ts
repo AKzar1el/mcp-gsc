@@ -2305,7 +2305,7 @@ export async function getIndexingNotificationMetadata(
       `Get indexing notification status failed: ${resp.status} ${text}`,
     );
   }
-  return (await resp.json()) as IndexingNotificationMetadata;
+  return readBoundedGoogleSuccessJson<IndexingNotificationMetadata>(resp);
 }
 
 export interface PerformanceComparisonRow {

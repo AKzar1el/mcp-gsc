@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  getIndexingNotificationMetadata,
   getSite,
   getSitemap,
   inspectUrl,
@@ -140,6 +141,46 @@ test('oversized streamed sites.list response is cancelled early', async () => {
   });
   await assert.rejects(
     withMockFetch(() => new Response(stream, { status: 200 }), () => listSites('offline-token')),
+    /2 MiB byte limit/,
+  );
+  assert.equal(cancelled, true);
+  assert.ok(cursor < bytes.length, 'upstream body should not be fully consumed');
+});
+
+test('advertised oversized Indexing notification metadata is rejected', async () => {
+  await assert.rejects(
+    withMockFetch(
+      () => new Response(JSON.stringify({ url: URL }), {
+        status: 200,
+        headers: { 'content-length': String(LIMIT + 1) },
+      }),
+      () => getIndexingNotificationMetadata('offline-token', URL),
+    ),
+    /2 MiB byte limit/,
+  );
+});
+
+test('oversized streamed Indexing notification metadata is cancelled early', async () => {
+  const bytes = new TextEncoder().encode(JSON.stringify({ url: URL, padding: 'x'.repeat(3 * LIMIT) }));
+  let cursor = 0;
+  let cancelled = false;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (cursor >= bytes.length) {
+        controller.close();
+        return;
+      }
+      const end = Math.min(cursor + 65536, bytes.length);
+      controller.enqueue(bytes.subarray(cursor, end));
+      cursor = end;
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  await assert.rejects(
+    withMockFetch(() => new Response(stream, { status: 200 }),
+      () => getIndexingNotificationMetadata('offline-token', URL)),
     /2 MiB byte limit/,
   );
   assert.equal(cancelled, true);
