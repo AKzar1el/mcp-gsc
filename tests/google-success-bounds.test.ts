@@ -78,6 +78,36 @@ test('ordinary successful site metadata preserves the returned properties', asyn
   assert.deepEqual(result, value);
 });
 
+test('sites.list rejects malformed property collections instead of returning non-arrays', async () => {
+  await assert.rejects(
+    withMockFetch(
+      () => jsonResponse({ siteEntry: { siteUrl: SITE, permissionLevel: 'siteOwner' } }),
+      () => listSites('offline-token'),
+    ),
+    /Google Search Console sites.list response contains invalid siteEntry data/,
+  );
+});
+
+test('sites.list rejects entries without a valid property identifier and permission', async () => {
+  await assert.rejects(
+    withMockFetch(
+      () => jsonResponse({ siteEntry: [{ siteUrl: SITE, permissionLevel: null }] }),
+      () => listSites('offline-token'),
+    ),
+    /Google Search Console sites.list response contains invalid siteEntry data/,
+  );
+});
+
+test('sites.get rejects malformed permission metadata instead of returning it as a property', async () => {
+  await assert.rejects(
+    withMockFetch(
+      () => jsonResponse({ siteUrl: SITE, permissionLevel: 4 }),
+      () => getSite('offline-token', SITE),
+    ),
+    /Google Search Console sites.get response contains invalid property data/,
+  );
+});
+
 test('ordinary successful sitemap metadata preserves normalized entries', async () => {
   const result = await withMockFetch(
     () => jsonResponse({ sitemap: [{ path: 'https://example.org/sitemap.xml' }] }),
