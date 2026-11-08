@@ -8,12 +8,21 @@ import {
   inspectUrlsSequentially,
   listSites,
   listSitemaps,
+  querySearchAnalytics,
+  type SearchAnalyticsQuery,
 } from '../src/google';
 
 const LIMIT = 2 * 1024 * 1024;
 const SITE = 'sc-domain:example.org';
 const URL = 'https://example.org/page';
 const TOO_LARGE = 'x'.repeat(LIMIT + 1024);
+const ANALYTICS_LIMIT = 16 * 1024 * 1024;
+const ANALYTICS_QUERY: SearchAnalyticsQuery = {
+  startDate: '2026-10-01',
+  endDate: '2026-10-07',
+  dimensions: ['query'],
+  rowLimit: 10,
+};
 
 async function withMockFetch<T>(
   respond: (input: RequestInfo | URL, init?: RequestInit) => Response | Promise<Response>,
@@ -221,4 +230,66 @@ test('sequential inspections isolate an oversized result and continue to the nex
   assert.equal(calls, 2);
   assert.match(result[0]?.error ?? '', /2 MiB byte limit/);
   assert.equal((result[1]?.inspectionResult as { indexStatusResult: { verdict: string } }).indexStatusResult.verdict, 'PASS');
+});
+
+test('Search Analytics rejects an advertised oversized success without parsing it', async () => {
+  await assert.rejects(
+    withMockFetch(
+      () => new Response('{"rows":[]}', {
+        status: 200,
+        headers: { 'content-length': String(ANALYTICS_LIMIT + 1) },
+      }),
+      () => querySearchAnalytics('offline-token', SITE, ANALYTICS_QUERY),
+    ),
+    /Search Analytics response exceeds the 16 MiB byte limit/,
+  );
+});
+
+test('Search Analytics cancels oversized success streams before exhausting them', async () => {
+  const bytes = new TextEncoder().encode(JSON.stringify({ rows: [], padding: 'x'.repeat(ANALYTICS_LIMIT + 1024 * 1024) }));
+  let cursor = 0;
+  let cancelled = false;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (cursor >= bytes.length) {
+        controller.close();
+        return;
+      }
+      const end = Math.min(cursor + 65536, bytes.length);
+      controller.enqueue(bytes.subarray(cursor, end));
+      cursor = end;
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  await assert.rejects(
+    withMockFetch(
+      () => new Response(stream, { status: 200 }),
+      () => querySearchAnalytics('offline-token', SITE, ANALYTICS_QUERY),
+    ),
+    /Search Analytics response exceeds the 16 MiB byte limit/,
+  );
+  assert.equal(cancelled, true);
+  assert.ok(cursor < bytes.length, 'large upstream body should not be fully consumed');
+});
+
+test('Search Analytics accepts responses larger than the metadata limit', async () => {
+  const result = await withMockFetch(
+    () => jsonResponse({ rows: [{ keys: ['example'], clicks: 1, impressions: 2, ctr: 0.5, position: 3 }], padding: 'x'.repeat(LIMIT + 256) }),
+    () => querySearchAnalytics('offline-token', SITE, ANALYTICS_QUERY),
+  );
+  assert.equal(result.rows.length, 1);
+  assert.equal(result.rows[0].keys?.[0], 'example');
+});
+
+test('Search Analytics accepts an exactly 16 MiB valid JSON response', async () => {
+  const empty = JSON.stringify({ rows: [], padding: '' });
+  const exact = JSON.stringify({ rows: [], padding: 'x'.repeat(ANALYTICS_LIMIT - Buffer.byteLength(empty)) });
+  assert.equal(Buffer.byteLength(exact), ANALYTICS_LIMIT);
+  const result = await withMockFetch(
+    () => new Response(exact, { status: 200 }),
+    () => querySearchAnalytics('offline-token', SITE, ANALYTICS_QUERY),
+  );
+  assert.deepEqual(result.rows, []);
 });

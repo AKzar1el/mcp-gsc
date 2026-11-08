@@ -351,22 +351,32 @@ export async function refreshAccessToken(
 // Successful Google JSON payloads are not inherently small: an upstream
 // response without Content-Length must not be fully materialized by .json().
 const GOOGLE_SUCCESS_JSON_MAX_BYTES = 2 * 1024 * 1024;
+// Search Analytics may legitimately return thousands of rows; retain a larger
+// bounded budget without exposing the Worker to unbounded provider JSON.
+const GOOGLE_ANALYTICS_SUCCESS_JSON_MAX_BYTES = 16 * 1024 * 1024;
 
 async function readBoundedGoogleSuccessJson<T>(
   response: Response,
-  context: 'metadata' | 'URL Inspection' | 'OAuth' = 'metadata',
+  context: 'metadata' | 'URL Inspection' | 'OAuth' | 'Search Analytics' = 'metadata',
 ): Promise<T> {
   const description = context === 'metadata' ? 'metadata response'
-    : context === 'OAuth' ? 'OAuth response' : 'URL Inspection response';
+    : context === 'OAuth' ? 'OAuth response'
+      : context === 'Search Analytics' ? 'Search Analytics response' : 'URL Inspection response';
   const service = context === 'OAuth' ? 'Google' : 'Google Search Console';
+  const maxBytes = context === 'Search Analytics'
+    ? GOOGLE_ANALYTICS_SUCCESS_JSON_MAX_BYTES
+    : GOOGLE_SUCCESS_JSON_MAX_BYTES;
+  const sizeError =
+    `${service} ${description} exceeds the ${maxBytes / (1024 * 1024)} MiB byte limit.` +
+    (context === 'Search Analytics' ? ' Reduce row_limit or group by fewer dimensions.' : '');
   const advertised = Number(response.headers.get('content-length'));
-  if (Number.isFinite(advertised) && advertised > GOOGLE_SUCCESS_JSON_MAX_BYTES) {
+  if (Number.isFinite(advertised) && advertised > maxBytes) {
     try {
       await response.body?.cancel();
     } catch {
       // The size-limit error remains authoritative even if cleanup fails.
     }
-    throw new Error(`${service} ${description} exceeds the 2 MiB byte limit.`);
+    throw new Error(sizeError);
   }
   const reader = response.body?.getReader();
   if (!reader) throw new Error(`${service} ${description} body is empty.`);
@@ -381,8 +391,8 @@ async function readBoundedGoogleSuccessJson<T>(
         finished = true;
         break;
       }
-      if (value.byteLength > GOOGLE_SUCCESS_JSON_MAX_BYTES - size) {
-        throw new Error(`${service} ${description} exceeds the 2 MiB byte limit.`);
+      if (value.byteLength > maxBytes - size) {
+        throw new Error(sizeError);
       }
       chunks.push(value);
       size += value.byteLength;
@@ -964,11 +974,11 @@ export async function querySearchAnalytics(
     }
     throw new Error(`Search analytics query failed: ${resp.status} ${text}`);
   }
-  const data = (await resp.json()) as {
+  const data = await readBoundedGoogleSuccessJson<{
     rows?: SearchAnalyticsRow[];
     responseAggregationType?: string;
     metadata?: GoogleSearchAnalyticsResponseMetadata;
-  };
+  }>(resp, 'Search Analytics');
   const metadata: SearchAnalyticsResponseMetadata | undefined =
     data.metadata === undefined
       ? undefined
