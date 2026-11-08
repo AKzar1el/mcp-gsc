@@ -721,15 +721,25 @@ export interface SearchAnalyticsResponseMetadata {
   first_incomplete_hour?: string;
 }
 
-interface GoogleSearchAnalyticsResponseMetadata {
-  firstIncompleteDate?: string;
-  firstIncompleteHour?: string;
-}
-
 export interface SearchAnalyticsResponse {
   rows: SearchAnalyticsRow[];
   responseAggregationType?: string;
   metadata?: SearchAnalyticsResponseMetadata;
+}
+
+function validSearchAnalyticsMetric(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function validSearchAnalyticsRow(value: unknown): value is SearchAnalyticsRow {
+  const row = asUnknownRecord(value);
+  return row !== undefined &&
+    (row.keys === undefined ||
+      (Array.isArray(row.keys) && row.keys.every((key) => typeof key === 'string'))) &&
+    validSearchAnalyticsMetric(row.clicks) &&
+    validSearchAnalyticsMetric(row.impressions) &&
+    validSearchAnalyticsMetric(row.ctr) &&
+    (row.position === undefined || validSearchAnalyticsMetric(row.position));
 }
 
 /** The maximum page size accepted by the Search Analytics API. */
@@ -1020,26 +1030,38 @@ export async function querySearchAnalytics(
     }
     throw new Error(`Search analytics query failed: ${resp.status} ${text}`);
   }
-  const data = await readBoundedGoogleSuccessJson<{
-    rows?: SearchAnalyticsRow[];
-    responseAggregationType?: string;
-    metadata?: GoogleSearchAnalyticsResponseMetadata;
-  }>(resp, 'Search Analytics');
+  const payload = await readBoundedGoogleSuccessJson<unknown>(resp, 'Search Analytics');
+  const data = asUnknownRecord(payload);
+  if (!data) {
+    throw new Error('Search Analytics response contains invalid metadata.');
+  }
+  const rows = data.rows === undefined ? [] : data.rows;
+  if (!Array.isArray(rows) || !rows.every(validSearchAnalyticsRow)) {
+    throw new Error('Search Analytics response contains invalid rows.');
+  }
+  const rawMetadata = data.metadata === undefined ? undefined : asUnknownRecord(data.metadata);
+  if ((data.metadata !== undefined && !rawMetadata) ||
+      (data.responseAggregationType !== undefined && typeof data.responseAggregationType !== 'string') ||
+      (rawMetadata && (['firstIncompleteDate', 'firstIncompleteHour'] as const).some(
+        (key) => rawMetadata[key] !== undefined && typeof rawMetadata[key] !== 'string'
+      ))) {
+    throw new Error('Search Analytics response contains invalid metadata.');
+  }
   const metadata: SearchAnalyticsResponseMetadata | undefined =
-    data.metadata === undefined
+    rawMetadata === undefined
       ? undefined
       : {
-          ...(data.metadata.firstIncompleteDate !== undefined
-            ? { first_incomplete_date: data.metadata.firstIncompleteDate }
+          ...(rawMetadata.firstIncompleteDate !== undefined
+            ? { first_incomplete_date: rawMetadata.firstIncompleteDate as string }
             : {}),
-          ...(data.metadata.firstIncompleteHour !== undefined
-            ? { first_incomplete_hour: data.metadata.firstIncompleteHour }
+          ...(rawMetadata.firstIncompleteHour !== undefined
+            ? { first_incomplete_hour: rawMetadata.firstIncompleteHour as string }
             : {}),
         };
   return {
-    rows: data.rows ?? [],
+    rows,
     ...(data.responseAggregationType !== undefined
-      ? { responseAggregationType: data.responseAggregationType }
+      ? { responseAggregationType: data.responseAggregationType as string }
       : {}),
     ...(metadata !== undefined ? { metadata } : {}),
   };
