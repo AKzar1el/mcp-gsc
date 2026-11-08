@@ -2562,6 +2562,49 @@ export async function createGscMcpServer(
   return runtime.server;
 }
 
+const MCP_HEADER_PREFLIGHT_MAX_BYTES = 2 * 1024 * 1024;
+
+async function readMcpHeaderPreflightBody(
+  request: Request,
+): Promise<{ tooLarge: true } | { tooLarge: false; text: string }> {
+  const advertisedLength = request.headers.get('Content-Length');
+  if (
+    advertisedLength !== null &&
+    /^\d+$/.test(advertisedLength.trim()) &&
+    Number(advertisedLength) > MCP_HEADER_PREFLIGHT_MAX_BYTES
+  ) {
+    return { tooLarge: true };
+  }
+
+  // Inspect a clone so malformed JSON and notifications still reach the SDK.
+  const reader = request.clone().body?.getReader();
+  if (!reader) return { tooLarge: false, text: '' };
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value.byteLength > MCP_HEADER_PREFLIGHT_MAX_BYTES - totalBytes) {
+        // Do not await cancellation: a cloned stream can remain teed to the SDK branch.
+        void reader.cancel().catch(() => {});
+        return { tooLarge: true };
+      }
+      totalBytes += value.byteLength;
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { tooLarge: false, text: new TextDecoder().decode(bytes) };
+}
+
 export const mcpApiHandler = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if (
@@ -2572,7 +2615,18 @@ export const mcpApiHandler = {
       let id: string | number | null = null;
       let isRequest = false;
       try {
-        const body = (await request.clone().json()) as { id?: unknown };
+        const preview = await readMcpHeaderPreflightBody(request);
+        if (preview.tooLarge) {
+          return new Response(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              id: null,
+              error: { code: -32600, message: 'MCP request body exceeds the 2 MiB preflight limit.' },
+            }),
+            { status: 413, headers: { 'content-type': 'application/json; charset=utf-8' } },
+          );
+        }
+        const body = JSON.parse(preview.text) as { id?: unknown };
         if (Object.prototype.hasOwnProperty.call(body, 'id')) {
           isRequest = true;
           if (typeof body.id === 'string' || typeof body.id === 'number') {
