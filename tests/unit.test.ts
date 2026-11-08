@@ -2018,6 +2018,137 @@ test('querySearchAnalytics: generic quotaExceeded does not imply Search Analytic
   assert.equal(calls.length, 1, 'generic quota errors must not trigger immediate retries');
 });
 
+test('querySearchAnalytics: modern structured SearchAnalyticsLoad quota metadata gives scoped guidance', async () => {
+  for (const metric of ['SearchAnalyticsLoad', 'searchconsole.googleapis.com/SearchAnalyticsLoad']) {
+    const { calls } = await withMockFetch(
+      () => json(403, {
+        error: {
+          status: 'RESOURCE_EXHAUSTED',
+          message: 'Quota exceeded',
+          details: [{
+            '@type': 'type.googleapis.com/google.rpc.ErrorInfo',
+            reason: 'QUOTA_EXCEEDED',
+            metadata: { quota_metric: metric },
+          }],
+        },
+      }),
+      async () => {
+        await assert.rejects(
+          querySearchAnalytics('at', 'sc-domain:example.com', {
+            startDate: '2026-05-01', endDate: '2026-05-31',
+            dimensions: ['query', 'page'], rowLimit: 100,
+          }),
+          (error: Error) => {
+            assert.match(error.message, /15 minutes/i);
+            assert.match(error.message, /page\/query grouping or filtering/i);
+            return true;
+          },
+        );
+      },
+    );
+    assert.equal(calls.length, 1, 'structured load-quota failure must not waste retries');
+  }
+});
+
+test('querySearchAnalytics: modern unrelated quota metadata remains generic', async () => {
+  for (const metric of ['read_requests_per_minute', 'preSearchAnalyticsLoadTest']) {
+    const { calls } = await withMockFetch(
+      () => json(403, {
+        error: {
+          status: 'RESOURCE_EXHAUSTED',
+          message: 'Quota exceeded',
+          details: [{
+            '@type': 'type.googleapis.com/google.rpc.ErrorInfo',
+            reason: 'QUOTA_EXCEEDED',
+            metadata: { quota_metric: metric },
+          }],
+        },
+      }),
+      async () => {
+        await assert.rejects(
+          querySearchAnalytics('at', 'sc-domain:example.com', {
+            startDate: '2026-05-01', endDate: '2026-05-31',
+            dimensions: ['query', 'page'], rowLimit: 100,
+          }),
+          (error: Error) => {
+            assert.match(error.message, /Search analytics query failed: 403/i);
+            assert.doesNotMatch(error.message, /15 minutes|page\/query grouping or filtering/i);
+            return true;
+          },
+        );
+      },
+    );
+    assert.equal(calls.length, 1);
+  }
+});
+
+test('querySearchAnalytics: typed QuotaFailure SearchAnalyticsLoad violations give scoped guidance', async () => {
+  for (const violation of [
+    { quotaMetric: 'SearchAnalyticsLoad' },
+    { quota_metric: 'searchconsole.googleapis.com/SearchAnalyticsLoad' },
+  ]) {
+    const { calls } = await withMockFetch(
+      () => json(403, {
+        error: {
+          status: 'RESOURCE_EXHAUSTED',
+          message: 'Quota exceeded',
+          details: [{
+            '@type': 'type.googleapis.com/google.rpc.QuotaFailure',
+            violations: [violation],
+          }],
+        },
+      }),
+      async () => {
+        await assert.rejects(
+          querySearchAnalytics('at', 'sc-domain:example.com', {
+            startDate: '2026-05-01', endDate: '2026-05-31',
+            dimensions: ['query', 'page'], rowLimit: 100,
+          }),
+          (error: Error) => {
+            assert.match(error.message, /15 minutes/i);
+            assert.match(error.message, /page\/query grouping or filtering/i);
+            return true;
+          },
+        );
+      },
+    );
+    assert.equal(calls.length, 1, 'typed load quota must not waste retries');
+  }
+});
+
+test('querySearchAnalytics: unrelated or spoofed QuotaFailure metrics remain generic', async () => {
+  for (const detail of [
+    { '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaMetric: 'read_requests_per_minute' }] },
+    { '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaMetric: 'preSearchAnalyticsLoadTest' }] },
+    { '@type': 'type.googleapis.com/google.rpc.ErrorInfo', violations: [{ quotaMetric: 'SearchAnalyticsLoad' }] },
+    { '@type': 'type.googleapis.com/google.rpc.QuotaFailure', violations: [{ quotaMetric: 42 }] },
+  ]) {
+    const { calls } = await withMockFetch(
+      () => json(403, {
+        error: {
+          status: 'RESOURCE_EXHAUSTED',
+          message: 'Quota exceeded',
+          details: [detail],
+        },
+      }),
+      async () => {
+        await assert.rejects(
+          querySearchAnalytics('at', 'sc-domain:example.com', {
+            startDate: '2026-05-01', endDate: '2026-05-31',
+            dimensions: ['query', 'page'], rowLimit: 100,
+          }),
+          (error: Error) => {
+            assert.match(error.message, /Search analytics query failed: 403/i);
+            assert.doesNotMatch(error.message, /15 minutes|page\/query grouping or filtering/i);
+            return true;
+          },
+        );
+      },
+    );
+    assert.equal(calls.length, 1);
+  }
+});
+
 test('querySearchAnalytics: unrelated 403 permission errors are not called quota exhaustion', async () => {
   const { calls } = await withMockFetch(
     () => json(403, { error: { code: 403, message: 'Permission denied.' } }),
