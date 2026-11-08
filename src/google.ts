@@ -2241,7 +2241,7 @@ async function publishIndexingNotification(
     const text = await readBoundedGoogleError(resp);
     throw new Error(`${actionLabel} failed: ${resp.status} ${text}`);
   }
-  return await resp.json();
+  return readBoundedGoogleSuccessJson(resp);
 }
 
 export async function requestIndexing(
