@@ -86,6 +86,7 @@ function googleErrorDetailsFromText(text: string): {
   reasons: string[];
   message?: string;
   status?: string;
+  quotaMetrics?: string[];
 } {
   try {
     const data = JSON.parse(text) as {
@@ -93,7 +94,12 @@ function googleErrorDetailsFromText(text: string): {
         message?: unknown;
         status?: unknown;
         errors?: Array<{ reason?: unknown }>;
-        details?: Array<{ '@type'?: unknown; reason?: unknown }>;
+        details?: Array<{
+          '@type'?: unknown;
+          reason?: unknown;
+          metadata?: { quota_metric?: unknown };
+          violations?: Array<{ quotaMetric?: unknown; quota_metric?: unknown }>;
+        }>;
       };
     };
     const legacyReasons = Array.isArray(data.error?.errors)
@@ -105,11 +111,27 @@ function googleErrorDetailsFromText(text: string): {
         .filter((entry) => entry?.['@type'] === 'type.googleapis.com/google.rpc.ErrorInfo')
         .map((entry) => entry.reason)
       : [];
+    const quotaMetrics = Array.isArray(data.error?.details)
+      ? data.error.details
+        .flatMap((entry) => {
+          if (entry?.['@type'] === 'type.googleapis.com/google.rpc.ErrorInfo') {
+            return [entry.metadata?.quota_metric];
+          }
+          if (entry?.['@type'] === 'type.googleapis.com/google.rpc.QuotaFailure' &&
+              Array.isArray(entry.violations)) {
+            return entry.violations.map((violation) =>
+              violation?.quotaMetric ?? violation?.quota_metric);
+          }
+          return [];
+        })
+        .filter((metric): metric is string => typeof metric === 'string')
+      : [];
     return {
       reasons: [...legacyReasons, ...structuredReasons]
         .filter((reason): reason is string => typeof reason === 'string'),
       ...(typeof data.error?.message === 'string' ? { message: data.error.message } : {}),
       ...(typeof data.error?.status === 'string' ? { status: data.error.status } : {}),
+      ...(quotaMetrics.length > 0 ? { quotaMetrics } : {}),
     };
   } catch {
     return { reasons: [] };
@@ -962,12 +984,15 @@ export async function querySearchAnalytics(
   }
   if (!resp.ok) {
     const text = await readBoundedGoogleError(resp);
-    const { message } = googleErrorDetailsFromText(text);
+    const { message, quotaMetrics } = googleErrorDetailsFromText(text);
     // Search Console also sends load-quota errors with a message but no legacy
     // error.errors[] reason. Do not misclassify unrelated permission denials.
     const loadQuotaMessage = message !== undefined &&
       /Search Analytics load quota exceeded|quota exceeded for quota metric SearchAnalyticsLoad/i.test(message);
-    if (resp.status === 403 && loadQuotaMessage) {
+    const structuredLoadQuota = quotaMetrics?.some(
+      (metric) => /(?:^|\/)SearchAnalyticsLoad$/i.test(metric),
+    );
+    if (resp.status === 403 && (loadQuotaMessage || structuredLoadQuota)) {
       throw new Error(
         'Search Analytics load quota exceeded. Google recommends waiting about 15 minutes before retrying a short-term load-quota failure. If the error persists, reduce expensive page/query grouping or filtering, shorten the date range, and avoid repeatedly requesting the same data.',
       );
