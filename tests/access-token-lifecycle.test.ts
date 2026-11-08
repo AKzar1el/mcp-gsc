@@ -208,6 +208,44 @@ test('GoogleAccessTokenLifecycle cannot restore an old in-flight token after rec
   assert.equal(await fixture.lifecycle.getAccessToken('user-a'), 'new-access');
 });
 
+test('GoogleAccessTokenLifecycle ignores a stale revoked-grant failure after reconnection', async () => {
+  let grant = 'old-grant';
+  let oldStarted!: () => void;
+  let newStarted!: () => void;
+  const oldStartedPromise = new Promise<void>((resolve) => { oldStarted = resolve; });
+  const newStartedPromise = new Promise<void>((resolve) => { newStarted = resolve; });
+  let rejectOld!: (error: Error) => void;
+  let resolveNew!: (tokens: { access_token: string; expires_in: number }) => void;
+  const refreshedGrants: string[] = [];
+  const fixture = createLifecycle({
+    getDecryptedRefreshToken: async () => grant,
+    refreshAccessToken: async (refreshToken) => {
+      refreshedGrants.push(refreshToken);
+      if (refreshToken === 'old-grant') {
+        oldStarted();
+        return new Promise((_resolve, reject) => { rejectOld = reject; });
+      }
+      newStarted();
+      return new Promise((resolve) => { resolveNew = resolve; });
+    },
+  });
+
+  const oldRequest = fixture.lifecycle.getAccessToken('user-a');
+  await oldStartedPromise;
+  grant = 'new-grant';
+  fixture.lifecycle.invalidate('user-a');
+  const newRequest = fixture.lifecycle.getAccessToken('user-a');
+  await newStartedPromise;
+
+  // The old invalid_grant arrives while the replacement grant is refreshing.
+  rejectOld(new GoogleRefreshTokenRevokedError());
+  resolveNew({ access_token: 'new-access', expires_in: 3_600 });
+
+  assert.deepEqual(await Promise.all([oldRequest, newRequest]), ['new-access', 'new-access']);
+  assert.equal(await fixture.lifecycle.getAccessToken('user-a'), 'new-access');
+  assert.deepEqual(refreshedGrants, ['old-grant', 'new-grant']);
+});
+
 test('GoogleAccessTokenLifecycle gives reconnect guidance without deleting stored credentials', async () => {
   const fixture = createLifecycle({
     refreshAccessToken: async () => {
