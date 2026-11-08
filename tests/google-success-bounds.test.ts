@@ -10,6 +10,7 @@ import {
   listSites,
   listSitemaps,
   querySearchAnalytics,
+  requestIndexing,
   type SearchAnalyticsQuery,
 } from '../src/google';
 
@@ -40,6 +41,23 @@ async function withMockFetch<T>(
 
 function jsonResponse(payload: unknown, headers?: HeadersInit): Response {
   return new Response(JSON.stringify(payload), { status: 200, headers });
+}
+
+function withEligibleIndexingPublish<T>(
+  respond: () => Response,
+  work: () => Promise<T>,
+): Promise<T> {
+  return withMockFetch((input, init) => {
+    if (String(input) === URL) {
+      return new Response('<script type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting"}</script>', {
+        status: 200,
+        headers: { 'content-type': 'text/html' },
+      });
+    }
+    assert.equal(String(input), 'https://indexing.googleapis.com/v3/urlNotifications:publish');
+    assert.equal(init?.method, 'POST');
+    return respond();
+  }, work);
 }
 
 function inspectionPayload(paddingLength = 0): string {
@@ -181,6 +199,57 @@ test('oversized streamed Indexing notification metadata is cancelled early', asy
   await assert.rejects(
     withMockFetch(() => new Response(stream, { status: 200 }),
       () => getIndexingNotificationMetadata('offline-token', URL)),
+    /2 MiB byte limit/,
+  );
+  assert.equal(cancelled, true);
+  assert.ok(cursor < bytes.length, 'upstream body should not be fully consumed');
+});
+
+test('ordinary successful Indexing publish preserves its notification receipt', async () => {
+  const receipt = { url: URL, type: 'URL_UPDATED' };
+  const result = await withEligibleIndexingPublish(
+    () => jsonResponse(receipt),
+    () => requestIndexing('offline-token', URL),
+  );
+  assert.deepEqual(result, receipt);
+});
+
+test('advertised oversized successful Indexing publish response is rejected', async () => {
+  await assert.rejects(
+    withEligibleIndexingPublish(
+      () => new Response(JSON.stringify({ url: URL }), {
+        status: 200,
+        headers: { 'content-length': String(LIMIT + 1) },
+      }),
+      () => requestIndexing('offline-token', URL),
+    ),
+    /2 MiB byte limit/,
+  );
+});
+
+test('streamed oversized successful Indexing publish response is cancelled early', async () => {
+  const bytes = new TextEncoder().encode(JSON.stringify({ url: URL, padding: 'x'.repeat(3 * LIMIT) }));
+  let cursor = 0;
+  let cancelled = false;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (cursor >= bytes.length) {
+        controller.close();
+        return;
+      }
+      const end = Math.min(cursor + 65536, bytes.length);
+      controller.enqueue(bytes.subarray(cursor, end));
+      cursor = end;
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  await assert.rejects(
+    withEligibleIndexingPublish(
+      () => new Response(stream, { status: 200 }),
+      () => requestIndexing('offline-token', URL),
+    ),
     /2 MiB byte limit/,
   );
   assert.equal(cancelled, true);
