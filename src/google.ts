@@ -731,11 +731,16 @@ function validSearchAnalyticsMetric(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
-function validSearchAnalyticsRow(value: unknown): value is SearchAnalyticsRow {
+function validSearchAnalyticsRow(
+  value: unknown,
+  expectedDimensionCount: number,
+): value is SearchAnalyticsRow {
   const row = asUnknownRecord(value);
   return row !== undefined &&
-    (row.keys === undefined ||
-      (Array.isArray(row.keys) && row.keys.every((key) => typeof key === 'string'))) &&
+    (expectedDimensionCount === 0 && row.keys === undefined ||
+      (Array.isArray(row.keys) &&
+        row.keys.length === expectedDimensionCount &&
+        row.keys.every((key) => typeof key === 'string'))) &&
     validSearchAnalyticsMetric(row.clicks) &&
     validSearchAnalyticsMetric(row.impressions) &&
     validSearchAnalyticsMetric(row.ctr) &&
@@ -1069,8 +1074,11 @@ export async function querySearchAnalytics(
     throw new Error('Search Analytics response contains invalid metadata.');
   }
   const rows = data.rows === undefined ? [] : data.rows;
-  if (!Array.isArray(rows) || !rows.every(validSearchAnalyticsRow)) {
+  if (!Array.isArray(rows) || !rows.every((row) => validSearchAnalyticsRow(row, body.dimensions.length))) {
     throw new Error('Search Analytics response contains invalid rows.');
+  }
+  if (rows.length > body.rowLimit) {
+    throw new Error('Search Analytics response contains invalid rows: requested rowLimit exceeded.');
   }
   const rawMetadata = data.metadata === undefined ? undefined : asUnknownRecord(data.metadata);
   if ((data.metadata !== undefined && !rawMetadata) ||

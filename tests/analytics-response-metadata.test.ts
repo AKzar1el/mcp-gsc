@@ -87,7 +87,10 @@ test('higher-level analytics transformations continue to consume response rows',
   ];
   const response = await withMockFetch(
     { rows: quickWinRows, responseAggregationType: 'byPage' },
-    () => querySearchAnalytics('token', 'sc-domain:example.com', QUERY),
+    () => querySearchAnalytics('token', 'sc-domain:example.com', {
+      ...QUERY,
+      dimensions: ['query', 'page'],
+    }),
   );
 
   assert.deepEqual(processQuickWins(response.rows, 100, 8, 20), [
@@ -100,4 +103,39 @@ test('higher-level analytics transformations continue to consume response rows',
       position: 9,
     },
   ]);
+});
+
+test('querySearchAnalytics rejects missing, short, and extra grouped dimension keys', async () => {
+  const metrics = { clicks: 2, impressions: 20, ctr: 0.1, position: 4 };
+  for (const row of [
+    metrics,
+    { ...metrics, keys: ['query'] },
+    { ...metrics, keys: ['query', 'https://example.com/', 'extra'] },
+  ]) {
+    await assert.rejects(
+      withMockFetch({ rows: [row] }, () => querySearchAnalytics(
+        'token',
+        'sc-domain:example.com',
+        { ...QUERY, dimensions: ['query', 'page'] },
+      )),
+      /Search Analytics response contains invalid rows/,
+    );
+  }
+});
+
+test('querySearchAnalytics preserves keyless aggregates and rejects extraneous keys', async () => {
+  const metrics = { clicks: 2, impressions: 20, ctr: 0.1, position: 4 };
+  const query = { ...QUERY, dimensions: [] };
+  for (const row of [metrics, { ...metrics, keys: [] }]) {
+    const response = await withMockFetch(
+      { rows: [row] },
+      () => querySearchAnalytics('token', 'sc-domain:example.com', query),
+    );
+    assert.deepEqual(response.rows, [row]);
+  }
+  await assert.rejects(
+    withMockFetch({ rows: [{ ...metrics, keys: ['unexpected'] }] }, () =>
+      querySearchAnalytics('token', 'sc-domain:example.com', query)),
+    /Search Analytics response contains invalid rows/,
+  );
 });
