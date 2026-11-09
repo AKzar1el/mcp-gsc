@@ -641,6 +641,23 @@ test('Search Analytics rejects a successful response with non-array rows', async
   );
 });
 
+test('Search Analytics rejects successful pages that exceed the requested row limit', async () => {
+  const row = { keys: ['example'], clicks: 1, impressions: 2, ctr: 0.5, position: 3 };
+  const exactlyFull = await withMockFetch(
+    () => jsonResponse({ rows: Array.from({ length: ANALYTICS_QUERY.rowLimit }, () => row) }),
+    () => querySearchAnalytics('offline-token', SITE, ANALYTICS_QUERY),
+  );
+  assert.equal(exactlyFull.rows.length, ANALYTICS_QUERY.rowLimit);
+
+  await assert.rejects(
+    withMockFetch(
+      () => jsonResponse({ rows: Array.from({ length: ANALYTICS_QUERY.rowLimit + 1 }, () => row) }),
+      () => querySearchAnalytics('offline-token', SITE, ANALYTICS_QUERY),
+    ),
+    /Search Analytics response contains invalid rows/,
+  );
+});
+
 test('Search Analytics rejects non-finite and missing row metrics', async () => {
   for (const invalidRow of [
     { keys: ['example'], clicks: '1', impressions: 2, ctr: 0.5 },
