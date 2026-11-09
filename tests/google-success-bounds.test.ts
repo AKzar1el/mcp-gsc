@@ -296,6 +296,42 @@ test('oversized streamed Indexing notification metadata is cancelled early', asy
   assert.ok(cursor < bytes.length, 'upstream body should not be fully consumed');
 });
 
+test('Indexing metadata rejects malformed successful root and notification shapes', async () => {
+  for (const payload of [
+    null, [], 'bad', 123,
+    { url: 42 },
+    { latestUpdate: [] },
+    { latestRemove: 'bad' },
+    { latestUpdate: { url: false } },
+    { latestRemove: { type: 7 } },
+    { latestUpdate: { notifyTime: [] } },
+  ]) {
+    await assert.rejects(
+      withMockFetch(() => jsonResponse(payload), () => getIndexingNotificationMetadata('offline-token', URL)),
+      /Google Indexing metadata response contains invalid notification data/,
+    );
+  }
+});
+
+test('Indexing metadata preserves absent and nullable notifications with future fields', async () => {
+  const values = [
+    {},
+    { url: URL, latestUpdate: null, latestRemove: null },
+    {
+      url: URL,
+      latestUpdate: { url: URL, type: 'URL_UPDATED', notifyTime: '2026-11-09T00:00:00Z', future: 1 },
+      latestRemove: { type: 'FUTURE_TYPE' },
+      futureField: ['other', 2],
+    },
+  ];
+  for (const payload of values) {
+    assert.deepEqual(
+      await withMockFetch(() => jsonResponse(payload), () => getIndexingNotificationMetadata('offline-token', URL)),
+      payload,
+    );
+  }
+});
+
 test('ordinary successful Indexing publish preserves its notification receipt', async () => {
   const receipt = { url: URL, type: 'URL_UPDATED' };
   const result = await withEligibleIndexingPublish(

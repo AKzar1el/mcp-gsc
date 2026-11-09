@@ -2363,6 +2363,13 @@ export interface IndexingNotificationMetadata {
   latestRemove?: IndexingNotification;
 }
 
+function isOptionalIndexingNotification(value: unknown): boolean {
+  if (value == null) return true;
+  const notification = asUnknownRecord(value);
+  return !!notification && ['url', 'type', 'notifyTime'].every((field) =>
+    notification[field] == null || typeof notification[field] === 'string');
+}
+
 export async function getIndexingNotificationMetadata(
   accessToken: string,
   url: string,
@@ -2385,7 +2392,15 @@ export async function getIndexingNotificationMetadata(
       `Get indexing notification status failed: ${resp.status} ${text}`,
     );
   }
-  return readBoundedGoogleSuccessJson<IndexingNotificationMetadata>(resp);
+  const data: unknown = await readBoundedGoogleSuccessJson(resp);
+  const metadata = asUnknownRecord(data);
+  if (!metadata ||
+      (metadata.url != null && typeof metadata.url !== 'string') ||
+      !isOptionalIndexingNotification(metadata.latestUpdate) ||
+      !isOptionalIndexingNotification(metadata.latestRemove)) {
+    throw new Error('Google Indexing metadata response contains invalid notification data.');
+  }
+  return data as IndexingNotificationMetadata;
 }
 
 export interface PerformanceComparisonRow {
