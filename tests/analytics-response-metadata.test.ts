@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { processQuickWins, querySearchAnalytics, type SearchAnalyticsQuery } from '../src/google';
+import { assertSearchAnalyticsQueryCompatible, processQuickWins, querySearchAnalytics, type SearchAnalyticsQuery } from '../src/google';
 
 const QUERY: SearchAnalyticsQuery = {
   startDate: '2026-08-01',
@@ -12,6 +12,44 @@ const QUERY: SearchAnalyticsQuery = {
 const rows = [
   { keys: ['example query'], clicks: 10, impressions: 200, ctr: 0.05, position: 9 },
 ];
+
+test('Search Analytics rejects invalid request dates before issuing a provider query', () => {
+  for (const dates of [
+    { startDate: '2026-02-30', endDate: '2026-03-01' },
+    { startDate: 'not-a-date', endDate: '2026-08-10' },
+    { startDate: '2026-08-11', endDate: '2026-08-10' },
+  ]) {
+    assert.throws(
+      () => assertSearchAnalyticsQueryCompatible({ ...QUERY, ...dates }),
+      /Search Analytics .*date/i,
+    );
+  }
+  assert.doesNotThrow(() => assertSearchAnalyticsQueryCompatible({
+    ...QUERY,
+    startDate: '2024-02-29',
+    endDate: '2024-03-01',
+  }));
+});
+
+test('Search Analytics rejects invalid row limits and starting offsets before provider calls', () => {
+  for (const rowLimit of [-1, 0, 0.5, 25001, Infinity]) {
+    assert.throws(
+      () => assertSearchAnalyticsQueryCompatible({ ...QUERY, rowLimit }),
+      /rowLimit/,
+    );
+  }
+  for (const startRow of [-1, 0.5, Infinity, NaN, 2_147_483_648]) {
+    assert.throws(
+      () => assertSearchAnalyticsQueryCompatible({ ...QUERY, startRow }),
+      /startRow/,
+    );
+  }
+  assert.doesNotThrow(() => assertSearchAnalyticsQueryCompatible({
+    ...QUERY,
+    rowLimit: 25000,
+    startRow: 0,
+  }));
+});
 
 function json(body: unknown): Response {
   return new Response(JSON.stringify(body), {

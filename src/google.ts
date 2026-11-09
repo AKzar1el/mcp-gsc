@@ -600,6 +600,18 @@ function inclusiveCalendarDayCount(startDate: string, endDate: string): number {
 }
 
 export function assertSearchAnalyticsQueryCompatible(body: SearchAnalyticsQuery): void {
+  if (!isValidCalendarDate(body.startDate) || !isValidCalendarDate(body.endDate) ||
+      body.startDate > body.endDate) {
+    throw new Error('Search Analytics startDate and endDate must be valid, ordered YYYY-MM-DD dates.');
+  }
+  if (!Number.isInteger(body.rowLimit) || body.rowLimit < 1 ||
+      body.rowLimit > SEARCH_ANALYTICS_PAGE_SIZE) {
+    throw new Error('Search Analytics rowLimit must be an integer from 1 to 25000.');
+  }
+  if (body.startRow !== undefined &&
+      (!Number.isInteger(body.startRow) || body.startRow < 0 || body.startRow > 2_147_483_647)) {
+    throw new Error('Search Analytics startRow must be a nonnegative 32-bit integer.');
+  }
   if (new Set(body.dimensions).size !== body.dimensions.length) {
     throw new Error('Search Analytics dimensions must not contain duplicates.');
   }
