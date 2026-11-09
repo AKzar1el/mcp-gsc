@@ -951,6 +951,28 @@ export interface SitemapEntry {
   }> | null;
 }
 
+function isSitemapEntry(value: unknown): value is SitemapEntry {
+  const entry = asUnknownRecord(value);
+  if (!entry || typeof entry.path !== 'string' || !entry.path.trim()) {
+    return false;
+  }
+  for (const field of ['lastSubmitted', 'type', 'lastDownloaded', 'warnings', 'errors']) {
+    const fieldValue = entry[field];
+    if (fieldValue != null && typeof fieldValue !== 'string') return false;
+  }
+  for (const field of ['isPending', 'isSitemapsIndex']) {
+    const fieldValue = entry[field];
+    if (fieldValue != null && typeof fieldValue !== 'boolean') return false;
+  }
+  if (entry.contents == null) return true;
+  return Array.isArray(entry.contents) && entry.contents.every((item) => {
+    const content = asUnknownRecord(item);
+    return content !== undefined &&
+      typeof content.type === 'string' &&
+      typeof content.submitted === 'string';
+  });
+}
+
 function normalizeSitemap(entry: SitemapEntry): SitemapEntry {
   if (!entry.contents) return entry;
 
@@ -986,8 +1008,12 @@ export async function listSitemaps(
     const text = await readBoundedGoogleError(resp);
     throw new Error(`List sitemaps failed: ${resp.status} ${text}`);
   }
-  const data = await readBoundedGoogleSuccessJson<{ sitemap?: SitemapEntry[] }>(resp);
-  return (data.sitemap ?? []).map(normalizeSitemap);
+  const data = asUnknownRecord(await readBoundedGoogleSuccessJson(resp));
+  const entries = data?.sitemap;
+  if (!data || (entries != null && (!Array.isArray(entries) || !entries.every(isSitemapEntry)))) {
+    throw new Error('Google Search Console sitemaps.list response contains invalid sitemap data.');
+  }
+  return (entries ?? []).map(normalizeSitemap);
 }
 
 export async function querySearchAnalytics(
@@ -1226,7 +1252,11 @@ export async function getSitemap(
     const text = await readBoundedGoogleError(resp);
     throw new Error(`Get sitemap failed: ${resp.status} ${text}`);
   }
-  return normalizeSitemap(await readBoundedGoogleSuccessJson<SitemapEntry>(resp));
+  const entry: unknown = await readBoundedGoogleSuccessJson(resp);
+  if (!isSitemapEntry(entry)) {
+    throw new Error('Google Search Console sitemaps.get response contains invalid sitemap data.');
+  }
+  return normalizeSitemap(entry);
 }
 
 export interface QuickWinResult {

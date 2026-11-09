@@ -116,6 +116,67 @@ test('ordinary successful sitemap metadata preserves normalized entries', async 
   assert.equal(result[0]?.path, 'https://example.org/sitemap.xml');
 });
 
+test('sitemaps.list rejects a non-array successful sitemap collection', async () => {
+  await assert.rejects(
+    withMockFetch(
+      () => jsonResponse({ sitemap: { path: 'https://example.org/sitemap.xml' } }),
+      () => listSitemaps('offline-token', SITE),
+    ),
+    /sitemaps\.list response contains invalid sitemap data/,
+  );
+});
+
+test('sitemaps.list rejects entries missing a valid path', async () => {
+  await assert.rejects(
+    withMockFetch(
+      () => jsonResponse({ sitemap: [{}] }),
+      () => listSitemaps('offline-token', SITE),
+    ),
+    /sitemaps\.list response contains invalid sitemap data/,
+  );
+});
+
+test('sitemaps.list rejects malformed nested content metadata', async () => {
+  await assert.rejects(
+    withMockFetch(
+      () => jsonResponse({ sitemap: [{ path: 'https://example.org/sitemap.xml', contents: [{ type: 'web', submitted: 12 }] }] }),
+      () => listSitemaps('offline-token', SITE),
+    ),
+    /sitemaps\.list response contains invalid sitemap data/,
+  );
+});
+
+test('sitemaps.get rejects malformed successful entries', async () => {
+  for (const invalid of [
+    { contents: [{ type: 'web', submitted: '1' }] },
+    { path: 'https://example.org/sitemap.xml', contents: [{ type: 'web', submitted: 12 }] },
+  ]) {
+    await assert.rejects(
+      withMockFetch(
+        () => jsonResponse(invalid),
+        () => getSitemap('offline-token', SITE, 'https://example.org/sitemap.xml'),
+      ),
+      /sitemaps\.get response contains invalid sitemap data/,
+    );
+  }
+});
+
+test('sitemaps.get preserves valid optional data while omitting deprecated indexed counts', async () => {
+  const path = 'https://example.org/sitemap.xml';
+  const entry = await withMockFetch(
+    () => jsonResponse({
+      path,
+      isPending: null,
+      lastSubmitted: '2026-11-08T09:00:00Z',
+      contents: [{ type: 'web', submitted: '12', indexed: '9' }],
+    }),
+    () => getSitemap('offline-token', SITE, path),
+  );
+  assert.equal(entry.path, path);
+  assert.equal(entry.isPending, null);
+  assert.deepEqual(entry.contents, [{ type: 'web', submitted: '12' }]);
+});
+
 test('oversized sites.list success is rejected before unbounded JSON parsing', async () => {
   await assert.rejects(
     withMockFetch(
