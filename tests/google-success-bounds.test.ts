@@ -397,6 +397,76 @@ test('URL Inspection accepts an exact 2 MiB valid JSON response', async () => {
   assert.equal((result as { indexStatusResult: { verdict: string } }).indexStatusResult.verdict, 'PASS');
 });
 
+test('URL Inspection rejects malformed successful response and inspectionResult shapes', async () => {
+  for (const payload of [null, [], 'bad', 123, { inspectionResult: 'bad' }, { inspectionResult: [] }, { inspectionResult: true }, { inspectionResult: 123 }]) {
+    await assert.rejects(
+      withMockFetch(() => jsonResponse(payload), () => inspectUrl('offline-token', SITE, URL)),
+      /URL Inspection response contains invalid inspection data/,
+    );
+  }
+});
+
+test('URL Inspection preserves absent, null, and extensible valid inspection results', async () => {
+  for (const payload of [{}, { inspectionResult: null }]) {
+    assert.equal(await withMockFetch(() => jsonResponse(payload), () => inspectUrl('offline-token', SITE, URL)), null);
+  }
+  const result = { indexStatusResult: { verdict: 'PASS' }, futureGoogleField: 'extended' };
+  assert.deepEqual(
+    await withMockFetch(() => jsonResponse({ inspectionResult: result }), () => inspectUrl('offline-token', SITE, URL)),
+    result,
+  );
+});
+
+test('URL Inspection rejects malformed known nested result objects and links', async () => {
+  for (const inspectionResult of [
+    { indexStatusResult: [] },
+    { indexStatusResult: 'PASS' },
+    { ampResult: true },
+    { mobileUsabilityResult: 123 },
+    { richResultsResult: [] },
+    { inspectionResultLink: 42 },
+  ]) {
+    await assert.rejects(
+      withMockFetch(() => jsonResponse({ inspectionResult }), () => inspectUrl('offline-token', SITE, URL)),
+      /URL Inspection response contains invalid inspection data/,
+    );
+  }
+});
+
+test('URL Inspection preserves optional nested results, null fields, and future metadata', async () => {
+  const inspectionResult = {
+    inspectionResultLink: 'https://search.google.com/search-console/inspect',
+    indexStatusResult: { verdict: 'NEUTRAL' },
+    ampResult: null,
+    richResultsResult: { detectedItems: [] },
+    futureGoogleField: [1, 'two'],
+  };
+  assert.deepEqual(
+    await withMockFetch(() => jsonResponse({ inspectionResult }), () => inspectUrl('offline-token', SITE, URL)),
+    inspectionResult,
+  );
+});
+
+test('sequential URL Inspection isolates malformed-success errors without skipping later URLs', async () => {
+  let calls = 0;
+  const results = await withMockFetch(
+    (_input, init) => {
+      calls += 1;
+      const requested = (JSON.parse(String(init?.body)) as { inspectionUrl: string }).inspectionUrl;
+      return jsonResponse(requested.endsWith('/bad')
+        ? { inspectionResult: 123 }
+        : { inspectionResult: { indexStatusResult: { verdict: 'PASS' } } });
+    },
+    () => inspectUrlsSequentially('offline-token', SITE, [
+      'https://example.org/bad',
+      'https://example.org/good',
+    ]),
+  );
+  assert.equal(calls, 2);
+  assert.match(results[0]?.error ?? '', /URL Inspection response contains invalid inspection data/);
+  assert.deepEqual(results[1]?.inspectionResult, { indexStatusResult: { verdict: 'PASS' } });
+});
+
 test('cleanup errors never hide the response-size error', async () => {
   const response = new Response(new ReadableStream({
     start(controller) {

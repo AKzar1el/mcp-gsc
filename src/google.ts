@@ -795,11 +795,18 @@ export async function inspectUrl(
     const text = await readBoundedGoogleError(resp);
     throw new Error(`URL inspection failed: ${resp.status} ${text}`);
   }
-  const data = await readBoundedGoogleSuccessJson<{ inspectionResult?: unknown }>(
-    resp,
-    'URL Inspection',
-  );
-  return data.inspectionResult ?? null;
+  const data = asUnknownRecord(await readBoundedGoogleSuccessJson<unknown>(resp, 'URL Inspection'));
+  const inspectionResult = data?.inspectionResult;
+  const result = asUnknownRecord(inspectionResult);
+  const nestedResults = ['indexStatusResult', 'ampResult', 'mobileUsabilityResult', 'richResultsResult'] as const;
+  const malformedNestedResult = result && nestedResults.some((field) =>
+    result[field] != null && !asUnknownRecord(result[field]));
+  if (!data || (inspectionResult != null && !result) ||
+      (result?.inspectionResultLink != null && typeof result.inspectionResultLink !== 'string') ||
+      malformedNestedResult) {
+    throw new Error('URL Inspection response contains invalid inspection data.');
+  }
+  return inspectionResult ?? null;
 }
 
 export type UrlInspectionIndexedState = 'indexed' | 'not_indexed' | 'unknown';
