@@ -2321,7 +2321,41 @@ async function publishIndexingNotification(
     const text = await readBoundedGoogleError(resp);
     throw new Error(`${actionLabel} failed: ${resp.status} ${text}`);
   }
-  return readBoundedGoogleSuccessJson(resp);
+  const unverifiedReceipt = {
+    receipt_status: 'unverified',
+    provider_http_status: resp.status,
+    note: 'Google returned HTTP success but the Indexing notification receipt was malformed or unreadable. Verify notification metadata before considering a new submission.',
+  };
+  let receipt: unknown;
+  try {
+    receipt = await readBoundedGoogleSuccessJson(resp);
+  } catch (error) {
+    if (!(error instanceof SyntaxError) &&
+        !(error instanceof Error && error.message.endsWith('body is empty.'))) {
+      // Preserve established byte-limit and transport error handling.
+      throw error;
+    }
+    // Even a truncated or invalid HTTP-success receipt must not imply that the
+    // already-accepted publish request is safe to resubmit automatically.
+    return unverifiedReceipt;
+  }
+  const root = asUnknownRecord(receipt);
+  const metadata = asUnknownRecord(root?.urlNotificationMetadata);
+  // Preserve the direct UrlNotification shape accepted by existing clients.
+  const directNotification = root &&
+    typeof root.url === 'string' && root.url.trim().length > 0 &&
+    typeof root.type === 'string' && root.type.trim().length > 0 &&
+    (root.notifyTime == null || typeof root.notifyTime === 'string');
+  if (directNotification) return receipt;
+  if (metadata &&
+      (metadata.url == null || typeof metadata.url === 'string') &&
+      isOptionalIndexingNotification(metadata.latestUpdate) &&
+      isOptionalIndexingNotification(metadata.latestRemove)) {
+    return receipt;
+  }
+  // The POST already received HTTP success. Do not imply that it failed and
+  // invite a duplicate write merely because Google's receipt is malformed.
+  return unverifiedReceipt;
 }
 
 export async function requestIndexing(
