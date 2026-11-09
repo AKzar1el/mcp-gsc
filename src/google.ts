@@ -763,6 +763,7 @@ function validSearchAnalyticsRow(
     validSearchAnalyticsMetric(row.clicks) &&
     validSearchAnalyticsMetric(row.impressions) &&
     validSearchAnalyticsMetric(row.ctr) &&
+    row.ctr <= 1 &&
     (row.position === undefined || validSearchAnalyticsMetric(row.position));
 }
 

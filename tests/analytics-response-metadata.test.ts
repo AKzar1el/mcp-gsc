@@ -239,3 +239,23 @@ test('querySearchAnalytics preserves keyless aggregates and rejects extraneous k
     /Search Analytics response contains invalid rows/,
   );
 });
+
+test('querySearchAnalytics rejects CTR greater than 100 percent and accepts boundary values', async () => {
+  const metrics = { keys: ['example query'], clicks: 2, impressions: 20, position: 4 };
+  for (const ctr of [0, 1]) {
+    const response = await withMockFetch(
+      { rows: [{ ...metrics, ctr }] },
+      () => querySearchAnalytics('token', 'sc-domain:example.com', QUERY),
+    );
+    assert.equal(response.rows[0].ctr, ctr);
+  }
+  for (const ctr of [1.00001, 2]) {
+    await assert.rejects(
+      withMockFetch(
+        { rows: [{ ...metrics, ctr }] },
+        () => querySearchAnalytics('token', 'sc-domain:example.com', QUERY),
+      ),
+      /Search Analytics response contains invalid rows/,
+    );
+  }
+});
