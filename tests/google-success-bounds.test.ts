@@ -341,6 +341,36 @@ test('ordinary successful Indexing publish preserves its notification receipt', 
   assert.deepEqual(result, receipt);
 });
 
+test('Indexing publish preserves valid wrapped metadata and future fields', async () => {
+  const receipt = { urlNotificationMetadata: { url: URL, latestUpdate: null, futureField: true } };
+  assert.deepEqual(await withEligibleIndexingPublish(
+    () => jsonResponse(receipt),
+    () => requestIndexing('offline-token', URL),
+  ), receipt);
+});
+
+test('malformed successful Indexing publish receipts explicitly remain unverified', async () => {
+  const expected = {
+    receipt_status: 'unverified',
+    provider_http_status: 200,
+    note: 'Google returned HTTP success but the Indexing notification receipt was malformed or unreadable. Verify notification metadata before considering a new submission.',
+  };
+  for (const payload of [[], { urlNotificationMetadata: 'invalid' }, { urlNotificationMetadata: { latestUpdate: [] } }]) {
+    const result = await withEligibleIndexingPublish(
+      () => jsonResponse(payload),
+      () => requestIndexing('offline-token', URL),
+    );
+    assert.deepEqual(result, expected);
+  }
+  for (const body of ['{invalid json', '']) {
+    const result = await withEligibleIndexingPublish(
+      () => new Response(body, { status: 200, headers: { 'content-type': 'application/json' } }),
+      () => requestIndexing('offline-token', URL),
+    );
+    assert.deepEqual(result, expected);
+  }
+});
+
 test('advertised oversized successful Indexing publish response is rejected', async () => {
   await assert.rejects(
     withEligibleIndexingPublish(
