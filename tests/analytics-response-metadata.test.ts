@@ -75,6 +75,68 @@ test('querySearchAnalytics preserves first incomplete hour metadata', async () =
   });
 });
 
+test('querySearchAnalytics rejects invalid calendar dates in incomplete-data metadata', async () => {
+  for (const date of ['not-a-date', '2026-02-30', '2026-13-01']) {
+    await assert.rejects(
+      withMockFetch(
+        { rows, metadata: { firstIncompleteDate: date } },
+        () => querySearchAnalytics('token', 'sc-domain:example.com', QUERY),
+      ),
+      /Search Analytics response contains invalid metadata/,
+    );
+  }
+});
+
+test('querySearchAnalytics validates incomplete hours while accepting Pacific offsets', async () => {
+  for (const hour of ['bad-value', '2026-02-30T12:00:00-08:00', '2026-08-10T29:00:00-07:00']) {
+    await assert.rejects(
+      withMockFetch(
+        { rows, metadata: { firstIncompleteHour: hour } },
+        () => querySearchAnalytics('token', 'sc-domain:example.com', QUERY),
+      ),
+      /Search Analytics response contains invalid metadata/,
+    );
+  }
+  const valid = '2026-08-10T12:00:00-07:00';
+  const response = await withMockFetch(
+    { rows, metadata: { firstIncompleteHour: valid } },
+    () => querySearchAnalytics('token', 'sc-domain:example.com', QUERY),
+  );
+  assert.equal(response.metadata?.first_incomplete_hour, valid);
+});
+
+test('querySearchAnalytics preserves valid leap dates and rejects malformed hour offsets', async () => {
+  const leapDate = '2024-02-29';
+  const dateResponse = await withMockFetch(
+    { rows, metadata: { firstIncompleteDate: leapDate } },
+    () => querySearchAnalytics('token', 'sc-domain:example.com', QUERY),
+  );
+  assert.equal(dateResponse.metadata?.first_incomplete_date, leapDate);
+
+  for (const hour of ['2024-02-29T23:59:59-08:00', '2026-08-10T00:00:00-07:00']) {
+    const response = await withMockFetch(
+      { rows, metadata: { firstIncompleteHour: hour } },
+      () => querySearchAnalytics('token', 'sc-domain:example.com', QUERY),
+    );
+    assert.equal(response.metadata?.first_incomplete_hour, hour);
+  }
+
+  for (const hour of [
+    '2026-08-10T12:60:00-07:00',
+    '2026-08-10T12:30:60-07:00',
+    '2026-08-10T12:30:00+25:00',
+    '2026-08-10T12:30:00+07:60',
+  ]) {
+    await assert.rejects(
+      withMockFetch(
+        { rows, metadata: { firstIncompleteHour: hour } },
+        () => querySearchAnalytics('token', 'sc-domain:example.com', QUERY),
+      ),
+      /Search Analytics response contains invalid metadata/,
+    );
+  }
+});
+
 test('higher-level analytics transformations continue to consume response rows', async () => {
   const quickWinRows = [
     {

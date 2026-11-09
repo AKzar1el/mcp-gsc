@@ -3,6 +3,7 @@ import {
   getGoogleOAuthScopes,
   type GscAccessMode,
 } from './access-mode';
+import { isValidCalendarDate } from './date-validation';
 
 export const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 export const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token';
@@ -731,6 +732,12 @@ function validSearchAnalyticsMetric(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0;
 }
 
+function validIncompleteHour(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const match = /^(\d{4}-\d{2}-\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.exec(value);
+  return match !== null && isValidCalendarDate(match[1]);
+}
+
 function validSearchAnalyticsRow(
   value: unknown,
   expectedDimensionCount: number,
@@ -1083,9 +1090,11 @@ export async function querySearchAnalytics(
   const rawMetadata = data.metadata === undefined ? undefined : asUnknownRecord(data.metadata);
   if ((data.metadata !== undefined && !rawMetadata) ||
       (data.responseAggregationType !== undefined && typeof data.responseAggregationType !== 'string') ||
-      (rawMetadata && (['firstIncompleteDate', 'firstIncompleteHour'] as const).some(
-        (key) => rawMetadata[key] !== undefined && typeof rawMetadata[key] !== 'string'
-      ))) {
+      (rawMetadata?.firstIncompleteDate !== undefined &&
+        (typeof rawMetadata.firstIncompleteDate !== 'string' ||
+          !isValidCalendarDate(rawMetadata.firstIncompleteDate))) ||
+      (rawMetadata?.firstIncompleteHour !== undefined &&
+        !validIncompleteHour(rawMetadata.firstIncompleteHour))) {
     throw new Error('Search Analytics response contains invalid metadata.');
   }
   const metadata: SearchAnalyticsResponseMetadata | undefined =
