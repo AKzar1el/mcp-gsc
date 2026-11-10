@@ -989,9 +989,13 @@ function isSitemapEntry(value: unknown): value is SitemapEntry {
   if (!entry || typeof entry.path !== 'string' || !entry.path.trim()) {
     return false;
   }
-  for (const field of ['lastSubmitted', 'type', 'lastDownloaded', 'warnings', 'errors']) {
+  for (const field of ['lastSubmitted', 'type', 'lastDownloaded']) {
     const fieldValue = entry[field];
     if (fieldValue != null && typeof fieldValue !== 'string') return false;
+  }
+  for (const field of ['warnings', 'errors']) {
+    const fieldValue = entry[field];
+    if (fieldValue != null && !isNonnegativeInt64String(fieldValue)) return false;
   }
   for (const field of ['isPending', 'isSitemapsIndex']) {
     const fieldValue = entry[field];
@@ -1002,8 +1006,15 @@ function isSitemapEntry(value: unknown): value is SitemapEntry {
     const content = asUnknownRecord(item);
     return content !== undefined &&
       typeof content.type === 'string' &&
-      typeof content.submitted === 'string';
+      isNonnegativeInt64String(content.submitted);
   });
+}
+
+function isNonnegativeInt64String(value: unknown): value is string {
+  // Google's sitemap counts use JSON strings for signed 64-bit integers.
+  return typeof value === 'string' &&
+    /^(?:0|[1-9]\d{0,18})$/.test(value) &&
+    BigInt(value) <= 9_223_372_036_854_775_807n;
 }
 
 function normalizeSitemap(entry: SitemapEntry): SitemapEntry {
