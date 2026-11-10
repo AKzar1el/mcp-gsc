@@ -1102,7 +1102,9 @@ export async function querySearchAnalytics(
   }
   const rawMetadata = data.metadata === undefined ? undefined : asUnknownRecord(data.metadata);
   if ((data.metadata !== undefined && !rawMetadata) ||
-      (data.responseAggregationType !== undefined && typeof data.responseAggregationType !== 'string') ||
+      (data.responseAggregationType !== undefined &&
+        (typeof data.responseAggregationType !== 'string' ||
+          !['auto', 'byPage', 'byProperty', 'byNewsShowcasePanel'].includes(data.responseAggregationType))) ||
       (rawMetadata?.firstIncompleteDate !== undefined &&
         (typeof rawMetadata.firstIncompleteDate !== 'string' ||
           !isValidCalendarDate(rawMetadata.firstIncompleteDate))) ||

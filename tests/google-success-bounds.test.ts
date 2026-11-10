@@ -680,6 +680,8 @@ test('Search Analytics rejects malformed successful metadata', async () => {
     { rows: [], metadata: null },
     { rows: [], metadata: { firstIncompleteDate: 20261108 } },
     { rows: [], responseAggregationType: 3 },
+    { rows: [], responseAggregationType: '' },
+    { rows: [], responseAggregationType: 'byWebsite' },
   ]) {
     await assert.rejects(
       withMockFetch(
@@ -688,6 +690,16 @@ test('Search Analytics rejects malformed successful metadata', async () => {
       ),
       /Search Analytics response contains invalid metadata/,
     );
+  }
+});
+
+test('Search Analytics preserves supported response aggregation types', async () => {
+  for (const responseAggregationType of ['auto', 'byPage', 'byProperty', 'byNewsShowcasePanel']) {
+    const result = await withMockFetch(
+      () => jsonResponse({ rows: [], responseAggregationType }),
+      () => querySearchAnalytics('offline-token', SITE, ANALYTICS_QUERY),
+    );
+    assert.equal(result.responseAggregationType, responseAggregationType);
   }
 });
 
