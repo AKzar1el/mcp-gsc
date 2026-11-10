@@ -1146,10 +1146,10 @@ export async function querySearchAnalyticsPaginated(
   options: SearchAnalyticsPaginationOptions = {},
 ): Promise<PaginatedSearchAnalyticsResult> {
   const requestedMaximum = options.maxRows ?? MAX_PAGINATED_SEARCH_ANALYTICS_ROWS;
-  const maximumRows = Math.min(requestedMaximum, MAX_PAGINATED_SEARCH_ANALYTICS_ROWS);
-  if (!Number.isInteger(maximumRows) || maximumRows < 1) {
+  if (!Number.isSafeInteger(requestedMaximum) || requestedMaximum < 1) {
     throw new Error('maxRows must be a positive integer.');
   }
+  const maximumRows = Math.min(requestedMaximum, MAX_PAGINATED_SEARCH_ANALYTICS_ROWS);
 
   const rows: SearchAnalyticsRow[] = [];
   let startRow = body.startRow ?? 0;

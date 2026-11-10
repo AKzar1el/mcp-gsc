@@ -128,6 +128,22 @@ test('paginator reports when its local safety ceiling is reached', async () => {
   );
 });
 
+test('paginator rejects invalid maxRows before consuming Search Analytics quota', async () => {
+  await withMockAnalyticsPages(new Map([[0, makeRows(1)]]), async (startRows) => {
+    for (const maxRows of [
+      Number.POSITIVE_INFINITY,
+      MAX_PAGINATED_SEARCH_ANALYTICS_ROWS + 0.5,
+      Number.MAX_SAFE_INTEGER + 1,
+    ]) {
+      await assert.rejects(
+        querySearchAnalyticsPaginated('token', 'sc-domain:example.com', baseQuery, { maxRows }),
+        /maxRows must be a positive integer/i,
+      );
+    }
+    assert.deepEqual(startRows, [], 'invalid maxRows must not trigger provider requests');
+  });
+});
+
 test('paginator advances from a supplied startRow and stops on a short page', async () => {
   const initialStartRow = 100;
   await withMockAnalyticsPages(
