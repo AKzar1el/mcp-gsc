@@ -609,7 +609,7 @@ export function assertSearchAnalyticsQueryCompatible(body: SearchAnalyticsQuery)
     throw new Error('Search Analytics rowLimit must be an integer from 1 to 25000.');
   }
   if (body.startRow !== undefined &&
-      (!Number.isInteger(body.startRow) || body.startRow < 0 || body.startRow > 2_147_483_647)) {
+      (!Number.isInteger(body.startRow) || body.startRow < 0 || body.startRow > SEARCH_ANALYTICS_MAX_START_ROW)) {
     throw new Error('Search Analytics startRow must be a nonnegative 32-bit integer.');
   }
   if (new Set(body.dimensions).size !== body.dimensions.length) {
@@ -769,6 +769,7 @@ function validSearchAnalyticsRow(
 
 /** The maximum page size accepted by the Search Analytics API. */
 export const SEARCH_ANALYTICS_PAGE_SIZE = 25_000;
+const SEARCH_ANALYTICS_MAX_START_ROW = 2_147_483_647;
 
 /**
  * Limits each higher-level analysis source query to four API pages. This
@@ -1152,6 +1153,12 @@ export async function querySearchAnalyticsPaginated(
 
   const rows: SearchAnalyticsRow[] = [];
   let startRow = body.startRow ?? 0;
+  const lastPossibleStartRow = startRow +
+    Math.floor((maximumRows - 1) / SEARCH_ANALYTICS_PAGE_SIZE) * SEARCH_ANALYTICS_PAGE_SIZE;
+  if (!Number.isInteger(startRow) || startRow < 0 ||
+      lastPossibleStartRow > SEARCH_ANALYTICS_MAX_START_ROW) {
+    throw new Error('Search Analytics pagination startRow window exceeds the nonnegative 32-bit limit.');
+  }
   let pagesFetched = 0;
 
   while (rows.length < maximumRows) {

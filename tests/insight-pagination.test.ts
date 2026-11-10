@@ -152,6 +152,55 @@ test('paginator advances from a supplied startRow and stops on a short page', as
   );
 });
 
+test('paginator rejects an offset window that would exceed the Search Analytics startRow bound before fetching', async () => {
+  await withMockAnalyticsPages(new Map(), async (startRows) => {
+    await assert.rejects(
+      querySearchAnalyticsPaginated(
+        'token',
+        'sc-domain:example.com',
+        { ...baseQuery, startRow: 2_147_483_647 },
+        { maxRows: SEARCH_ANALYTICS_PAGE_SIZE + 1 },
+      ),
+      /Search Analytics pagination startRow.*32-bit/i,
+    );
+    assert.deepEqual(startRows, [], 'invalid pagination must not consume Google API quota');
+  });
+});
+
+test('paginator permits the largest valid startRow for a single-page request', async () => {
+  const lastStartRow = 2_147_483_647;
+  await withMockAnalyticsPages(new Map([[lastStartRow, []]]), async (startRows) => {
+    const result = await querySearchAnalyticsPaginated(
+      'token',
+      'sc-domain:example.com',
+      { ...baseQuery, startRow: lastStartRow },
+      { maxRows: SEARCH_ANALYTICS_PAGE_SIZE },
+    );
+    assert.deepEqual(startRows, [lastStartRow]);
+    assert.equal(result.pagesFetched, 1);
+    assert.equal(result.localLimitReached, false);
+  });
+});
+
+test('paginator accepts a two-page window ending at the maximum supported startRow', async () => {
+  const firstStartRow = 2_147_483_647 - SEARCH_ANALYTICS_PAGE_SIZE;
+  await withMockAnalyticsPages(new Map([
+    [firstStartRow, makeRows(SEARCH_ANALYTICS_PAGE_SIZE)],
+    [2_147_483_647, []],
+  ]), async (startRows) => {
+    const result = await querySearchAnalyticsPaginated(
+      'token',
+      'sc-domain:example.com',
+      { ...baseQuery, startRow: firstStartRow },
+      { maxRows: SEARCH_ANALYTICS_PAGE_SIZE + 1 },
+    );
+    assert.deepEqual(startRows, [firstStartRow, 2_147_483_647]);
+    assert.equal(result.rows.length, SEARCH_ANALYTICS_PAGE_SIZE);
+    assert.equal(result.pagesFetched, 2);
+    assert.equal(result.localLimitReached, false);
+  });
+});
+
 test('existing insight transformations receive the combined paginated rows unchanged', async () => {
   const row: SearchAnalyticsRow = {
     keys: ['seo job', 'https://example.com/jobs/seo'],
