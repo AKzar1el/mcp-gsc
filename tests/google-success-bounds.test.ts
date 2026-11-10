@@ -174,6 +174,32 @@ test('sitemaps.list rejects malformed nested content metadata', async () => {
   );
 });
 
+test('sitemaps.list rejects malformed numeric counters rather than reporting false counts', async () => {
+  const path = 'https://example.org/sitemap.xml';
+  for (const invalid of [
+    { path, errors: 'many' },
+    { path, warnings: '-1' },
+    { path, contents: [{ type: 'WEB', submitted: '1.5' }] },
+    { path, contents: [{ type: 'WEB', submitted: '9223372036854775808' }] },
+  ]) {
+    await assert.rejects(
+      withMockFetch(() => jsonResponse({ sitemap: [invalid] }), () => listSitemaps('offline-token', SITE)),
+      /sitemaps\.list response contains invalid sitemap data/,
+    );
+  }
+});
+
+test('sitemaps.get preserves valid int64 counters without rounding large values', async () => {
+  const path = 'https://example.org/sitemap.xml';
+  const entry = await withMockFetch(
+    () => jsonResponse({ path, errors: '0', warnings: '9223372036854775807', contents: [{ type: 'WEB', submitted: '9007199254740993' }] }),
+    () => getSitemap('offline-token', SITE, path),
+  );
+  assert.equal(entry.errors, '0');
+  assert.equal(entry.warnings, '9223372036854775807');
+  assert.equal(entry.contents?.[0]?.submitted, '9007199254740993');
+});
+
 test('sitemaps.get rejects malformed successful entries', async () => {
   for (const invalid of [
     { contents: [{ type: 'web', submitted: '1' }] },
@@ -187,6 +213,17 @@ test('sitemaps.get rejects malformed successful entries', async () => {
       /sitemaps\.get response contains invalid sitemap data/,
     );
   }
+});
+
+test('sitemaps.get rejects malformed sitemap counts', async () => {
+  const path = 'https://example.org/sitemap.xml';
+  await assert.rejects(
+    withMockFetch(
+      () => jsonResponse({ path, errors: 'unknown', contents: [{ type: 'WEB', submitted: '12' }] }),
+      () => getSitemap('offline-token', SITE, path),
+    ),
+    /sitemaps\.get response contains invalid sitemap data/,
+  );
 });
 
 test('sitemaps.get preserves valid optional data while omitting deprecated indexed counts', async () => {
