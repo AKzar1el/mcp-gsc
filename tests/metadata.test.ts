@@ -852,6 +852,28 @@ test('URL Inspection metadata preserves indexed-version-only semantics', () => {
   );
 });
 
+test('URL Inspection batch metadata matches sequential execution and quota accounting', () => {
+  const implementation = readFileSync(resolve(projectRoot, 'src/google.ts'), 'utf8');
+  const securitySource = readFileSync(resolve(projectRoot, 'SECURITY.md'), 'utf8');
+  assert.match(implementation, /URL_INSPECTION_BATCH_CONCURRENCY = 1;/);
+
+  for (const [label, metadata] of [
+    ['server.json', serverJson],
+    ['manifest.json', manifestJson],
+  ] as const) {
+    const tool = metadata.tools.find(
+      (entry: { name: string }) => entry.name === 'urls.inspect_many',
+    );
+    assert.ok(tool, `${label} must describe urls.inspect_many`);
+    assert.match(tool.description, /sequentially/i, `${label} must describe actual serial execution`);
+    assert.doesNotMatch(tool.description, /concurrency of 3/i, `${label} must not promise parallel calls`);
+    assert.match(tool.description, /one URL Inspection quota unit per URL/i);
+  }
+
+  assert.match(readmeSource, /urls\.inspect_many[^\n]*sequentially/i);
+  assert.match(securitySource, /batch requests reserve one unit per URL and run sequentially/i);
+});
+
 test('quick-win metadata preserves average-position semantics and actual eligibility rules', () => {
   for (const [label, metadata] of [
     ['server.json', serverJson],
