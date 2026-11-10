@@ -445,12 +445,19 @@ export interface SiteEntry {
   permissionLevel: string;
 }
 
+const SITE_PERMISSION_LEVELS = new Set([
+  'siteOwner',
+  'siteFullUser',
+  'siteRestrictedUser',
+  'siteUnverifiedUser',
+]);
+
 function isSiteEntry(value: unknown): value is SiteEntry {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const entry = value as Record<string, unknown>;
   return (
     typeof entry.siteUrl === 'string' && entry.siteUrl.trim().length > 0 &&
-    typeof entry.permissionLevel === 'string' && entry.permissionLevel.trim().length > 0
+    typeof entry.permissionLevel === 'string' && SITE_PERMISSION_LEVELS.has(entry.permissionLevel)
   );
 }
 
