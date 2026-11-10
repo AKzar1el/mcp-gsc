@@ -88,6 +88,20 @@ test('sites.list rejects malformed property collections instead of returning non
   );
 });
 
+test('sites.list rejects an explicit null collection instead of reporting no properties', async () => {
+  await assert.rejects(
+    withMockFetch(() => jsonResponse({ siteEntry: null }), () => listSites('offline-token')),
+    /Google Search Console sites.list response contains invalid siteEntry data/,
+  );
+});
+
+test('sites.list accepts omitted and empty property collections', async () => {
+  for (const payload of [{}, { siteEntry: [] }]) {
+    const result = await withMockFetch(() => jsonResponse(payload), () => listSites('offline-token'));
+    assert.deepEqual(result, []);
+  }
+});
+
 test('sites.list rejects entries without a valid property identifier and permission', async () => {
   await assert.rejects(
     withMockFetch(
@@ -124,6 +138,20 @@ test('sitemaps.list rejects a non-array successful sitemap collection', async ()
     ),
     /sitemaps\.list response contains invalid sitemap data/,
   );
+});
+
+test('sitemaps.list rejects explicit null instead of reporting no submitted sitemaps', async () => {
+  await assert.rejects(
+    withMockFetch(() => jsonResponse({ sitemap: null }), () => listSitemaps('offline-token', SITE)),
+    /sitemaps\.list response contains invalid sitemap data/,
+  );
+});
+
+test('sitemaps.list accepts omitted and empty sitemap collections', async () => {
+  for (const payload of [{}, { sitemap: [] }]) {
+    const result = await withMockFetch(() => jsonResponse(payload), () => listSitemaps('offline-token', SITE));
+    assert.deepEqual(result, []);
+  }
 });
 
 test('sitemaps.list rejects entries missing a valid path', async () => {

@@ -473,7 +473,7 @@ export async function listSites(
     throw new Error('Google Search Console sites.list response contains invalid siteEntry data.');
   }
   const entries = (data as { siteEntry?: unknown }).siteEntry;
-  if (entries == null) return [];
+  if (entries === undefined) return [];
   if (!Array.isArray(entries) || !entries.every(isSiteEntry)) {
     throw new Error('Google Search Console sites.list response contains invalid siteEntry data.');
   }
@@ -1042,7 +1042,7 @@ export async function listSitemaps(
   }
   const data = asUnknownRecord(await readBoundedGoogleSuccessJson(resp));
   const entries = data?.sitemap;
-  if (!data || (entries != null && (!Array.isArray(entries) || !entries.every(isSitemapEntry)))) {
+  if (!data || (entries !== undefined && (!Array.isArray(entries) || !entries.every(isSitemapEntry)))) {
     throw new Error('Google Search Console sitemaps.list response contains invalid sitemap data.');
   }
   return (entries ?? []).map(normalizeSitemap);
