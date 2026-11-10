@@ -112,6 +112,33 @@ test('sites.list rejects entries without a valid property identifier and permiss
   );
 });
 
+test('sites.list rejects undocumented permission levels instead of presenting an invented grant', async () => {
+  await assert.rejects(
+    withMockFetch(
+      () => jsonResponse({ siteEntry: [{ siteUrl: SITE, permissionLevel: 'siteAdmin' }] }),
+      () => listSites('offline-token'),
+    ),
+    /Google Search Console sites.list response contains invalid siteEntry data/,
+  );
+});
+
+test('sites.get rejects undocumented permission levels', async () => {
+  await assert.rejects(
+    withMockFetch(
+      () => jsonResponse({ siteUrl: SITE, permissionLevel: 'siteAdmin' }),
+      () => getSite('offline-token', SITE),
+    ),
+    /Google Search Console sites.get response contains invalid property data/,
+  );
+});
+
+test('sites.list preserves all four documented permission levels', async () => {
+  const levels = ['siteOwner', 'siteFullUser', 'siteRestrictedUser', 'siteUnverifiedUser'];
+  const sites = levels.map((permissionLevel) => ({ siteUrl: SITE, permissionLevel }));
+  const actual = await withMockFetch(() => jsonResponse({ siteEntry: sites }), () => listSites('offline-token'));
+  assert.deepEqual(actual, sites);
+});
+
 test('sites.get rejects malformed permission metadata instead of returning it as a property', async () => {
   await assert.rejects(
     withMockFetch(
