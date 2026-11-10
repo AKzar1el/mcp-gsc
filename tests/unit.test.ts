@@ -922,6 +922,100 @@ test('listSites: does not retry when Retry-After exceeds the MCP retry budget', 
   assert.equal(calls.length, 1);
 });
 
+test('listSites: malformed Retry-After seconds never bypass retry backoff', async () => {
+  const originalSetTimeout = globalThis.setTimeout;
+  const delays: number[] = [];
+  globalThis.setTimeout = ((callback: () => void, delay?: number) => {
+    delays.push(delay ?? 0);
+    queueMicrotask(callback);
+    return {} as ReturnType<typeof setTimeout>;
+  }) as typeof setTimeout;
+
+  try {
+    for (const invalidRetryAfter of ['-1', '0.5', '1e-3']) {
+      delays.length = 0;
+      let attempts = 0;
+      const { calls } = await withMockFetch(
+        () => {
+          attempts += 1;
+          return attempts === 1
+            ? new Response('temporary', {
+              status: 429,
+              headers: { 'retry-after': invalidRetryAfter },
+            })
+            : json(200, { siteEntry: [] });
+        },
+        () => listSites('at'),
+      );
+      assert.equal(calls.length, 2);
+      assert.ok(
+        delays[0] >= 1_000 && delays[0] < 1_250,
+        `invalid Retry-After ${invalidRetryAfter} must use bounded backoff`,
+      );
+    }
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
+  }
+});
+
+test('listSites: Retry-After honors all three RFC 9110 HTTP-date formats', async () => {
+  const originalNow = Date.now;
+  const originalSetTimeout = globalThis.setTimeout;
+  const delays: number[] = [];
+  Date.now = () => Date.UTC(1994, 10, 6, 8, 49, 34);
+  globalThis.setTimeout = ((callback: () => void, delay?: number) => {
+    delays.push(delay ?? 0);
+    queueMicrotask(callback);
+    return {} as ReturnType<typeof setTimeout>;
+  }) as typeof setTimeout;
+
+  try {
+    for (const retryAfter of [
+      'Sun, 06 Nov 1994 08:49:37 GMT',
+      'Sunday, 06-Nov-94 08:49:37 GMT',
+      'Sun Nov  6 08:49:37 1994',
+    ]) {
+      delays.length = 0;
+      let attempts = 0;
+      const { calls } = await withMockFetch(
+        () => ++attempts === 1
+          ? new Response('temporary', { status: 429, headers: { 'retry-after': retryAfter } })
+          : json(200, { siteEntry: [] }),
+        () => listSites('at'),
+      );
+      assert.equal(calls.length, 2, retryAfter);
+      assert.equal(delays[0], 3_000, retryAfter);
+    }
+  } finally {
+    Date.now = originalNow;
+    globalThis.setTimeout = originalSetTimeout;
+  }
+});
+
+test('listSites: RFC 850 year within fifty future years is not mistaken for the past', async () => {
+  const originalNow = Date.now;
+  Date.now = () => Date.UTC(2026, 10, 10, 18, 0, 0);
+  let attempts = 0;
+  try {
+    await assert.rejects(
+      () => withMockFetch(
+        () => {
+          attempts += 1;
+          return new Response('quota wait', {
+            status: 429,
+            headers: { 'retry-after': 'Thursday, 06-Nov-75 08:49:37 GMT' },
+          });
+        },
+        () => listSites('at'),
+      ),
+      /List sites failed: 429 quota wait/,
+    );
+    assert.equal(attempts, 1, 'a far-future Retry-After must prevent additional quota-charging attempts');
+  } finally {
+    Date.now = originalNow;
+  }
+});
+
 test('Search Console metadata reads reserve a unit before each additional Google attempt', async () => {
   const site = { siteUrl: 'sc-domain:example.com', permissionLevel: 'siteOwner' };
   const sitemap = { path: 'https://example.com/sitemap.xml' };
