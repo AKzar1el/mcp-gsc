@@ -19,7 +19,10 @@ import {
   SEARCH_CONSOLE_TIME_ZONE,
   searchConsoleDateDescription,
 } from '../src/date-validation';
-import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from '../src/content-decay-schema';
+import {
+  CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
+  CONTENT_DECAY_PAGE_CONTAINS_SCHEMA,
+} from '../src/content-decay-schema';
 import { resolveWeeklyDigestEndDate, weeklyDigestAnalyticsRequestCount } from '../src/digest';
 import { INDEXED_PAGES_START_ROW_SCHEMA, resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
 import { SEARCH_ANALYTICS_START_ROW_SCHEMA } from '../src/result-bounds';
@@ -304,6 +307,13 @@ test('content decay comparison days must be positive and default to 30', () => {
     success: true,
     data: 30,
   });
+});
+
+test('content decay page filter is optional and rejects empty or oversized substrings', () => {
+  assert.deepEqual(CONTENT_DECAY_PAGE_CONTAINS_SCHEMA.parse(' /de/ '), '/de/');
+  assert.equal(CONTENT_DECAY_PAGE_CONTAINS_SCHEMA.parse(undefined), undefined);
+  assert.equal(CONTENT_DECAY_PAGE_CONTAINS_SCHEMA.safeParse('   ').success, false);
+  assert.equal(CONTENT_DECAY_PAGE_CONTAINS_SCHEMA.safeParse('x'.repeat(121)).success, false);
 });
 
 test('indexed page ranges default to the existing 30-day window ending three days ago', () => {

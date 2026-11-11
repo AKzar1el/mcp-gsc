@@ -69,7 +69,10 @@ import {
   SEARCH_CONSOLE_DATE_SCHEMA,
   searchConsoleDateDescription,
 } from './date-validation';
-import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from './content-decay-schema';
+import {
+  CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
+  CONTENT_DECAY_PAGE_CONTAINS_SCHEMA,
+} from './content-decay-schema';
 import { INDEXED_PAGES_START_ROW_SCHEMA, resolveIndexedPagesDateRange } from './indexed-pages-range';
 import { createQuickWinsInputSchema } from './quick-wins-schema';
 import { SITEMAP_URL_SCHEMA } from './sitemap-url-schema';
@@ -2075,17 +2078,18 @@ class GscMcpRuntime {
       'insights.content_decay',
       {
         title: 'Detect Content Decay',
-        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Only pages returned in both Search Analytics period responses are compared; a page missing from one response is not treated as zero because Google does not guarantee every data row. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
+        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Optional page_contains focuses on a case-insensitive URL substring (such as /de/) after full comparison, without changing Google requests or treating missing rows as zero. Only pages returned in both Search Analytics period responses are compared; a page missing from one response is not treated as zero because Google does not guarantee every data row. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           compare_days: CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
+          page_contains: CONTENT_DECAY_PAGE_CONTAINS_SCHEMA,
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,
         },
         outputSchema: CONTENT_DECAY_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, compare_days, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+      async ({ site_url, compare_days, page_contains, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'insights.content_decay');
         if (rateLimitError) return rateLimitError;
@@ -2118,9 +2122,12 @@ class GscMcpRuntime {
           dimensions: ['page'],
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
+        const pageFilter = page_contains?.toLowerCase();
         const decayResults = processContentDecay(
           recentSource.rows,
           previousSource.rows,
+        ).filter((result) =>
+          !pageFilter || result.page.toLowerCase().includes(pageFilter)
         );
         const bounded = windowKnownResults(decayResults, start_row, limit);
 

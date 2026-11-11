@@ -2607,6 +2607,68 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('focuses content decay on one locale without treating other pages as missing data', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'decay-locale-user', email: 'decay-locale@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    let searchRequests = 0;
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url !== 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          throw new Error(`Unexpected outbound request: ${url}`);
+        }
+        const body = JSON.parse(String(init?.body)) as { dimensions: string[] };
+        expect(body.dimensions).toEqual(['page']);
+        searchRequests += 1;
+        const recent = searchRequests % 2 === 1;
+        return response({
+          rows: ['/de/pricing', '/en/pricing'].map((path) => ({
+            keys: [`https://example.com${path}`],
+            clicks: recent ? 12 : 100,
+            impressions: recent ? 400 : 1000,
+            ctr: recent ? 0.03 : 0.1,
+            position: recent ? 12 : 4,
+          })),
+        });
+      };
+
+      const result = (await registered['insights.content_decay'].handler({
+        site_url: 'sc-domain:example.com',
+        compare_days: 14,
+        page_contains: '/DE/',
+        limit: 20,
+        start_row: 0,
+      })) as {
+        structuredContent: {
+          decay_results: Array<{ page: string; previous_clicks: number; recent_clicks: number }>;
+          assessment_count: number;
+          result_page: { total_count: number; has_more: boolean };
+        };
+      };
+
+      expect(result.structuredContent.decay_results).toHaveLength(1);
+      expect(result.structuredContent.decay_results[0]).toMatchObject({
+        page: 'https://example.com/de/pricing',
+        previous_clicks: 100,
+        recent_clicks: 12,
+      });
+      expect(result.structuredContent.assessment_count).toBe(1);
+      expect(result.structuredContent.result_page.has_more).toBe(false);
+      expect(searchRequests).toBe(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('marks indexing.list_pages terminal after a short non-empty Search Analytics page', async () => {
     await saveUser(
       workerEnv,
