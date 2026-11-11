@@ -359,6 +359,11 @@ const INSPECTION_BATCH_OUTPUT_SCHEMA = {
   requested_count: z.number().int().positive(),
   succeeded_count: z.number().int().nonnegative(),
   failed_count: z.number().int().nonnegative(),
+  index_status_counts: z.object({
+    indexed: z.number().int().nonnegative(),
+    not_indexed: z.number().int().nonnegative(),
+    unknown: z.number().int().nonnegative(),
+  }).describe('Conservative indexed-state counts among successful inspections only. Failed requests are excluded; these counts are not property-wide index coverage.'),
   raw_results_omitted_count: z.number().int().nonnegative().describe(
     'Number of successful URL inspections whose raw Google detail was omitted to keep this batch bounded.',
   ),
@@ -756,10 +761,20 @@ function boundInspectionBatchPayload(entries: InspectionBatchEntry[]) {
       ? { ...status, inspection_result_omitted: true }
       : status;
   });
+  const indexStatusCounts = { indexed: 0, not_indexed: 0, unknown: 0 };
+  for (const entry of entries) {
+    if (entry.inspection_result === undefined) continue;
+    switch (entry.index_status_summary?.indexed_state) {
+      case 'indexed': indexStatusCounts.indexed += 1; break;
+      case 'not_indexed': indexStatusCounts.not_indexed += 1; break;
+      default: indexStatusCounts.unknown += 1; break;
+    }
+  }
   const makePayload = () => ({
     requested_count: entries.length,
     succeeded_count: entries.filter((entry) => entry.inspection_result !== undefined).length,
     failed_count: entries.filter((entry) => entry.inspection_result === undefined).length,
+    index_status_counts: indexStatusCounts,
     raw_results_omitted_count: compact.filter((entry) => entry.inspection_result_omitted).length,
     note: URL_INSPECTION_SCOPE_NOTE,
     results: compact,
@@ -1258,7 +1273,7 @@ class GscMcpRuntime {
       'urls.inspect_many',
       {
         title: 'Inspect multiple URLs',
-        description: `Inspect the versions of up to 10 URLs currently known in Google's index from one Search Console property. Each successful item includes a normalized index-status summary; raw Google details are included when the bounded response budget allows, otherwise inspection_result_omitted marks the affected item. This API does not run live URL tests. Each URL reserves one initial unit of the shared URL-inspection safety budget; transient Google retries reserve an additional unit per attempt before calling Google again. Requests inspect URLs sequentially and preserve input order; a Google-access revocation prevents any subsequent inspection from starting. Use this for a small group of important or debugging-target URLs; do not use it to crawl an entire site.`,
+        description: `Inspect the versions of up to 10 URLs currently known in Google's index from one Search Console property. Each successful item includes a normalized index-status summary, and index_status_counts totals indexed/not_indexed/unknown results among successful inspections only (not property-wide coverage); failed requests are reported separately. Raw Google details are included when the bounded response budget allows, otherwise inspection_result_omitted marks the affected item. This API does not run live URL tests. Each URL reserves one initial unit of the shared URL-inspection safety budget; transient Google retries reserve an additional unit per attempt before calling Google again. Requests inspect URLs sequentially and preserve input order; a Google-access revocation prevents any subsequent inspection from starting. Use this for a small group of important or debugging-target URLs; do not use it to crawl an entire site.`,
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           inspection_urls: z
