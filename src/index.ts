@@ -604,6 +604,7 @@ const CANNIBALIZATION_OUTPUT_SCHEMA = {
 };
 
 const CONTENT_DECAY_OUTPUT_SCHEMA = {
+  search_type: z.enum(['web', 'image', 'video', 'news']),
   comparison_periods: z.object({
     recent: z.object({ start: z.string(), end: z.string() }),
     previous: z.object({ start: z.string(), end: z.string() }),
@@ -942,7 +943,7 @@ const TOOL_CATALOG = [
   {
     name: 'insights.content_decay',
     description:
-      'Assess page-level click declines across two contiguous periods for pages returned in both Search Analytics responses, without treating one-sided row absence as zero traffic.',
+      'Assess page-level click declines across two contiguous periods for pages returned in both Search Analytics responses, optionally for Web, Image, Video or News-tab search, without treating one-sided row absence as zero traffic.',
   },
   {
     name: 'indexing.request',
@@ -2093,10 +2094,11 @@ class GscMcpRuntime {
       'insights.content_decay',
       {
         title: 'Detect Content Decay',
-        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Compare 1-240 days per period so both periods fit in Search Console\'s 16-month performance history with the three-day finalized-data lag. Optional page_contains focuses on a case-insensitive URL substring (such as /de/) after full comparison, without changing Google requests or treating missing rows as zero. Only pages returned in both Search Analytics period responses are compared; a page missing from one response is not treated as zero because Google does not guarantee every data row. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
+        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Optional search_type selects Web (default), Image, Video or News-tab search consistently for both periods; Discover and Google News are excluded from this position-aware heuristic. Compare 1-240 days per period so both periods fit in Search Console\'s 16-month performance history with the three-day finalized-data lag. Optional page_contains focuses on a case-insensitive URL substring (such as /de/) after full comparison, without changing Google requests or treating missing rows as zero. Only pages returned in both Search Analytics period responses are compared; a page missing from one response is not treated as zero because Google does not guarantee every data row. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           compare_days: CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
+          search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe('Search Console search type applied identically to both comparison periods: web (default), image, video or news (Google Search News tab). Discover and Google News are excluded because this heuristic relies on average position.'),
           page_contains: CONTENT_DECAY_PAGE_CONTAINS_SCHEMA,
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,
@@ -2104,7 +2106,7 @@ class GscMcpRuntime {
         outputSchema: CONTENT_DECAY_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, compare_days, page_contains, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+      async ({ site_url, compare_days, search_type = 'web', page_contains, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'insights.content_decay');
         if (rateLimitError) return rateLimitError;
@@ -2129,12 +2131,14 @@ class GscMcpRuntime {
           startDate: recentStart,
           endDate: recentEnd,
           dimensions: ['page'],
+          type: search_type,
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
         const previousSource = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: previousStart,
           endDate: previousEnd,
           dimensions: ['page'],
+          type: search_type,
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
         const pageFilter = page_contains?.toLowerCase();
@@ -2147,6 +2151,7 @@ class GscMcpRuntime {
         const bounded = windowKnownResults(decayResults, start_row, limit);
 
         const payload = {
+          search_type,
           comparison_periods: {
             recent: { start: recentStart, end: recentEnd },
             previous: { start: previousStart, end: previousEnd },
