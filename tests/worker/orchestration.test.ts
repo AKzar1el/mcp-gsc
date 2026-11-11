@@ -2614,6 +2614,91 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('scopes cannibalization to one locale before aggregating candidate page shares', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'cannibal-locale-user', email: 'cannibal-locale@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    let requests = 0;
+    const rows = [
+      { keys: ['pricing', 'https://example.com/de/pricing'], impressions: 400 },
+      { keys: ['pricing', 'https://example.com/de/preise'], impressions: 200 },
+      { keys: ['pricing', 'https://example.com/en/pricing'], impressions: 700 },
+      { keys: ['support', 'https://example.com/de/support'], impressions: 200 },
+      { keys: ['support', 'https://example.com/en/support'], impressions: 250 },
+    ].map((row) => ({ ...row, clicks: 10, ctr: 0.05, position: 12 }));
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        expect(requestUrl(input)).toBe(
+          'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query',
+        );
+        const body = JSON.parse(String(init?.body)) as {
+          dimensions: string[];
+          dimensionFilterGroups?: Array<{ filters: Array<{ dimension: string; operator: string; expression: string }> }>;
+        };
+        expect(body.dimensions).toEqual(['query', 'page']);
+        requests += 1;
+        const filter = body.dimensionFilterGroups?.[0]?.filters?.[0];
+        if (requests === 1) {
+          expect(filter).toEqual({ dimension: 'page', operator: 'contains', expression: '/de/' });
+        } else {
+          expect(filter).toBeUndefined();
+        }
+        return response({
+          rows: filter
+            ? rows.filter((row) => row.keys[1].toLowerCase().includes(filter.expression.toLowerCase()))
+            : rows,
+        });
+      };
+
+      const filtered = (await registered['insights.cannibalization'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-07-01',
+        end_date: '2026-07-31',
+        min_impressions: 1,
+        min_page_percentage: 1,
+        page_contains: '/de/',
+        limit: 20,
+        start_row: 0,
+      })) as {
+        structuredContent: {
+          page_contains: string | null;
+          scope_note: string;
+          candidates: Array<{ query: string; total_impressions: number; page_count: number; pages: Array<{ page: string; impression_share: number }> }>;
+        };
+      };
+      expect(filtered.structuredContent.page_contains).toBe('/de/');
+      expect(filtered.structuredContent.scope_note).toMatch(/not property-wide/i);
+      expect(filtered.structuredContent.candidates).toHaveLength(1);
+      expect(filtered.structuredContent.candidates[0]).toMatchObject({
+        query: 'pricing', total_impressions: 600, page_count: 2,
+      });
+      expect(filtered.structuredContent.candidates[0].pages.map((page) => page.impression_share)).toEqual([66.7, 33.3]);
+
+      const unfiltered = (await registered['insights.cannibalization'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-07-01',
+        end_date: '2026-07-31',
+        min_impressions: 1,
+        min_page_percentage: 1,
+        limit: 20,
+        start_row: 0,
+      })) as { structuredContent: { page_contains: string | null; candidates: Array<{ query: string }> } };
+      expect(unfiltered.structuredContent.page_contains).toBeNull();
+      expect(unfiltered.structuredContent.candidates.map((candidate) => candidate.query)).toEqual(['pricing', 'support']);
+      expect(requests).toBe(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('focuses content decay on one locale without treating other pages as missing data', async () => {
     const server = await createGscMcpServer(
       workerEnv,

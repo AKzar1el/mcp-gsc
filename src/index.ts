@@ -60,6 +60,7 @@ import {
 import {
   CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
   CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
+  CANNIBALIZATION_PAGE_CONTAINS_SCHEMA,
   CANNIBALIZATION_QUERY_CONTAINS_SCHEMA,
 } from './cannibalization-schema';
 import {
@@ -574,6 +575,8 @@ const QUERY_PAGES_OUTPUT_SCHEMA = {
 };
 
 const CANNIBALIZATION_OUTPUT_SCHEMA = {
+  page_contains: z.string().nullable().describe('Page URL substring passed to Google for the Search Analytics page filter, or null for no page filter.'),
+  scope_note: z.string(),
   candidates: z.array(
     z.object({
       query: z.string(),
@@ -2019,7 +2022,7 @@ class GscMcpRuntime {
       'insights.cannibalization',
       {
         title: 'Detect Keyword Cannibalization',
-        description: 'Analyze query/page Search Analytics to find queries split across multiple pages. Optional query_contains focuses on a case-insensitive query substring after full query/page aggregation; competing pages and shares are not discarded. Candidates are ranked deterministically by the observed query/page impression sum, each candidate bounds its page list, and limit/start_row plus result_page provide safe pagination. total_clicks, total_impressions, and impression_share are calculated from observed query/page rows and are not true query-level property aggregates; multiple pages can make that row sum exceed the query-level Search Console total. Multiple ranking URLs can also reflect legitimate locale or intent differences, so treat candidates as evidence to investigate rather than proof of harmful cannibalization.',
+        description: 'Analyze query/page Search Analytics to find queries split across multiple pages. Optional page_contains filters matching page URLs at Google before pagination and aggregation (e.g. /de/), so counts and impression shares refer only to that page scope, not property-wide Search Console totals. Optional query_contains focuses on a case-insensitive query substring after aggregation without dropping any remaining competing pages. Candidates are ranked deterministically by observed query/page impression sum; page lists, limit/start_row and result_page are bounded. Query/page rows can omit data and their summed impressions can exceed true query-level aggregates. Multiple ranking URLs can reflect legitimate locale or intent differences, not necessarily harmful cannibalization.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
@@ -2033,13 +2036,14 @@ class GscMcpRuntime {
           min_impressions: CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
           min_page_percentage: CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
           query_contains: CANNIBALIZATION_QUERY_CONTAINS_SCHEMA,
+          page_contains: CANNIBALIZATION_PAGE_CONTAINS_SCHEMA,
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,
         },
         outputSchema: CANNIBALIZATION_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, start_date, end_date, min_impressions, min_page_percentage, query_contains, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+      async ({ site_url, start_date, end_date, min_impressions, min_page_percentage, query_contains, page_contains, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -2054,6 +2058,12 @@ class GscMcpRuntime {
           startDate: start_date,
           endDate: end_date,
           dimensions: ['query', 'page'],
+          ...(page_contains ? {
+            dimensionFilterGroups: [{
+              groupType: 'and' as const,
+              filters: [{ dimension: 'page', operator: 'contains', expression: page_contains }],
+            }],
+          } : {}),
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
         const queryFilter = query_contains?.toLowerCase();
@@ -2082,6 +2092,10 @@ class GscMcpRuntime {
           limit,
         );
         const payload = {
+          page_contains: page_contains ?? null,
+          scope_note: page_contains
+            ? 'Candidates and observed impression shares are restricted to Google-filtered page URLs, not property-wide totals; missing Search Analytics rows are not zero.'
+            : 'Candidates and observed impression shares use returned query/page rows, not true query-level property totals; missing rows are not zero.',
           candidates: bounded.items,
           pagination: paginationMetadata(source),
           result_page: bounded.resultPage,
