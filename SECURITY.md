@@ -59,7 +59,7 @@ delay and does not disclose another user's usage.
 | Category | Tools | Limit |
 |---|---|---|
 | Search Analytics | `analytics.query`, `insights.quick_wins`, `insights.cannibalization`, `insights.content_decay`, `indexing.list_pages`, `analytics.compare` | 30 per user / 10 minutes |
-| URL inspection | `urls.inspect`, `urls.inspect_many` | 20 inspected URLs per user / 24 hours; batch requests reserve one unit per URL and run at most 3 inspections concurrently |
+| URL inspection | `urls.inspect`, `urls.inspect_many` | 20 inspected URLs per user / 24 hours; batch requests reserve one unit per URL and run sequentially |
 | Search Console writes | `sites.add`, `sites.delete`, `sitemaps.submit`, `sitemaps.delete` | 10 per user / hour |
 | Indexing publish | `indexing.request`, `indexing.remove` | 2 per user / 24 hours; 200 per deployment / 24 hours |
 | Indexing metadata | `indexing.status` | 30 per user / minute; 180 per deployment / minute |

@@ -34,7 +34,7 @@
     },
     {
       "name": "urls.inspect_many",
-      "description": "Inspect Google's indexed versions of up to 10 URLs with bounded concurrency of 3 while preserving one URL Inspection quota unit per URL and input-order results. This does not run live URL tests."
+      "description": "Inspect Google's indexed versions of up to 10 URLs sequentially while preserving one URL Inspection quota unit per URL and input-order results. This does not run live URL tests."
     },
     {
       "name": "sitemaps.list",
@@ -97,7 +97,7 @@
       "description": "Generate a plain-language weekly SEO report with movers, top pages, and a recommended action."
     }
   ],
-  "version": "0.4.40-registry.1",
+  "version": "0.4.40-registry.2",
   "repository": {
     "url": "https://github.com/AKzar1el/mcp-gsc",
     "source": "github"
