@@ -296,11 +296,14 @@ test('weekly digest ranks impression-only queries by net growth, not current imp
   assert.ok(higherGrowth < lowerGrowth, '98 new impressions must rank ahead of 96');
 });
 
-test('content decay comparison days must be positive and default to 30', () => {
+test('content decay comparison days fit both periods within Search Console history', () => {
   assert.deepEqual(CONTENT_DECAY_COMPARE_DAYS_SCHEMA.safeParse(1), {
     success: true,
     data: 1,
   });
+  assert.equal(CONTENT_DECAY_COMPARE_DAYS_SCHEMA.safeParse(240).success, true);
+  assert.equal(CONTENT_DECAY_COMPARE_DAYS_SCHEMA.safeParse(241).success, false);
+  assert.equal(CONTENT_DECAY_COMPARE_DAYS_SCHEMA.safeParse(10000).success, false);
   assert.equal(CONTENT_DECAY_COMPARE_DAYS_SCHEMA.safeParse(0).success, false);
   assert.equal(CONTENT_DECAY_COMPARE_DAYS_SCHEMA.safeParse(-1).success, false);
   assert.deepEqual(CONTENT_DECAY_COMPARE_DAYS_SCHEMA.safeParse(undefined), {
