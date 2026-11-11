@@ -1020,10 +1020,11 @@ function isSitemapEntry(value: unknown): value is SitemapEntry {
   if (!entry || typeof entry.path !== 'string' || !entry.path.trim()) {
     return false;
   }
-  for (const field of ['lastSubmitted', 'type', 'lastDownloaded']) {
+  for (const field of ['lastSubmitted', 'lastDownloaded']) {
     const fieldValue = entry[field];
-    if (fieldValue != null && typeof fieldValue !== 'string') return false;
+    if (fieldValue != null && !isRfc3339Timestamp(fieldValue)) return false;
   }
+  if (entry.type != null && typeof entry.type !== 'string') return false;
   for (const field of ['warnings', 'errors']) {
     const fieldValue = entry[field];
     if (fieldValue != null && !isNonnegativeInt64String(fieldValue)) return false;
@@ -1039,6 +1040,27 @@ function isSitemapEntry(value: unknown): value is SitemapEntry {
       typeof content.type === 'string' &&
       isNonnegativeInt64String(content.submitted);
   });
+}
+
+function isRfc3339Timestamp(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T(?:[01]\d|2[0-3]):[0-5]\d:([0-5]\d|60)(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/i.exec(value);
+  if (!parts) return false;
+  const year = Number(parts[1]);
+  const month = Number(parts[2]);
+  const day = Number(parts[3]);
+  if (month < 1 || month > 12 || day < 1) return false;
+  // Date.parse may silently normalize impossible calendar dates.
+  const lastDay = new Date(0);
+  lastDay.setUTCFullYear(year, month, 0);
+  if (day > lastDay.getUTCDate()) return false;
+  // RFC3339 allows a leap second at a UTC month boundary. Date.parse does not.
+  const leapSecond = parts[4] === '60';
+  const parseable = leapSecond ? `${value.slice(0, 17)}59${value.slice(19)}` : value;
+  const parsed = Date.parse(parseable);
+  if (!Number.isFinite(parsed)) return false;
+  if (!leapSecond) return true;
+  return new Date(parsed).getUTCMonth() !== new Date(parsed + 1_000).getUTCMonth();
 }
 
 function isNonnegativeInt64String(value: unknown): value is string {

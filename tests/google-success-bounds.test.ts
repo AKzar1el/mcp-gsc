@@ -296,6 +296,60 @@ test('sitemaps.get preserves valid optional data while omitting deprecated index
   assert.deepEqual(entry.contents, [{ type: 'web', submitted: '12' }]);
 });
 
+test('sitemaps.list rejects non-RFC3339 and impossible submission/download timestamps', async () => {
+  const path = 'https://example.org/sitemap.xml';
+  for (const field of ['lastSubmitted', 'lastDownloaded']) {
+    for (const invalid of [
+      'yesterday',
+      '2026-02-30T12:00:00Z',
+      '2026-11-10T12:00:00',
+      '2026-04-31T12:00:00Z',
+      '2026-11-10T24:00:00Z',
+      '2026-11-10T12:00:00+24:00',
+      '2026-11-10T12:00:00+00:60',
+    ]) {
+      await assert.rejects(
+        withMockFetch(
+          () => jsonResponse({ sitemap: [{ path, [field]: invalid }] }),
+          () => listSitemaps('offline-token', SITE),
+        ),
+        /sitemaps\.list response contains invalid sitemap data/,
+      );
+    }
+  }
+});
+
+test('sitemaps.get accepts genuine RFC3339 timestamps and preserves their original offsets', async () => {
+  const path = 'https://example.org/sitemap.xml';
+  const expected = { path, lastSubmitted: '2024-02-29T10:00:00.123+02:00', lastDownloaded: '2026-11-10T12:30:00Z' };
+  const actual = await withMockFetch(() => jsonResponse(expected), () => getSitemap('offline-token', SITE, path));
+  assert.deepEqual(actual, expected);
+});
+
+test('sitemaps.get preserves RFC3339 leap seconds at the same UTC instant across offsets', async () => {
+  const path = 'https://example.org/sitemap.xml';
+  for (const lastSubmitted of [
+    '2016-12-31T23:59:60Z',
+    '2016-12-31T15:59:60-08:00',
+    '2016-12-31T23:59:60.123Z',
+    '2017-01-01T01:59:60+02:00',
+  ]) {
+    const expected = { path, lastSubmitted };
+    const actual = await withMockFetch(() => jsonResponse(expected), () => getSitemap('offline-token', SITE, path));
+    assert.deepEqual(actual, expected);
+  }
+});
+
+test('sitemaps.get rejects leap seconds outside UTC month-end boundaries', async () => {
+  const path = 'https://example.org/sitemap.xml';
+  for (const lastSubmitted of ['2026-11-10T12:00:60Z', '2016-12-31T23:58:60Z', '2016-12-31T23:59:60+02:00']) {
+    await assert.rejects(
+      withMockFetch(() => jsonResponse({ path, lastSubmitted }), () => getSitemap('offline-token', SITE, path)),
+      /sitemaps\.get response contains invalid sitemap data/,
+    );
+  }
+});
+
 test('oversized sites.list success is rejected before unbounded JSON parsing', async () => {
   await assert.rejects(
     withMockFetch(
