@@ -25,9 +25,19 @@ Replace the placeholders with values from Google's actual tool responses. The ex
 
 The digest makes five Search Analytics queries against the shared quota and has a separate hourly limit. Avoid repeatedly running it to produce multiple cosmetic versions. Its queries can request preliminary-capable data; a default end date is not a guarantee that every returned value is finalized.
 
+**Optional section-level report:** For a multilingual site, call `reports.weekly_digest` with the same exact `site_url` and, for example, `page_contains: "/de/"`. This applies the page-URL substring filter to the digest's totals, query movers, and page rows, and labels the report as filtered rather than property-wide. The filter matches URLs containing the supplied text; it does not identify a language automatically or guarantee that all matching URLs are German. Check the actual URL structure first. A filtered digest makes the same number of Search Analytics requests as an unfiltered digest, but each separate invocation still consumes its own quota allowance.
+
 ### 3. Reconcile client-facing performance and movers
 
 > For the same property and exact seven-day window from the digest, call `analytics.query` with `dimensions: []` and `data_state: "final"` for genuine site-wide totals. Compare them to the previous seven-day window using the same search type and filters. For row-level movers, use `analytics.compare` with `start_date_a`, `end_date_a`, `start_date_b`, `end_date_b`, `dimension: "query"`, and `data_state: "final"`. Clearly identify preliminary or mismatched date states; do not quietly mix them.
+
+The unfiltered steps above produce **property-wide** comparisons. If the digest used `page_contains`, preserve the same page filter in both follow-up tools instead. For the `/de/` example, pass this `dimension_filter_groups` value to `analytics.query` and to `analytics.compare` (for both periods):
+
+```json
+[{"groupType":"and","filters":[{"dimension":"page","operator":"contains","expression":"/de/"}]}]
+```
+
+Use `dimensions: []` for the filtered totals and `dimension: "query"` for the filtered query comparison. Keep the exact dates, search type, and data state aligned with the digest. If the follow-up tool cannot apply an equivalent page filter, **do not** label property-wide results as section-level totals or directly compare them with the scoped digest. A filter on full page URLs is not a substitute for verifying the client's actual locale URL patterns.
 
 > For the most important page behind a reported mover, use `insights.page_queries` with its exact URL, and include only the supporting observed query/page rows. Where the question is query-first, `insights.query_pages` may be more suitable. If there are no comparable returned rows, withhold any claim of a measured gain or loss for that row.
 
@@ -40,8 +50,9 @@ Use this reusable skeleton, filling values only from independently returned tool
 | Section | Client-facing content |
 |---|---|
 | Client property | `[exact Google siteUrl]` |
+| Report scope | `[property-wide, or exact page URL substring filter and its limitations]` |
 | Reporting period | `[current dates, Search Console Pacific Time]` vs. `[previous dates]` |
-| Property totals | `[measured clicks and impressions, source and data_state]` |
+| Consistently scoped totals | `[measured clicks and impressions, source, data_state and matching page filter if used]` |
 | Query/page movement | `[observed comparable rows, or insufficient comparable data]` |
 | One priority action | `[specific, evidence-linked recommendation or no action justified]` |
 | Method and limitations | `[Search Analytics row coverage, freshness, average-position caveats]` |
@@ -52,6 +63,6 @@ Review the property, dates, metric definitions, privacy requirements, and factua
 ## Acceptance checklist
 
 - A permitted client account returns the exact property through `sites.list` and `sites.get`; the server exposes only read-capable tools under `readonly`.
-- One `reports.weekly_digest` call produces a dated draft; `analytics.query` with empty dimensions is used for property totals and `analytics.compare` uses matching periods/data state.
+- One `reports.weekly_digest` call produces a dated draft; `analytics.query` with empty dimensions is used for totals and `analytics.compare` uses matching periods/data state. When `page_contains` is used, both follow-ups apply the equivalent page filter, and all figures are labeled section-level rather than property-wide.
 - Important movers are supported by actual `insights.page_queries` evidence; absent rows, unsupported causal claims, unmeasured conversions, and unverified business value are excluded.
 - The final client report has a truthful methodology note, no invented customer outcomes, and requires human approval before any external delivery.
