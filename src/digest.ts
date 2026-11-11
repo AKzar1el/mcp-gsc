@@ -1,6 +1,7 @@
 import {
   hasRecordedPosition,
   querySearchAnalytics,
+  type DimensionFilterGroup,
   type SearchAnalyticsRow,
 } from './google';
 import type { GoogleAccessTokenProvider } from './access-token-lifecycle';
@@ -91,11 +92,18 @@ export async function generateWeeklyDigest(
   endDate: string,
   beforeRetry?: () => Promise<void>,
   today: string = getSearchConsoleCalendarDate(),
+  pageContains?: string,
 ): Promise<string> {
   const dates = computeDateRanges(endDate);
   const isPreliminary = weeklyDigestAnalyticsRequestCount(endDate, today) === 3;
   // Explicit recent dates opt into Google's fresh rows; historical/default dates remain finalized-only.
   const requestedDataState = isPreliminary ? 'all' : 'final';
+  const dimensionFilterGroups: DimensionFilterGroup[] | undefined = pageContains
+    ? [{ groupType: 'and', filters: [{ dimension: 'page', operator: 'contains', expression: pageContains }] }]
+    : undefined;
+  const pageScopeNotice = pageContains
+    ? `> **Page URL filter:** Metrics, queries and pages include only URLs containing ${escapeMarkdownInline(pageContains)} (case-insensitive); this is not property-wide traffic.`
+    : undefined;
   const accessToken = await accessTokens.getAccessToken(googleId);
 
   const [
@@ -111,6 +119,7 @@ export async function generateWeeklyDigest(
       dimensions: [],
       rowLimit: 1,
       dataState: requestedDataState,
+      dimensionFilterGroups,
     }, beforeRetry),
     // Preliminary snapshots never consume previous-week evidence.
     isPreliminary
@@ -121,6 +130,7 @@ export async function generateWeeklyDigest(
         dimensions: [],
         rowLimit: 1,
         dataState: requestedDataState,
+        dimensionFilterGroups,
       }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.currentStart,
@@ -128,6 +138,7 @@ export async function generateWeeklyDigest(
       dimensions: ['query'],
       rowLimit: 25,
       dataState: requestedDataState,
+      dimensionFilterGroups,
     }, beforeRetry),
     isPreliminary
       ? Promise.resolve(undefined)
@@ -137,6 +148,7 @@ export async function generateWeeklyDigest(
         dimensions: ['query'],
         rowLimit: 25,
         dataState: requestedDataState,
+        dimensionFilterGroups,
       }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.currentStart,
@@ -144,6 +156,7 @@ export async function generateWeeklyDigest(
       dimensions: ['page'],
       rowLimit: 10,
       dataState: requestedDataState,
+      dimensionFilterGroups,
     }, beforeRetry),
   ]);
 
@@ -154,6 +167,7 @@ export async function generateWeeklyDigest(
       `# Your weekly site report - ${escapeMarkdownInline(siteDisplayName(siteUrl))}`,
       `### Preliminary snapshot for ${dates.currentStart} to ${dates.currentEnd}`,
       '',
+      ...(pageScopeNotice ? [pageScopeNotice, ''] : []),
       '> **Preliminary Search Console data:** Explicitly requested recent dates may include incomplete metrics. Google may revise these values as reporting finishes.',
       '',
     ];
@@ -211,6 +225,7 @@ export async function generateWeeklyDigest(
       `# Your weekly site report - ${escapeMarkdownInline(siteDisplayName(siteUrl))}`,
       `### Week of ${dates.currentStart} to ${dates.currentEnd}`,
       '',
+      ...(pageScopeNotice ? [pageScopeNotice, ''] : []),
       '## Data availability',
       `Google Search Console returned no aggregate Search Analytics row for ${missingPeriods.join(' and ')}.`,
       'An empty API response does not establish a measured zero for clicks or impressions. It may reflect no search activity or data that has not yet been processed.',
@@ -238,6 +253,7 @@ export async function generateWeeklyDigest(
 
   return renderMarkdown({
     siteUrl,
+    pageScopeNotice,
     dates,
     currentTotals,
     prevTotals,
@@ -478,6 +494,7 @@ function escapeMarkdownInline(value: string): string {
 
 function renderMarkdown(data: {
   siteUrl: string;
+  pageScopeNotice?: string;
   dates: DateRanges;
   currentTotals: SiteTotals;
   prevTotals: SiteTotals;
@@ -485,7 +502,7 @@ function renderMarkdown(data: {
   currentPages: PageRow[];
   action: { key: ActionKey; item: ActionItem };
 }): string {
-  const { siteUrl, dates, currentTotals, prevTotals, movers, currentPages, action } = data;
+  const { siteUrl, pageScopeNotice, dates, currentTotals, prevTotals, movers, currentPages, action } = data;
   const siteName = siteDisplayName(siteUrl);
   const lines: string[] = [];
 
@@ -499,6 +516,7 @@ function renderMarkdown(data: {
   lines.push(`# Your weekly site report — ${escapeMarkdownInline(siteName)}`);
   lines.push(`### Week of ${dates.currentStart} to ${dates.currentEnd}`);
   lines.push('');
+  if (pageScopeNotice) lines.push(pageScopeNotice, '');
   lines.push('## Quick numbers');
   lines.push('');
   lines.push(
