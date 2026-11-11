@@ -2627,14 +2627,16 @@ describe('Worker orchestration', () => {
     })._registeredTools;
     const originalFetch = globalThis.fetch;
     let searchRequests = 0;
+    let expectedSearchType = 'image';
     try {
       globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = requestUrl(input);
         if (url !== 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
           throw new Error(`Unexpected outbound request: ${url}`);
         }
-        const body = JSON.parse(String(init?.body)) as { dimensions: string[] };
+        const body = JSON.parse(String(init?.body)) as { dimensions: string[]; type?: string };
         expect(body.dimensions).toEqual(['page']);
+        expect(body.type).toBe(expectedSearchType);
         searchRequests += 1;
         const recent = searchRequests % 2 === 1;
         return response({
@@ -2651,11 +2653,13 @@ describe('Worker orchestration', () => {
       const result = (await registered['insights.content_decay'].handler({
         site_url: 'sc-domain:example.com',
         compare_days: 14,
+        search_type: 'image',
         page_contains: '/DE/',
         limit: 20,
         start_row: 0,
       })) as {
         structuredContent: {
+          search_type: string;
           decay_results: Array<{ page: string; previous_clicks: number; recent_clicks: number }>;
           assessment_count: number;
           result_page: { total_count: number; has_more: boolean };
@@ -2663,6 +2667,7 @@ describe('Worker orchestration', () => {
       };
 
       expect(result.structuredContent.decay_results).toHaveLength(1);
+      expect(result.structuredContent.search_type).toBe('image');
       expect(result.structuredContent.decay_results[0]).toMatchObject({
         page: 'https://example.com/de/pricing',
         previous_clicks: 100,
@@ -2671,6 +2676,17 @@ describe('Worker orchestration', () => {
       expect(result.structuredContent.assessment_count).toBe(1);
       expect(result.structuredContent.result_page.has_more).toBe(false);
       expect(searchRequests).toBe(2);
+
+      expectedSearchType = 'web';
+      const defaultResult = (await registered['insights.content_decay'].handler({
+        site_url: 'sc-domain:example.com',
+        compare_days: 14,
+        limit: 20,
+        start_row: 0,
+      })) as { structuredContent: { search_type: string; decay_results: unknown[] } };
+      expect(defaultResult.structuredContent.search_type).toBe('web');
+      expect(defaultResult.structuredContent.decay_results).toHaveLength(2);
+      expect(searchRequests).toBe(4);
     } finally {
       globalThis.fetch = originalFetch;
     }
