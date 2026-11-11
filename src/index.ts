@@ -70,7 +70,7 @@ import {
 } from './date-validation';
 import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from './content-decay-schema';
 import { resolveIndexedPagesDateRange } from './indexed-pages-range';
-import { createQuickWinsInputSchema } from './quick-wins-schema';
+import { createQuickWinsInputSchema, buildQuickWinsPageFilter } from './quick-wins-schema';
 import { SITEMAP_URL_SCHEMA } from './sitemap-url-schema';
 import { URL_INSPECTION_LANGUAGE_CODE_SCHEMA } from './url-inspection-language-schema';
 import {
@@ -912,7 +912,7 @@ const TOOL_CATALOG = [
   {
     name: 'insights.quick_wins',
     description:
-      'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Average position is an aggregate metric, not a literal current rank; CTR is context, not an eligibility filter.',
+      'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Optional page_contains narrows Google source rows by case-insensitive page URL substring. Average position is an aggregate metric, not a literal current rank; CTR is context, not an eligibility filter.',
   },
   {
     name: 'insights.cannibalization',
@@ -1969,12 +1969,12 @@ class GscMcpRuntime {
       'insights.quick_wins',
       {
         title: 'Identify SEO Quick Wins',
-        description: 'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Average position is an aggregate Search Console metric, not a literal current rank; CTR is returned for context and is not an eligibility filter. Results are ordered deterministically by impressions, then bounded with limit/start_row and explicit result_page metadata. Source pagination separately flags the local 100,000-row safety ceiling.',
+        description: 'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Optionally filter page URLs by a case-insensitive substring (e.g. /de/) at the Search Console source to focus on a locale or section. Average position is an aggregate Search Console metric, not a literal current rank; CTR is returned for context and is not an eligibility filter. Results are ordered deterministically by impressions, then bounded with limit/start_row and explicit result_page metadata. Source pagination separately flags the local 100,000-row safety ceiling.',
         inputSchema: createQuickWinsInputSchema(),
         outputSchema: z.object(QUICK_WIN_OUTPUT_SCHEMA),
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, start_date, end_date, min_impressions, min_position, max_position, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+      async ({ site_url, start_date, end_date, min_impressions, min_position, max_position, page_contains, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -1989,6 +1989,7 @@ class GscMcpRuntime {
           startDate: start_date,
           endDate: end_date,
           dimensions: ['query', 'page'],
+          dimensionFilterGroups: buildQuickWinsPageFilter(page_contains),
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
         const quickWins = processQuickWins(source.rows, min_impressions, min_position, max_position);

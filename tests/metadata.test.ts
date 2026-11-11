@@ -885,6 +885,11 @@ test('quick-win metadata preserves average-position semantics and actual eligibi
     assert.ok(tool, `${label} must describe insights.quick_wins`);
     assert.match(
       tool.description,
+      /page_contains/,
+      `${label} must make the optional page_contains URL filter discoverable`,
+    );
+    assert.match(
+      tool.description,
       /average position/i,
       `${label} must identify the Search Console metric as average position`,
     );
@@ -904,6 +909,14 @@ test('quick-win metadata preserves average-position semantics and actual eligibi
     indexSource,
     /Average position is an aggregate Search Console metric, not a literal current rank/,
     'runtime tool description must preserve average-position semantics',
+  );
+  const staticQuickWinsDescription = indexSource.match(
+    /name: 'insights\.quick_wins',\s*description:\s*'([^']*)'/,
+  )?.[1];
+  assert.match(
+    staticQuickWinsDescription ?? '',
+    /page_contains/,
+    'static tool catalog must describe optional page_contains filtering',
   );
   assert.match(
     indexSource,

@@ -62,7 +62,7 @@
     },
     {
       "name": "insights.quick_wins",
-      "description": "Find high-impression query/page rows whose Search Console average position falls in the configured opportunity range. Average position is not a literal current rank, and CTR is context rather than an eligibility filter."
+      "description": "Find high-impression query/page rows whose Search Console average position falls in the configured opportunity range. Optional page_contains narrows Google source rows by case-insensitive page URL substring. Average position is not a literal current rank, and CTR is context rather than an eligibility filter."
     },
     {
       "name": "insights.cannibalization",

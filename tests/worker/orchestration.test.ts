@@ -2667,6 +2667,108 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('sends the optional quick-win page substring to Google without changing unfiltered requests', async () => {
+    await saveUser(
+      workerEnv,
+      'quick-win-filter-user',
+      'quick-win-filter@example.test',
+      'quick-win-filter-refresh-token',
+    );
+    const server = await createGscMcpServer(
+      workerEnv,
+      {
+        google_id: 'quick-win-filter-user',
+        email: 'quick-win-filter@example.test',
+      },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        { handler: (args: Record<string, unknown>) => Promise<unknown> }
+      >;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'quick-win-access-token', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const request = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(request);
+          const isGermanSection = JSON.stringify(request.dimensionFilterGroups ?? []).includes('"/de/"');
+          return response({
+            rows: [
+              {
+                keys: ['relevant phrase', 'https://example.com/de/article/'],
+                clicks: 12,
+                impressions: 150,
+                ctr: 0.08,
+                position: 11,
+              },
+              ...(!isGermanSection ? [{
+                keys: ['another phrase', 'https://example.com/en/article/'],
+                clicks: 7,
+                impressions: 120,
+                ctr: 7 / 120,
+                position: 12,
+              }] : []),
+            ],
+          });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const input = {
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-09-01',
+        end_date: '2026-09-07',
+        min_impressions: 50,
+        min_position: 8,
+        max_position: 20,
+        limit: 10,
+      };
+      const filtered = (await tools['insights.quick_wins'].handler({
+        ...input,
+        page_contains: '/de/',
+      })) as { structuredContent?: { quick_wins: unknown[] }; isError?: boolean };
+      const unfiltered = (await tools['insights.quick_wins'].handler(input)) as {
+        structuredContent?: { quick_wins: unknown[] };
+        isError?: boolean;
+      };
+
+      expect(filtered.isError).not.toBe(true);
+      expect(unfiltered.isError).not.toBe(true);
+      expect(filtered.structuredContent?.quick_wins).toHaveLength(1);
+      expect(filtered.structuredContent?.quick_wins).toMatchObject([
+        { page: 'https://example.com/de/article/' },
+      ]);
+      expect(unfiltered.structuredContent?.quick_wins).toHaveLength(2);
+      expect(unfiltered.structuredContent?.quick_wins).toMatchObject([
+        { page: 'https://example.com/de/article/' },
+        { page: 'https://example.com/en/article/' },
+      ]);
+      expect(requests).toHaveLength(2);
+      expect(requests[0]).toMatchObject({
+        dimensions: ['query', 'page'],
+        dimensionFilterGroups: [{
+          groupType: 'and',
+          filters: [{
+            dimension: 'page',
+            operator: 'contains',
+            expression: '/de/',
+          }],
+        }],
+      });
+      expect(requests[1]).not.toHaveProperty('dimensionFilterGroups');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('applies the same Search Analytics segment to both comparison periods', async () => {
     await saveUser(
       workerEnv,
