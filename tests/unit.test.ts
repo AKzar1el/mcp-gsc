@@ -22,7 +22,7 @@ import {
 import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from '../src/content-decay-schema';
 import { resolveWeeklyDigestEndDate, weeklyDigestAnalyticsRequestCount } from '../src/digest';
 import { resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
-import { createQuickWinsInputSchema } from '../src/quick-wins-schema';
+import { createQuickWinsInputSchema, buildQuickWinsPageFilter } from '../src/quick-wins-schema';
 import { SITEMAP_URL_SCHEMA } from '../src/sitemap-url-schema';
 import { URL_INSPECTION_LANGUAGE_CODE_SCHEMA } from '../src/url-inspection-language-schema';
 import {
@@ -398,6 +398,24 @@ test('quick win thresholds require valid impressions and position ranges', () =>
   assert.equal(defaulted.min_impressions, 100);
   assert.equal(defaulted.min_position, 8);
   assert.equal(defaulted.max_position, 20);
+});
+
+test('quick wins can scope observed opportunities to a locale path without altering unfiltered queries', () => {
+  const schema = createQuickWinsInputSchema();
+  const base = {
+    site_url: 'sc-domain:example.com',
+    start_date: '2026-01-01',
+    end_date: '2026-01-31',
+  };
+  assert.equal(schema.parse(base).page_contains, undefined);
+  assert.equal(buildQuickWinsPageFilter(undefined), undefined);
+  assert.equal(schema.parse({ ...base, page_contains: ' /de/ ' }).page_contains, '/de/');
+  assert.deepEqual(buildQuickWinsPageFilter('/de/'), [{
+    groupType: 'and',
+    filters: [{ dimension: 'page', operator: 'contains', expression: '/de/' }],
+  }]);
+  assert.equal(schema.safeParse({ ...base, page_contains: '  ' }).success, false);
+  assert.equal(schema.safeParse({ ...base, page_contains: 'x'.repeat(2049) }).success, false);
 });
 
 function makeKey(byteLength = 32): string {

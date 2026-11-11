@@ -33,6 +33,13 @@ export function createQuickWinsInputSchema() {
         ),
       ),
       ...QUICK_WINS_THRESHOLDS_SHAPE,
+      page_contains: z
+        .string()
+        .trim()
+        .min(1)
+        .max(2048)
+        .optional()
+        .describe('Optional case-insensitive substring of a Search Console page URL, such as /de/. Google applies this page filter before quick-win ranking. Omit to analyze the whole property.'),
       limit: z
         .number()
         .int()
@@ -51,4 +58,16 @@ export function createQuickWinsInputSchema() {
       ({ min_position, max_position }) => min_position <= max_position,
       POSITION_RANGE_ERROR,
     );
+}
+
+export function buildQuickWinsPageFilter(pageContains?: string) {
+  if (pageContains === undefined) return undefined;
+  return [{
+    groupType: 'and' as const,
+    filters: [{
+      dimension: 'page' as const,
+      operator: 'contains' as const,
+      expression: pageContains,
+    }],
+  }];
 }
