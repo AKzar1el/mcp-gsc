@@ -1044,3 +1044,18 @@ test('agency weekly reporting guide provides a reproducible read-only client wor
   assert.match(guide, /a missing row is not zero/i);
   assert.match(guide, /no client data is transmitted outside the selected MCP connection/i);
 });
+
+test('direct Search Analytics tools bound start_row before quota reservation', () => {
+  for (const name of ['analytics.query', 'insights.page_queries', 'insights.query_pages']) {
+    const escapedName = name.replaceAll('.', '\\.');
+    const registration = indexSource.match(
+      new RegExp(`this\\.server\\.registerTool\\(\\s*'${escapedName}'[\\s\\S]*?outputSchema:`),
+    )?.[0];
+    assert.ok(registration, `${name} registration must be present`);
+    assert.match(
+      registration,
+      /start_row:\s*SEARCH_ANALYTICS_START_ROW_SCHEMA\s*\.default\(0\)/,
+      `${name} must use the 32-bit-safe offset schema at its input boundary`,
+    );
+  }
+});
