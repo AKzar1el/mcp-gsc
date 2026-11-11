@@ -208,7 +208,7 @@ export async function generateWeeklyDigest(
   ];
   if (missingPeriods.length > 0) {
     return [
-      `# Your weekly site report - ${siteDisplayName(siteUrl)}`,
+      `# Your weekly site report - ${escapeMarkdownInline(siteDisplayName(siteUrl))}`,
       `### Week of ${dates.currentStart} to ${dates.currentEnd}`,
       '',
       '## Data availability',

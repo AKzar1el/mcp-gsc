@@ -329,6 +329,22 @@ test('generateWeeklyDigest uses the shared access-token provider', async () => {
   }
 });
 
+test('weekly digest escapes the site name when aggregate rows are unavailable', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ rows: [] }), {
+    headers: { 'content-type': 'application/json' },
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://foo_bar.example/', '2026-08-10',
+    );
+    assert.ok(digest.includes('# Your weekly site report - foo\\_bar\\.example'));
+    assert.match(digest, /## Data availability/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('weekly digest queries only finalized Search Console data for all five report sections', async () => {
   const restoreFetch = installDigestAnalyticsMock([]);
   const originalMockFetch = globalThis.fetch;
