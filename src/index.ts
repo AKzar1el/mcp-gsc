@@ -2484,9 +2484,12 @@ class GscMcpRuntime {
       {
         title: 'Weekly GSC Performance Digest',
         description:
-          'Generate a plain-language weekly SEO report for one Google Search Console property. For finalized weeks, returns the 7-day comparison, top pages, query movers, and an evidence-based action. Defaults end_date to 3 days ago. Passing an explicitly newer end_date includes fresher preliminary data as a clearly labeled snapshot without week-over-week claims or SEO advice.',
+          'Generate a plain-language weekly SEO report for one Google Search Console property. Optional page_contains scopes all metrics, queries and page rows to matching page URLs using the same five (or three preliminary) Google requests; results are not property-wide when filtered. For finalized weeks, returns the 7-day comparison, top pages, query movers, and an evidence-based action. Defaults end_date to 3 days ago. Passing an explicitly newer end_date includes fresher preliminary data as a clearly labeled snapshot without week-over-week claims or SEO advice.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
+          page_contains: z.string().trim().min(1).max(120).optional().describe(
+            'Optional case-insensitive page URL substring such as /de/. Applied to every Search Analytics request, including totals and query movers, so the report describes matching pages rather than property-wide traffic.',
+          ),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA
             .optional()
             .describe(
@@ -2498,7 +2501,7 @@ class GscMcpRuntime {
         outputSchema: WEEKLY_DIGEST_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, end_date }) => {
+      async ({ site_url, end_date, page_contains }) => {
         const today = getSearchConsoleCalendarDate();
         const resolvedEndDate = resolveWeeklyDigestEndDate(end_date, today);
         assertDateNotInFuture(resolvedEndDate, today, 'end_date');
@@ -2523,6 +2526,7 @@ class GscMcpRuntime {
             resolvedEndDate,
             () => this.reserveSearchAnalyticsRetry(googleId),
             today,
+            page_contains,
           );
           return toolResponse(markdown, { markdown });
         } catch (err) {

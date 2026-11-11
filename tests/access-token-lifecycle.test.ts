@@ -361,6 +361,36 @@ test('weekly digest queries only finalized Search Console data for all five repo
   }
 });
 
+test('weekly digest scopes all five analytics requests and its heading to one URL section', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ dimensionFilterGroups?: unknown }> = [];
+  globalThis.fetch = async (_input, init) => {
+    requests.push(JSON.parse(String(init?.body)) as { dimensionFilterGroups?: unknown });
+    return new Response(JSON.stringify({ rows: [] }), {
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/',
+      '2026-08-10', undefined, '2026-08-15', '/de/',
+    );
+    assert.equal(requests.length, 5);
+    for (const request of requests) {
+      assert.deepEqual(request.dimensionFilterGroups, [{
+        groupType: 'and',
+        filters: [{ dimension: 'page', operator: 'contains', expression: '/de/' }],
+      }]);
+    }
+    assert.match(digest, /Page URL filter/i);
+    assert.match(digest, /\/de\//);
+    assert.match(digest, /not property-wide/i);
+    assert.match(digest, /does not establish a measured zero/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('weekly digest honors explicit recent dates as preliminary snapshots without unverified trend advice', async () => {
   const originalFetch = globalThis.fetch;
   const requestedDataStates: Array<string | undefined> = [];
