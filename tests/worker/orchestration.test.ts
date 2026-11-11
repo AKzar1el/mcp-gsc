@@ -1266,7 +1266,9 @@ describe('Worker orchestration', () => {
         return response({
           inspectionResult: {
             indexStatusResult: {
-              verdict: 'PASS',
+              verdict: inspectionUrl.endsWith('/huge-b')
+                ? 'NEUTRAL'
+                : inspectionUrl.endsWith('/huge-c') ? 'PARTIAL' : 'PASS',
               coverageState: inspectionUrl.endsWith('/huge-a')
                 ? 'oversized-status-'.repeat(5_000)
                 : 'Submitted and indexed',
@@ -1287,6 +1289,7 @@ describe('Worker orchestration', () => {
           requested_count: number;
           succeeded_count: number;
           failed_count: number;
+          index_status_counts: { indexed: number; not_indexed: number; unknown: number };
           raw_results_omitted_count: number;
           results: Array<{
             inspection_url: string;
@@ -1303,8 +1306,12 @@ describe('Worker orchestration', () => {
       expect(payload.requested_count).toBe(5);
       expect(payload.succeeded_count).toBe(4);
       expect(payload.failed_count).toBe(1);
+      expect(payload.index_status_counts).toEqual({ indexed: 2, not_indexed: 1, unknown: 1 });
       expect(payload.results.map((entry) => entry.inspection_url)).toEqual(inspectionUrls);
-      expect(payload.results.filter((entry) => entry.index_status_summary?.indexed_state === 'indexed')).toHaveLength(4);
+      expect(payload.results.filter((entry) => entry.index_status_summary?.indexed_state === 'indexed')).toHaveLength(2);
+      expect(payload.results.filter((entry) => entry.index_status_summary?.indexed_state === 'not_indexed')).toHaveLength(1);
+      expect(payload.results.filter((entry) => entry.index_status_summary?.indexed_state === 'unknown')).toHaveLength(1);
+      expect(JSON.parse(result.content[0].text).index_status_counts).toEqual(payload.index_status_counts);
       expect(payload.results[2].error).toContain('404');
       expect(payload.results[1].inspection_result).toBeDefined();
       expect(payload.raw_results_omitted_count).toBe(3);
