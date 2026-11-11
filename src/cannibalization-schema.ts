@@ -13,3 +13,11 @@ export const CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA = z
   .max(100)
   .default(10)
   .describe('Minimum percentage of total query impressions a page must have to count as a cannibalizing page (0-100). Default is 10%.');
+
+export const CANNIBALIZATION_QUERY_CONTAINS_SCHEMA = z
+  .string()
+  .trim()
+  .min(1)
+  .max(120)
+  .optional()
+  .describe('Optional case-insensitive query substring used to focus the returned candidates. Filtering happens after full query/page aggregation, so other competing pages remain visible.');

@@ -60,6 +60,7 @@ import {
 import {
   CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
   CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
+  CANNIBALIZATION_QUERY_CONTAINS_SCHEMA,
 } from './cannibalization-schema';
 import {
   assertDateNotInFuture,
@@ -1999,7 +2000,7 @@ class GscMcpRuntime {
       'insights.cannibalization',
       {
         title: 'Detect Keyword Cannibalization',
-        description: 'Analyze query/page Search Analytics to find queries split across multiple pages. Candidates are ranked deterministically by the observed query/page impression sum, each candidate bounds its page list, and limit/start_row plus result_page provide safe pagination. total_clicks, total_impressions, and impression_share are calculated from observed query/page rows and are not true query-level property aggregates; multiple pages can make that row sum exceed the query-level Search Console total. Multiple ranking URLs can also reflect legitimate locale or intent differences, so treat candidates as evidence to investigate rather than proof of harmful cannibalization.',
+        description: 'Analyze query/page Search Analytics to find queries split across multiple pages. Optional query_contains focuses on a case-insensitive query substring after full query/page aggregation; competing pages and shares are not discarded. Candidates are ranked deterministically by the observed query/page impression sum, each candidate bounds its page list, and limit/start_row plus result_page provide safe pagination. total_clicks, total_impressions, and impression_share are calculated from observed query/page rows and are not true query-level property aggregates; multiple pages can make that row sum exceed the query-level Search Console total. Multiple ranking URLs can also reflect legitimate locale or intent differences, so treat candidates as evidence to investigate rather than proof of harmful cannibalization.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
@@ -2012,13 +2013,14 @@ class GscMcpRuntime {
           ),
           min_impressions: CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
           min_page_percentage: CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
+          query_contains: CANNIBALIZATION_QUERY_CONTAINS_SCHEMA,
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,
         },
         outputSchema: CANNIBALIZATION_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, start_date, end_date, min_impressions, min_page_percentage, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+      async ({ site_url, start_date, end_date, min_impressions, min_page_percentage, query_contains, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -2035,21 +2037,26 @@ class GscMcpRuntime {
           dimensions: ['query', 'page'],
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
+        const queryFilter = query_contains?.toLowerCase();
         const cannibalizationCandidates = processCannibalization(
           source.rows,
           min_impressions,
           min_page_percentage,
-        ).map((candidate) => {
-          const boundedPages = takeBoundedItems(candidate.pages, 10, 12_000);
-          return {
-            ...candidate,
-            page_count: candidate.pages.length,
-            pages_truncated:
-              boundedPages.byteLimitReached ||
-              boundedPages.items.length < candidate.pages.length,
-            pages: boundedPages.items,
-          };
-        });
+        )
+          .filter((candidate) =>
+            !queryFilter || candidate.query.toLowerCase().includes(queryFilter)
+          )
+          .map((candidate) => {
+            const boundedPages = takeBoundedItems(candidate.pages, 10, 12_000);
+            return {
+              ...candidate,
+              page_count: candidate.pages.length,
+              pages_truncated:
+                boundedPages.byteLimitReached ||
+                boundedPages.items.length < candidate.pages.length,
+              pages: boundedPages.items,
+            };
+          });
         const bounded = windowKnownResults(
           cannibalizationCandidates,
           start_row,

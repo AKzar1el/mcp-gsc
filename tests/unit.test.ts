@@ -33,6 +33,7 @@ import {
 import {
   CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
   CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
+  CANNIBALIZATION_QUERY_CONTAINS_SCHEMA,
 } from '../src/cannibalization-schema';
 import {
   buildAuthUrl,
@@ -378,6 +379,14 @@ test('cannibalization minimum impressions cannot be negative', () => {
     success: true,
     data: 50,
   });
+});
+
+test('cannibalization query substring is optional, bounded, and trimmed before quota use', () => {
+  assert.equal(CANNIBALIZATION_QUERY_CONTAINS_SCHEMA.safeParse(undefined).success, true);
+  assert.equal(CANNIBALIZATION_QUERY_CONTAINS_SCHEMA.safeParse('  pricing  ').data, 'pricing');
+  for (const value of ['', '   ', 'x'.repeat(121), 17]) {
+    assert.equal(CANNIBALIZATION_QUERY_CONTAINS_SCHEMA.safeParse(value).success, false);
+  }
 });
 
 test('quick win thresholds require valid impressions and position ranges', () => {
