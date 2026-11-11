@@ -22,6 +22,7 @@ import {
 import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from '../src/content-decay-schema';
 import { resolveWeeklyDigestEndDate, weeklyDigestAnalyticsRequestCount } from '../src/digest';
 import { INDEXED_PAGES_START_ROW_SCHEMA, resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
+import { SEARCH_ANALYTICS_START_ROW_SCHEMA } from '../src/result-bounds';
 import { createQuickWinsInputSchema } from '../src/quick-wins-schema';
 import { SITEMAP_URL_SCHEMA } from '../src/sitemap-url-schema';
 import { URL_INSPECTION_LANGUAGE_CODE_SCHEMA } from '../src/url-inspection-language-schema';
@@ -349,6 +350,7 @@ test('indexed page ranges preserve both supplied boundaries', () => {
 });
 
 test('indexing.list_pages rejects out-of-range offsets at the input boundary before quota is reserved', () => {
+  assert.equal(INDEXED_PAGES_START_ROW_SCHEMA, SEARCH_ANALYTICS_START_ROW_SCHEMA);
   for (const value of [0, 1, 2_147_483_647]) {
     assert.equal(INDEXED_PAGES_START_ROW_SCHEMA.safeParse(value).success, true);
   }

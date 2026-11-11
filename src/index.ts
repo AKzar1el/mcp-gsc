@@ -94,6 +94,7 @@ import {
   DEFAULT_ANALYSIS_RESULT_LIMIT,
   MAX_ANALYSIS_RESULT_LIMIT,
   MAX_DIRECT_SOURCE_ROWS,
+  SEARCH_ANALYTICS_START_ROW_SCHEMA,
   STRUCTURED_RESULT_BYTE_BUDGET,
   resultPageMetadata,
   takeBoundedItems,
@@ -1506,13 +1507,10 @@ class GscMcpRuntime {
             .describe(
               `Maximum rows requested for this logical page (1-25000). Defaults to 100. MCP responses are additionally capped to at most ${MAX_DIRECT_SOURCE_ROWS} source rows and a structured-content byte budget; use next_start_row while has_more is true for bulk exports.`,
             ),
-          start_row: z
-            .number()
-            .int()
-            .min(0)
+          start_row: SEARCH_ANALYTICS_START_ROW_SCHEMA
             .default(0)
             .describe(
-              'Zero-based row offset for pagination. When a response contains next_start_row, pass it here to fetch the next page.',
+              'Zero-based row offset for pagination (0 through 2147483647). When a response contains next_start_row, pass it here to fetch the next page.',
             ),
           data_state: z
             .enum(['all', 'final', 'hourly_all'])
@@ -1660,12 +1658,9 @@ class GscMcpRuntime {
             .max(25000)
             .default(100)
             .describe('Maximum query rows requested for this response. Continue with result_page.next_start_row while result_page.has_more is true.'),
-          start_row: z
-            .number()
-            .int()
-            .min(0)
+          start_row: SEARCH_ANALYTICS_START_ROW_SCHEMA
             .default(0)
-            .describe('Zero-based Search Analytics row offset for pagination.'),
+            .describe('Zero-based Search Analytics row offset for pagination (0 through 2147483647).'),
         },
         outputSchema: PAGE_QUERIES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
@@ -1754,12 +1749,9 @@ class GscMcpRuntime {
             .max(25000)
             .default(100)
             .describe('Maximum page rows requested for this response. Continue with result_page.next_start_row while result_page.has_more is true.'),
-          start_row: z
-            .number()
-            .int()
-            .min(0)
+          start_row: SEARCH_ANALYTICS_START_ROW_SCHEMA
             .default(0)
-            .describe('Zero-based Search Analytics row offset for pagination.'),
+            .describe('Zero-based Search Analytics row offset for pagination (0 through 2147483647).'),
         },
         outputSchema: QUERY_PAGES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
