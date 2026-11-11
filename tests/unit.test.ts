@@ -21,7 +21,7 @@ import {
 } from '../src/date-validation';
 import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from '../src/content-decay-schema';
 import { resolveWeeklyDigestEndDate, weeklyDigestAnalyticsRequestCount } from '../src/digest';
-import { resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
+import { INDEXED_PAGES_START_ROW_SCHEMA, resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
 import { createQuickWinsInputSchema } from '../src/quick-wins-schema';
 import { SITEMAP_URL_SCHEMA } from '../src/sitemap-url-schema';
 import { URL_INSPECTION_LANGUAGE_CODE_SCHEMA } from '../src/url-inspection-language-schema';
@@ -346,6 +346,15 @@ test('indexed page ranges preserve both supplied boundaries', () => {
     () => resolveIndexedPagesDateRange('2026-01-14', '2026-01-16', '2026-01-15'),
     /end_date must be today or earlier/,
   );
+});
+
+test('indexing.list_pages rejects out-of-range offsets at the input boundary before quota is reserved', () => {
+  for (const value of [0, 1, 2_147_483_647]) {
+    assert.equal(INDEXED_PAGES_START_ROW_SCHEMA.safeParse(value).success, true);
+  }
+  for (const value of [-1, 1.5, 2_147_483_648, Number.MAX_SAFE_INTEGER, Infinity]) {
+    assert.equal(INDEXED_PAGES_START_ROW_SCHEMA.safeParse(value).success, false);
+  }
 });
 
 test('cannibalization percentage is constrained to 0 through 100', () => {

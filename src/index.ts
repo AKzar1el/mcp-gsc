@@ -69,7 +69,7 @@ import {
   searchConsoleDateDescription,
 } from './date-validation';
 import { CONTENT_DECAY_COMPARE_DAYS_SCHEMA } from './content-decay-schema';
-import { resolveIndexedPagesDateRange } from './indexed-pages-range';
+import { INDEXED_PAGES_START_ROW_SCHEMA, resolveIndexedPagesDateRange } from './indexed-pages-range';
 import { createQuickWinsInputSchema } from './quick-wins-schema';
 import { SITEMAP_URL_SCHEMA } from './sitemap-url-schema';
 import { URL_INSPECTION_LANGUAGE_CODE_SCHEMA } from './url-inspection-language-schema';
@@ -2317,7 +2317,7 @@ class GscMcpRuntime {
             ),
           ),
           row_limit: z.number().int().min(1).max(25000).default(1000).describe(`Maximum pages requested for this logical response (1-25000). Output is safely bounded; continue with result_page.next_start_row while result_page.has_more is true.`),
-          start_row: z.number().int().min(0).default(0).describe('Zero-based page-row offset for pagination.'),
+          start_row: INDEXED_PAGES_START_ROW_SCHEMA.default(0).describe('Zero-based page-row offset for pagination (0 through 2147483647).'),
         },
         outputSchema: INDEXED_PAGES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,

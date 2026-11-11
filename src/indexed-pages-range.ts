@@ -1,4 +1,8 @@
+import { z } from 'zod';
 import { assertDateNotInFuture, assertDateRange } from './date-validation';
+
+// Bound to the Search Analytics API's signed 32-bit startRow field before quota reservation.
+export const INDEXED_PAGES_START_ROW_SCHEMA = z.number().int().min(0).max(2_147_483_647);
 
 export interface IndexedPagesDateRange {
   startDate: string;
