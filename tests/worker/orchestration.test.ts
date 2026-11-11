@@ -2582,6 +2582,26 @@ describe('Worker orchestration', () => {
       expect(
         new TextEncoder().encode(JSON.stringify(cannibalization.structuredContent)).byteLength,
       ).toBeLessThan(55_000);
+
+      const topicCandidates = (await registered['insights.cannibalization'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-07-01',
+        end_date: '2026-07-31',
+        min_impressions: 1,
+        min_page_percentage: 1,
+        query_contains: 'QUERY-17-',
+        limit: 100,
+        start_row: 0,
+      })) as {
+        structuredContent: {
+          candidates: Array<{ query: string; page_count: number }>;
+          result_page: { has_more: boolean };
+        };
+      };
+      expect(topicCandidates.structuredContent.candidates).toHaveLength(1);
+      expect(topicCandidates.structuredContent.candidates[0].query).toMatch(/^query-17-/);
+      expect(topicCandidates.structuredContent.candidates[0].page_count).toBe(2);
+      expect(topicCandidates.structuredContent.result_page.has_more).toBe(false);
     } finally {
       globalThis.fetch = originalFetch;
     }
