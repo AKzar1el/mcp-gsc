@@ -3477,6 +3477,23 @@ describe('Worker orchestration', () => {
         ['query'],
         ['page'],
       ]);
+
+      analyticsRequests.length = 0;
+      const imageMarkdown = await generateWeeklyDigest(
+        new GoogleAccessTokenLifecycle(workerEnv),
+        'digest-user',
+        'https://example.com/',
+        '2026-01-14',
+        undefined,
+        '2026-01-17',
+        undefined,
+        'image',
+      );
+      expect(analyticsRequests).toHaveLength(5);
+      expect(analyticsRequests.every((request) => request.type === 'image')).toBe(true);
+      expect(imageMarkdown).toContain('**Search type:** Image search');
+      expect(imageMarkdown).toContain('Review this search surface before changing content');
+      expect(imageMarkdown).not.toContain('Change the title or meta description');
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -3683,6 +3700,19 @@ describe('Worker orchestration', () => {
         '2026-09-09',
         '2026-09-16',
       ]);
+      expect(analyticsRequests.every((request) => request.type === undefined)).toBe(true);
+
+      analyticsRequests.length = 0;
+      const imageDigest = await tools['reports.weekly_digest'].handler({
+        site_url: 'https://example.com/',
+        search_type: 'image',
+        page_contains: '/de/',
+      }) as { content: Array<{ text: string }> };
+      expect(analyticsRequests).toHaveLength(5);
+      expect(analyticsRequests.every((request) => request.type === 'image')).toBe(true);
+      expect(analyticsRequests.every((request) => JSON.stringify(request.dimensionFilterGroups).includes('/de/'))).toBe(true);
+      expect(imageDigest.content[0]?.text).toContain('**Search type:** Image search');
+      expect(imageDigest.content[0]?.text).toContain('Page URL filter');
     } finally {
       globalThis.fetch = originalFetch;
       vi.useRealTimers();
