@@ -27,11 +27,13 @@ The digest makes five Search Analytics queries against the shared quota and has 
 
 **Optional section-level report:** For a multilingual site, call `reports.weekly_digest` with the same exact `site_url` and, for example, `page_contains: "/de/"`. This applies the page-URL substring filter to the digest's totals, query movers, and page rows, and labels the report as filtered rather than property-wide. The filter matches URLs containing the supplied text; it does not identify a language automatically or guarantee that all matching URLs are German. Check the actual URL structure first. A filtered digest makes the same number of Search Analytics requests as an unfiltered digest, but each separate invocation still consumes its own quota allowance.
 
+**Optional search-surface report:** Supply `search_type: "image"`, `"video"`, or `"news"` when the client needs performance for that specific Search Console surface instead of the default `"web"`. The `"news"` value is the Google Search News tab, not the Google News app; Discover and Google News reports cannot provide the query-based movers used here. Every request in the digest uses the same selected type, and the report labels that scope. Non-Web reports refrain from Web-specific SEO prescriptions until the underlying query/page evidence is reviewed. You can combine `search_type` and `page_contains`, without changing the number of Google requests.
+
 ### 3. Reconcile client-facing performance and movers
 
 > For the same property and exact seven-day window from the digest, call `analytics.query` with `dimensions: []` and `data_state: "final"` for genuine site-wide totals. Compare them to the previous seven-day window using the same search type and filters. For row-level movers, use `analytics.compare` with `start_date_a`, `end_date_a`, `start_date_b`, `end_date_b`, `dimension: "query"`, and `data_state: "final"`. Clearly identify preliminary or mismatched date states; do not quietly mix them.
 
-The unfiltered steps above produce **property-wide** comparisons. If the digest used `page_contains`, preserve the same page filter in both follow-up tools instead. For the `/de/` example, pass this `dimension_filter_groups` value to `analytics.query` and to `analytics.compare` (for both periods):
+The default steps above produce **property-wide Web** comparisons. If the digest used a non-default `search_type`, pass that same search type to both `analytics.query` and `analytics.compare`; never compare Image/Video/News-tab totals to Web totals as though they were the same population. If the digest used `page_contains`, preserve the same page filter in both follow-up tools instead. For the `/de/` example, pass this `dimension_filter_groups` value to `analytics.query` and to `analytics.compare` (for both periods):
 
 ```json
 [{"groupType":"and","filters":[{"dimension":"page","operator":"contains","expression":"/de/"}]}]

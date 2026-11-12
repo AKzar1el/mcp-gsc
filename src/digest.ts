@@ -61,7 +61,8 @@ type ActionKey =
   | 'investigate_drop'
   | 'promote_rising'
   | 'celebrate_and_double_down'
-  | 'publish_one_post';
+  | 'publish_one_post'
+  | 'review_search_surface';
 
 interface ActionItem {
   headline: string;
@@ -93,6 +94,7 @@ export async function generateWeeklyDigest(
   beforeRetry?: () => Promise<void>,
   today: string = getSearchConsoleCalendarDate(),
   pageContains?: string,
+  searchType: 'web' | 'image' | 'video' | 'news' = 'web',
 ): Promise<string> {
   const dates = computeDateRanges(endDate);
   const isPreliminary = weeklyDigestAnalyticsRequestCount(endDate, today) === 3;
@@ -104,6 +106,10 @@ export async function generateWeeklyDigest(
   const pageScopeNotice = pageContains
     ? `> **Page URL filter:** Metrics, queries and pages include only URLs containing ${escapeMarkdownInline(pageContains)} (case-insensitive); this is not property-wide traffic.`
     : undefined;
+  const searchTypeNotice = searchType === 'web'
+    ? undefined
+    : `> **Search type:** ${searchType === 'image' ? 'Image search' : searchType === 'video' ? 'Video search' : 'Google Search News tab (not Google News app)'}. All figures are specific to this Search Console search type, not combined Web search traffic.`;
+  const typeFilter = searchType === 'web' ? {} : { type: searchType };
   const accessToken = await accessTokens.getAccessToken(googleId);
 
   const [
@@ -120,6 +126,7 @@ export async function generateWeeklyDigest(
       rowLimit: 1,
       dataState: requestedDataState,
       dimensionFilterGroups,
+      ...typeFilter,
     }, beforeRetry),
     // Preliminary snapshots never consume previous-week evidence.
     isPreliminary
@@ -131,6 +138,7 @@ export async function generateWeeklyDigest(
         rowLimit: 1,
         dataState: requestedDataState,
         dimensionFilterGroups,
+        ...typeFilter,
       }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.currentStart,
@@ -139,6 +147,7 @@ export async function generateWeeklyDigest(
       rowLimit: 25,
       dataState: requestedDataState,
       dimensionFilterGroups,
+      ...typeFilter,
     }, beforeRetry),
     isPreliminary
       ? Promise.resolve(undefined)
@@ -149,6 +158,7 @@ export async function generateWeeklyDigest(
         rowLimit: 25,
         dataState: requestedDataState,
         dimensionFilterGroups,
+        ...typeFilter,
       }, beforeRetry),
     querySearchAnalytics(accessToken, siteUrl, {
       startDate: dates.currentStart,
@@ -157,6 +167,7 @@ export async function generateWeeklyDigest(
       rowLimit: 10,
       dataState: requestedDataState,
       dimensionFilterGroups,
+      ...typeFilter,
     }, beforeRetry),
   ]);
 
@@ -167,6 +178,7 @@ export async function generateWeeklyDigest(
       `# Your weekly site report - ${escapeMarkdownInline(siteDisplayName(siteUrl))}`,
       `### Preliminary snapshot for ${dates.currentStart} to ${dates.currentEnd}`,
       '',
+      ...(searchTypeNotice ? [searchTypeNotice, ''] : []),
       ...(pageScopeNotice ? [pageScopeNotice, ''] : []),
       '> **Preliminary Search Console data:** Explicitly requested recent dates may include incomplete metrics. Google may revise these values as reporting finishes.',
       '',
@@ -225,6 +237,7 @@ export async function generateWeeklyDigest(
       `# Your weekly site report - ${escapeMarkdownInline(siteDisplayName(siteUrl))}`,
       `### Week of ${dates.currentStart} to ${dates.currentEnd}`,
       '',
+      ...(searchTypeNotice ? [searchTypeNotice, ''] : []),
       ...(pageScopeNotice ? [pageScopeNotice, ''] : []),
       '## Data availability',
       `Google Search Console returned no aggregate Search Analytics row for ${missingPeriods.join(' and ')}.`,
@@ -244,15 +257,20 @@ export async function generateWeeklyDigest(
   const currentPages = rowsToPages(currentPagesResponse.rows);
 
   const movers = computeMovers(currentQueries, prevQueries);
-  const action = pickActionAndBuild(
-    currentTotals,
-    prevTotals,
-    movers,
-    currentQueries,
-  );
+  const action = searchType === 'web'
+    ? pickActionAndBuild(currentTotals, prevTotals, movers, currentQueries)
+    : {
+        key: 'review_search_surface' as const,
+        item: {
+          headline: 'Review this search surface before changing content',
+          why: 'These observations describe one Search Console search type. Search Analytics alone does not establish the reason for a change or which optimization would help.',
+          how: '1. Open the matching Search Console Performance search type for these exact dates.\n2. Check the returned query/page evidence and whether the relevant content format matches search intent.\n3. Verify a specific problem before making changes; do not apply Web snippet advice automatically to Image, Video or News-tab search.',
+        },
+      };
 
   return renderMarkdown({
     siteUrl,
+    searchTypeNotice,
     pageScopeNotice,
     dates,
     currentTotals,
@@ -494,6 +512,7 @@ function escapeMarkdownInline(value: string): string {
 
 function renderMarkdown(data: {
   siteUrl: string;
+  searchTypeNotice?: string;
   pageScopeNotice?: string;
   dates: DateRanges;
   currentTotals: SiteTotals;
@@ -502,7 +521,7 @@ function renderMarkdown(data: {
   currentPages: PageRow[];
   action: { key: ActionKey; item: ActionItem };
 }): string {
-  const { siteUrl, pageScopeNotice, dates, currentTotals, prevTotals, movers, currentPages, action } = data;
+  const { siteUrl, searchTypeNotice, pageScopeNotice, dates, currentTotals, prevTotals, movers, currentPages, action } = data;
   const siteName = siteDisplayName(siteUrl);
   const lines: string[] = [];
 
@@ -516,6 +535,7 @@ function renderMarkdown(data: {
   lines.push(`# Your weekly site report — ${escapeMarkdownInline(siteName)}`);
   lines.push(`### Week of ${dates.currentStart} to ${dates.currentEnd}`);
   lines.push('');
+  if (searchTypeNotice) lines.push(searchTypeNotice, '');
   if (pageScopeNotice) lines.push(pageScopeNotice, '');
   lines.push('## Quick numbers');
   lines.push('');
