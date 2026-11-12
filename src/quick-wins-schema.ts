@@ -33,6 +33,9 @@ export function createQuickWinsInputSchema() {
         ),
       ),
       ...QUICK_WINS_THRESHOLDS_SHAPE,
+      page_contains: z.string().trim().min(1).max(240).optional().describe(
+        'Optional case-insensitive page URL substring (for example /de/). Google filters matching pages before query/page pagination, so opportunities are limited to that URL subset, not property-wide results.',
+      ),
       limit: z
         .number()
         .int()

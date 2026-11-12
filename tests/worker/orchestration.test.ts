@@ -2614,6 +2614,67 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('scopes quick wins at Google before pagination while retaining the unfiltered default', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'quick-wins-locale-user', email: 'quick-wins-locale@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const rows = [
+      { keys: ['seo basics', 'https://example.com/en/guide'], impressions: 900 },
+      { keys: ['seo grundlagen', 'https://example.com/de/guide'], impressions: 150 },
+      { keys: ['seo tipps', 'https://example.com/de/tips'], impressions: 75 },
+    ].map((row) => ({ ...row, clicks: 10, ctr: 0.05, position: 12 }));
+    let requests = 0;
+    try {
+      globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as {
+          dimensions: string[];
+          dimensionFilterGroups?: Array<{ filters: Array<{ dimension: string; operator: string; expression: string }> }>;
+        };
+        expect(body.dimensions).toEqual(['query', 'page']);
+        requests += 1;
+        const filter = body.dimensionFilterGroups?.[0]?.filters?.[0];
+        if (requests === 1) {
+          expect(filter).toEqual({ dimension: 'page', operator: 'contains', expression: '/de/' });
+        } else {
+          expect(filter).toBeUndefined();
+        }
+        return response({
+          rows: filter
+            ? rows.filter((row) => row.keys[1].toLowerCase().includes(filter.expression.toLowerCase()))
+            : rows,
+        });
+      };
+
+      const args = {
+        site_url: 'sc-domain:example.com', start_date: '2026-07-01', end_date: '2026-07-31',
+        min_impressions: 100, min_position: 8, max_position: 20, limit: 20, start_row: 0,
+      };
+      const scoped = (await registered['insights.quick_wins'].handler({ ...args, page_contains: '/de/' })) as {
+        structuredContent: { page_contains: string | null; scope_note: string; quick_wins: Array<{ page: string }> };
+      };
+      expect(scoped.structuredContent.page_contains).toBe('/de/');
+      expect(scoped.structuredContent.scope_note).toMatch(/not property-wide/i);
+      expect(scoped.structuredContent.quick_wins.map((row) => row.page)).toEqual(['https://example.com/de/guide']);
+
+      const defaultResult = (await registered['insights.quick_wins'].handler(args)) as {
+        structuredContent: { page_contains: string | null; quick_wins: Array<{ page: string }> };
+      };
+      expect(defaultResult.structuredContent.page_contains).toBeNull();
+      expect(defaultResult.structuredContent.quick_wins).toHaveLength(2);
+      expect(requests).toBe(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('scopes cannibalization to one locale before aggregating candidate page shares', async () => {
     const server = await createGscMcpServer(
       workerEnv,
