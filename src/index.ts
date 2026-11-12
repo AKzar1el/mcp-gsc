@@ -565,10 +565,14 @@ const DIRECT_INSIGHT_COUNTRY_SCHEMA = z.string().trim()
   .optional()
   .describe('Optional searcher country in ISO 3166-1 alpha-3, e.g. DEU, not the page language. Google ANDs this geography with query/page filters before pagination.');
 
+const DIRECT_INSIGHT_DEVICE_SCHEMA = z.enum(['desktop', 'mobile', 'tablet']).optional()
+  .describe('Optional searcher device; ANDed with exact page/query, topic or URL substring, and country at Google before pagination. Omit to include all devices.');
+
 const PAGE_QUERIES_OUTPUT_SCHEMA = {
   page: z.string(),
   query_contains: z.string().nullable().describe('Optional query topic substring filtered at Google before Search Analytics pagination, or null for no topic filter.'),
   country: z.string().nullable().describe('ISO alpha-3 searcher country filtered at Google, or null when unfiltered; not a page language.'),
+  device: z.enum(['desktop', 'mobile', 'tablet']).nullable().describe('Searcher device filtered at Google, or null for all devices.'),
   scope_note: z.string(),
   queries: z.array(
     z.object({
@@ -584,6 +588,7 @@ const QUERY_PAGES_OUTPUT_SCHEMA = {
   query: z.string(),
   page_contains: z.string().nullable().describe('Optional URL substring filtered at Google before Search Analytics pagination, or null for no page filter.'),
   country: z.string().nullable().describe('ISO alpha-3 searcher country filtered at Google, or null when unfiltered; not a page language.'),
+  device: z.enum(['desktop', 'mobile', 'tablet']).nullable().describe('Searcher device filtered at Google, or null for all devices.'),
   scope_note: z.string(),
   pages: z.array(
     z.object({
@@ -925,12 +930,12 @@ const TOOL_CATALOG = [
   {
     name: 'insights.page_queries',
     description:
-      'For one exact page URL, list the Search Console queries that produced impressions for it, with optional Google-side query_contains and ISO alpha-3 searcher country filtering before bounded pagination, clicks, impressions, CTR, average position, and search type.',
+      'For one exact page URL, list the Search Console queries that produced impressions for it, with optional Google-side query_contains, ISO alpha-3 searcher country and desktop/mobile/tablet device filtering before bounded pagination, clicks, impressions, CTR, average position, and search type.',
   },
   {
     name: 'insights.query_pages',
     description:
-      'For one exact search query, list the site pages that received impressions for it, with optional Google-side page_contains URL-section and ISO alpha-3 searcher country filtering before bounded pagination, clicks, impressions, CTR, average position, and search type.',
+      'For one exact search query, list the site pages that received impressions for it, with optional Google-side page_contains URL-section, ISO alpha-3 searcher country and desktop/mobile/tablet device filtering before bounded pagination, clicks, impressions, CTR, average position, and search type.',
   },
   {
     name: 'urls.inspect',
@@ -1687,12 +1692,13 @@ class GscMcpRuntime {
       'insights.page_queries',
       {
         title: 'Find queries for a page',
-        description: 'For one exact page URL within the supplied Search Console property, return the queries that produced impressions for it over a date range. This wraps an exact page dimension filter so agents do not need to construct analytics.query filter groups manually. Optional query_contains and ISO alpha-3 searcher country narrow the Google-side population before pagination; these observed rows may not represent all queries for the page. Country is searcher location, not page language. Exact page matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results; Search Console can still omit anonymized queries. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
+        description: 'For one exact page URL within the supplied Search Console property, return the queries that produced impressions for it over a date range. This wraps an exact page dimension filter so agents do not need to construct analytics.query filter groups manually. Optional query_contains, ISO alpha-3 searcher country and device (desktop/mobile/tablet) narrow the Google-side population before pagination; these observed rows may not represent all queries for the page or all devices. Country is searcher location, not page language. Exact page matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results; Search Console can still omit anonymized queries. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           page_url: z.string().url().describe('Exact fully-qualified page URL to filter on, e.g. https://example.com/guides/seo/. The URL must belong to site_url; Search Console exact page filters are case-sensitive.'),
           query_contains: z.string().trim().min(1).max(240).optional().describe('Optional case-insensitive query substring (e.g. seo) to filter at Google before pagination. Omit for all query topics.'),
           country: DIRECT_INSIGHT_COUNTRY_SCHEMA,
+          device: DIRECT_INSIGHT_DEVICE_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
             searchConsoleDateDescription('Start date (inclusive) in YYYY-MM-DD format.'),
           ),
@@ -1719,7 +1725,7 @@ class GscMcpRuntime {
         outputSchema: PAGE_QUERIES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, page_url, query_contains, country, start_date, end_date, search_type, row_limit = 100, start_row = 0 }) => {
+      async ({ site_url, page_url, query_contains, country, device, start_date, end_date, search_type, row_limit = 100, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -1745,6 +1751,7 @@ class GscMcpRuntime {
                 { dimension: 'page', operator: 'equals', expression: page_url },
                 ...(query_contains ? [{ dimension: 'query' as const, operator: 'contains' as const, expression: query_contains }] : []),
                 ...(country ? [{ dimension: 'country' as const, operator: 'equals' as const, expression: country.toUpperCase() }] : []),
+                ...(device ? [{ dimension: 'device' as const, operator: 'equals' as const, expression: device.toUpperCase() }] : []),
               ],
             },
           ],
@@ -1772,8 +1779,9 @@ class GscMcpRuntime {
           page: page_url,
           query_contains: query_contains ?? null,
           country: country?.toUpperCase() ?? null,
-          scope_note: country
-            ? 'Queries are filtered to the requested searcher country and optional query topic at Google before pagination; these are not all queries for this page, searcher country is not page language, and missing rows do not mean zero impressions.'
+          device: device ?? null,
+          scope_note: country || device
+            ? `Queries are filtered to the requested ${country ? 'searcher country' : ''}${country && device ? ' and ' : ''}${device ? 'device' : ''} and optional query topic at Google before pagination; these are not all queries for this page${device ? ' or all-device results' : ''}, and missing rows do not mean zero impressions.${country ? ' Searcher country is not page language.' : ''}`
             : query_contains
               ? 'Queries are filtered to the requested case-insensitive topic substring at Google before pagination; these are not all queries for this page, and missing rows do not mean zero impressions.'
             : 'Observed page/query rows may be incomplete because Search Console can omit or truncate data; missing rows do not mean zero impressions.',
@@ -1789,12 +1797,13 @@ class GscMcpRuntime {
       'insights.query_pages',
       {
         title: 'Find pages for a query',
-        description: 'For one exact search query, return the site pages that received impressions for it over a date range. This wraps an exact query dimension filter so agents do not need to construct analytics.query filter groups manually. Optional page_contains and ISO alpha-3 searcher country scope matching page URLs and searcher geography at Google before source pagination; filtered rows are not property-wide, and country is not page language. Exact query matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results and verify which URL Google is surfacing before diagnosing cannibalization or content targeting. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
+        description: 'For one exact search query, return the site pages that received impressions for it over a date range. This wraps an exact query dimension filter so agents do not need to construct analytics.query filter groups manually. Optional page_contains, ISO alpha-3 searcher country and device (desktop/mobile/tablet) scope matching page URLs, searcher geography and devices at Google before source pagination; filtered rows are not property-wide, and country is not page language. Exact query matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results and verify which URL Google is surfacing before diagnosing cannibalization or content targeting. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           query: z.string().min(1).describe('Exact Search Console query text to filter on. Exact query filters are case-sensitive.'),
           page_contains: z.string().trim().min(1).max(240).optional().describe('Optional case-insensitive substring of page URLs to filter at Google before pagination, such as /de/. Omit for all pages.'),
           country: DIRECT_INSIGHT_COUNTRY_SCHEMA,
+          device: DIRECT_INSIGHT_DEVICE_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
             searchConsoleDateDescription('Start date (inclusive) in YYYY-MM-DD format.'),
           ),
@@ -1821,7 +1830,7 @@ class GscMcpRuntime {
         outputSchema: QUERY_PAGES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, query, page_contains, country, start_date, end_date, search_type, row_limit = 100, start_row = 0 }) => {
+      async ({ site_url, query, page_contains, country, device, start_date, end_date, search_type, row_limit = 100, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -1846,6 +1855,7 @@ class GscMcpRuntime {
                 { dimension: 'query', operator: 'equals', expression: query },
                 ...(page_contains ? [{ dimension: 'page' as const, operator: 'contains' as const, expression: page_contains }] : []),
                 ...(country ? [{ dimension: 'country' as const, operator: 'equals' as const, expression: country.toUpperCase() }] : []),
+                ...(device ? [{ dimension: 'device' as const, operator: 'equals' as const, expression: device.toUpperCase() }] : []),
               ],
             },
           ],
@@ -1873,8 +1883,9 @@ class GscMcpRuntime {
           query,
           page_contains: page_contains ?? null,
           country: country?.toUpperCase() ?? null,
-          scope_note: country
-            ? 'Pages are filtered to the requested searcher country and optional URL substring at Google before pagination; observed rows are not property-wide, searcher country is not page language, and absent rows are not evidence of zero impressions.'
+          device: device ?? null,
+          scope_note: country || device
+            ? `Pages are filtered to the requested ${country ? 'searcher country' : ''}${country && device ? ' and ' : ''}${device ? 'device' : ''} and optional URL substring at Google before pagination; observed rows are not property-wide${device ? ' or all-device totals' : ''}, and absent rows are not evidence of zero impressions.${country ? ' Searcher country is not page language.' : ''}`
             : page_contains
               ? 'Pages are filtered to the requested URL substring at Google before pagination; observed rows are not property-wide, and absent rows are not evidence of zero impressions.'
             : 'Observed query/page rows may be incomplete because Search Console can omit or truncate data; absent rows are not evidence of zero impressions.',

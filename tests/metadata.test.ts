@@ -1074,8 +1074,8 @@ test('capabilities catalog advertises supported insight filters and weekly repor
   const catalog = indexSource.slice(start, end);
 
   for (const [toolName, filters] of [
-    ['insights.page_queries', ['query_contains', 'country']],
-    ['insights.query_pages', ['page_contains', 'country']],
+    ['insights.page_queries', ['query_contains', 'country', 'device']],
+    ['insights.query_pages', ['page_contains', 'country', 'device']],
     ['insights.quick_wins', ['page_contains', 'query_contains', 'country', 'device']],
     ['insights.cannibalization', ['page_contains', 'query_contains', 'country', 'device']],
     ['insights.content_decay', ['page_contains', 'query_contains', 'country', 'device']],
@@ -1109,6 +1109,12 @@ test('exact page and query drilldowns validate a searcher country rather than in
   }
   assert.match(indexSource, /const DIRECT_INSIGHT_COUNTRY_SCHEMA[\s\S]*?ISO 3166-1 alpha-3/);
   assert.match(indexSource, /searcher country[^']*not the page language/i);
+});
+
+test('direct page and query drilldowns advertise optional device scope', () => {
+  assert.equal((indexSource.match(/device:\s*DIRECT_INSIGHT_DEVICE_SCHEMA/g) ?? []).length, 2);
+  assert.match(indexSource, /const DIRECT_INSIGHT_DEVICE_SCHEMA[\s\S]*?desktop[\s\S]*?mobile[\s\S]*?tablet/);
+  assert.match(readmeSource, /Both accept optional .*device/);
 });
 
 test('content decay country scope is discoverable, validated and not confused with page language', () => {
