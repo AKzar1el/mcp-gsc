@@ -540,6 +540,7 @@ const RESULT_START_ROW_SCHEMA = z
 const QUICK_WIN_OUTPUT_SCHEMA = {
   note: z.string(),
   page_contains: z.string().nullable().describe('Page URL substring filtered at Google, or null when unfiltered.'),
+  query_contains: z.string().nullable().describe('Query topic substring filtered at Google, or null when unfiltered.'),
   scope_note: z.string(),
   quick_wins: z.array(
     z.object({
@@ -2005,12 +2006,12 @@ class GscMcpRuntime {
       'insights.quick_wins',
       {
         title: 'Identify SEO Quick Wins',
-        description: 'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Optional page_contains filters matching URLs at Google before source pagination so locale-specific opportunities such as /de/ are not crowded out by other sections; filtered results are not property-wide. Average position is an aggregate Search Console metric, not a literal current rank; CTR is returned for context and is not an eligibility filter. Results are ordered by impressions and bounded with limit/start_row and explicit result_page metadata. Source pagination flags the local 100,000-row ceiling.',
+        description: 'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Optional page_contains and query_contains filter matching URL sections and query topics at Google before source pagination; combine as AND filters to find topic-specific locale opportunities without unrelated rows crowding the source window. Filtered results are not property-wide. Average position is an aggregate Search Console metric, not a literal current rank; CTR is returned for context and is not an eligibility filter. Results are ordered by impressions and bounded with limit/start_row and explicit result_page metadata. Source pagination flags the local 100,000-row ceiling.',
         inputSchema: createQuickWinsInputSchema(),
         outputSchema: z.object(QUICK_WIN_OUTPUT_SCHEMA),
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, start_date, end_date, min_impressions, min_position, max_position, page_contains, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+      async ({ site_url, start_date, end_date, min_impressions, min_position, max_position, page_contains, query_contains, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -2021,14 +2022,18 @@ class GscMcpRuntime {
         const rateLimitError = await this.rateLimitError(googleId, 'insights.quick_wins');
         if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
+        const sourceFilters = [
+          ...(page_contains ? [{ dimension: 'page' as const, operator: 'contains' as const, expression: page_contains }] : []),
+          ...(query_contains ? [{ dimension: 'query' as const, operator: 'contains' as const, expression: query_contains }] : []),
+        ];
         const source = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: start_date,
           endDate: end_date,
           dimensions: ['query', 'page'],
-          ...(page_contains ? {
+          ...(sourceFilters.length ? {
             dimensionFilterGroups: [{
               groupType: 'and' as const,
-              filters: [{ dimension: 'page', operator: 'contains', expression: page_contains }],
+              filters: sourceFilters,
             }],
           } : {}),
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
@@ -2038,8 +2043,9 @@ class GscMcpRuntime {
         const payload = {
           note: 'Candidates are observed query/page rows selected by Search Console average position, not proof of a stable or current rank. CTR is reported for context and does not affect eligibility.',
           page_contains: page_contains ?? null,
-          scope_note: page_contains
-            ? 'Quick-win opportunities are restricted to Google-filtered page URLs, not property-wide results; missing Search Analytics rows do not mean zero traffic.'
+          query_contains: query_contains ?? null,
+          scope_note: page_contains || query_contains
+            ? 'Quick-win opportunities are restricted to Google-filtered query/page rows, not property-wide results; page_contains restricts URL scope and query_contains restricts query topics. Missing Search Analytics rows do not mean zero traffic.'
             : 'Quick-win opportunities derive from returned query/page rows, which are not guaranteed exhaustive; missing rows do not mean zero traffic.',
           quick_wins: bounded.items,
           pagination: paginationMetadata(source),

@@ -36,6 +36,9 @@ export function createQuickWinsInputSchema() {
       page_contains: z.string().trim().min(1).max(240).optional().describe(
         'Optional case-insensitive page URL substring (for example /de/). Google filters matching pages before query/page pagination, so opportunities are limited to that URL subset, not property-wide results.',
       ),
+      query_contains: z.string().trim().min(1).max(240).optional().describe(
+        'Optional case-insensitive query topic substring (for example technical seo). Google filters matching queries before query/page pagination; combine with page_contains to target one topic in one URL section. Filtered results are not property-wide.',
+      ),
       limit: z
         .number()
         .int()
