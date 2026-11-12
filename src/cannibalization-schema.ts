@@ -36,3 +36,8 @@ export const CANNIBALIZATION_COUNTRY_SCHEMA = z
   .regex(/^[a-zA-Z]{3}$/, 'Use a three-letter ISO 3166-1 alpha-3 country code such as SVN or DEU.')
   .optional()
   .describe('Optional ISO 3166-1 alpha-3 searcher country, e.g. DEU for Germany, not the page language. Google filters this geography alongside page_contains and query_contains before source pagination.');
+
+export const CANNIBALIZATION_DEVICE_SCHEMA = z
+  .enum(['desktop', 'mobile', 'tablet'])
+  .optional()
+  .describe('Optional searcher device: desktop, mobile, or tablet. Google applies it with page_contains, query_contains, and country before pagination; omitting it preserves all-device behavior.');
