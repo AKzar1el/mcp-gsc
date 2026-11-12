@@ -73,6 +73,7 @@ import {
 import {
   CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
   CONTENT_DECAY_PAGE_CONTAINS_SCHEMA,
+  CONTENT_DECAY_QUERY_CONTAINS_SCHEMA,
 } from './content-decay-schema';
 import { INDEXED_PAGES_START_ROW_SCHEMA, resolveIndexedPagesDateRange } from './indexed-pages-range';
 import { createQuickWinsInputSchema } from './quick-wins-schema';
@@ -617,6 +618,7 @@ const CANNIBALIZATION_OUTPUT_SCHEMA = {
 const CONTENT_DECAY_OUTPUT_SCHEMA = {
   search_type: z.enum(['web', 'image', 'video', 'news']),
   page_contains: z.string().nullable(),
+  query_contains: z.string().nullable(),
   scope_note: z.string(),
   comparison_periods: z.object({
     recent: z.object({ start: z.string(), end: z.string() }),
@@ -2150,19 +2152,20 @@ class GscMcpRuntime {
       'insights.content_decay',
       {
         title: 'Detect Content Decay',
-        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Optional search_type selects Web (default), Image, Video or News-tab search consistently for both periods; Discover and Google News are excluded from this position-aware heuristic. Compare 1-240 days per period so both periods fit in Search Console\'s 16-month performance history with the three-day finalized-data lag. Optional page_contains scopes both Google Search Analytics requests to matching page URLs (such as /de/) before source pagination, without adding requests or treating missing rows as zero. Only pages returned in both Search Analytics period responses are compared; a page missing from one response is not treated as zero because Google does not guarantee every data row. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
+        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Optional search_type selects Web (default), Image, Video or News-tab search consistently for both periods; Discover and Google News are excluded from this position-aware heuristic. Compare 1-240 days per period so both periods fit in Search Console\'s 16-month performance history with the three-day finalized-data lag. Optional page_contains and query_contains scope both Google Search Analytics requests to a URL section (such as /de/) and/or search topic (such as technical seo) using AND before pagination; this changes the comparison population, not property-wide totals. No additional requests are made, and missing rows are never treated as zero. Only pages returned in both Search Analytics period responses are compared; Google does not guarantee every data row. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           compare_days: CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
           search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe('Search Console search type applied identically to both comparison periods: web (default), image, video or news (Google Search News tab). Discover and Google News are excluded because this heuristic relies on average position.'),
           page_contains: CONTENT_DECAY_PAGE_CONTAINS_SCHEMA,
+          query_contains: CONTENT_DECAY_QUERY_CONTAINS_SCHEMA,
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,
         },
         outputSchema: CONTENT_DECAY_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, compare_days, search_type = 'web', page_contains, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+      async ({ site_url, compare_days, search_type = 'web', page_contains, query_contains, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'insights.content_decay');
         if (rateLimitError) return rateLimitError;
@@ -2183,10 +2186,14 @@ class GscMcpRuntime {
         const previousStart = formatDate(startPreviousDate);
         const previousEnd = formatDate(endPreviousDate);
 
-        const scopedPageFilters = page_contains ? {
+        const filters = [
+          ...(page_contains ? [{ dimension: 'page' as const, operator: 'contains' as const, expression: page_contains }] : []),
+          ...(query_contains ? [{ dimension: 'query' as const, operator: 'contains' as const, expression: query_contains }] : []),
+        ];
+        const scopedDimensionFilters = filters.length ? {
           dimensionFilterGroups: [{
             groupType: 'and' as const,
-            filters: [{ dimension: 'page' as const, operator: 'contains' as const, expression: page_contains }],
+            filters,
           }],
         } : {};
 
@@ -2195,7 +2202,7 @@ class GscMcpRuntime {
           endDate: recentEnd,
           dimensions: ['page'],
           type: search_type,
-          ...scopedPageFilters,
+          ...scopedDimensionFilters,
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
         const previousSource = await querySearchAnalyticsPaginated(accessToken, site_url, {
@@ -2203,7 +2210,7 @@ class GscMcpRuntime {
           endDate: previousEnd,
           dimensions: ['page'],
           type: search_type,
-          ...scopedPageFilters,
+          ...scopedDimensionFilters,
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
         const pageFilter = page_contains?.toLowerCase();
@@ -2218,8 +2225,9 @@ class GscMcpRuntime {
         const payload = {
           search_type,
           page_contains: page_contains ?? null,
-          scope_note: page_contains
-            ? 'Both comparison periods contain only Google-filtered matching page URLs, not property-wide totals. Missing rows are not zero.'
+          query_contains: query_contains ?? null,
+          scope_note: page_contains || query_contains
+            ? 'Both comparison periods contain only Google-filtered matching page URLs and/or search query topics, not property-wide totals. Missing rows are not zero.'
             : 'Both comparison periods use observed property-page rows; missing rows are not zero.',
           comparison_periods: {
             recent: { start: recentStart, end: recentEnd },

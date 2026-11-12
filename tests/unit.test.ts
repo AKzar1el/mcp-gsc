@@ -22,6 +22,7 @@ import {
 import {
   CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
   CONTENT_DECAY_PAGE_CONTAINS_SCHEMA,
+  CONTENT_DECAY_QUERY_CONTAINS_SCHEMA,
 } from '../src/content-decay-schema';
 import { resolveWeeklyDigestEndDate, weeklyDigestAnalyticsRequestCount } from '../src/digest';
 import { INDEXED_PAGES_START_ROW_SCHEMA, resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
@@ -317,6 +318,13 @@ test('content decay page filter is optional and rejects empty or oversized subst
   assert.equal(CONTENT_DECAY_PAGE_CONTAINS_SCHEMA.parse(undefined), undefined);
   assert.equal(CONTENT_DECAY_PAGE_CONTAINS_SCHEMA.safeParse('   ').success, false);
   assert.equal(CONTENT_DECAY_PAGE_CONTAINS_SCHEMA.safeParse('x'.repeat(121)).success, false);
+});
+
+test('content decay topic filter trims valid terms and rejects empty or oversized values', () => {
+  assert.equal(CONTENT_DECAY_QUERY_CONTAINS_SCHEMA.parse(' technical seo '), 'technical seo');
+  assert.equal(CONTENT_DECAY_QUERY_CONTAINS_SCHEMA.parse(undefined), undefined);
+  assert.equal(CONTENT_DECAY_QUERY_CONTAINS_SCHEMA.safeParse('   ').success, false);
+  assert.equal(CONTENT_DECAY_QUERY_CONTAINS_SCHEMA.safeParse('x'.repeat(241)).success, false);
 });
 
 test('indexed page ranges default to the existing 30-day window ending three days ago', () => {

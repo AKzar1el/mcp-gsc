@@ -17,3 +17,11 @@ export const CONTENT_DECAY_PAGE_CONTAINS_SCHEMA = z
   .max(120)
   .optional()
   .describe('Optional case-insensitive page URL substring, such as /de/, applied to both Google Search Analytics requests before pagination. Restricts both comparison periods to matching page URLs without extra requests or treating absent rows as zero.');
+
+export const CONTENT_DECAY_QUERY_CONTAINS_SCHEMA = z
+  .string()
+  .trim()
+  .min(1)
+  .max(240)
+  .optional()
+  .describe('Optional case-insensitive query topic substring, such as technical seo, applied to both Google Search Analytics requests before pagination. Can combine with page_contains as AND; results reflect the filtered query topic, not all property traffic.');

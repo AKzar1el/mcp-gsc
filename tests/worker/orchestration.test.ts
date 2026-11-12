@@ -3128,7 +3128,15 @@ describe('Worker orchestration', () => {
         if (expectedSearchType === 'image') {
           expect(body.dimensionFilterGroups).toEqual([{
             groupType: 'and',
-            filters: [{ dimension: 'page', operator: 'contains', expression: '/DE/' }],
+            filters: [
+              { dimension: 'page', operator: 'contains', expression: '/DE/' },
+              { dimension: 'query', operator: 'contains', expression: 'TECHNICAL SEO' },
+            ],
+          }]);
+        } else if (expectedSearchType === 'news') {
+          expect(body.dimensionFilterGroups).toEqual([{
+            groupType: 'and',
+            filters: [{ dimension: 'query', operator: 'contains', expression: 'seo' }],
           }]);
         } else {
           expect(body.dimensionFilterGroups).toBeUndefined();
@@ -3153,12 +3161,14 @@ describe('Worker orchestration', () => {
         compare_days: 14,
         search_type: 'image',
         page_contains: '/DE/',
+        query_contains: 'TECHNICAL SEO',
         limit: 20,
         start_row: 0,
       })) as {
         structuredContent: {
           search_type: string;
           page_contains: string | null;
+          query_contains: string | null;
           scope_note: string;
           decay_results: Array<{ page: string; previous_clicks: number; recent_clicks: number }>;
           assessment_count: number;
@@ -3169,6 +3179,7 @@ describe('Worker orchestration', () => {
       expect(result.structuredContent.decay_results).toHaveLength(1);
       expect(result.structuredContent.search_type).toBe('image');
       expect(result.structuredContent.page_contains).toBe('/DE/');
+      expect(result.structuredContent.query_contains).toBe('TECHNICAL SEO');
       expect(result.structuredContent.scope_note).toContain('not property-wide totals');
       expect(result.structuredContent.decay_results[0]).toMatchObject({
         page: 'https://example.com/de/pricing',
@@ -3185,11 +3196,21 @@ describe('Worker orchestration', () => {
         compare_days: 14,
         limit: 20,
         start_row: 0,
-      })) as { structuredContent: { search_type: string; page_contains: string | null; decay_results: unknown[] } };
+      })) as { structuredContent: { search_type: string; page_contains: string | null; query_contains: string | null; decay_results: unknown[] } };
       expect(defaultResult.structuredContent.search_type).toBe('web');
       expect(defaultResult.structuredContent.page_contains).toBeNull();
+      expect(defaultResult.structuredContent.query_contains).toBeNull();
       expect(defaultResult.structuredContent.decay_results).toHaveLength(2);
       expect(searchRequests).toBe(4);
+
+      expectedSearchType = 'news';
+      const queryOnlyResult = (await registered['insights.content_decay'].handler({
+        site_url: 'sc-domain:example.com', compare_days: 14, search_type: 'news', query_contains: 'seo',
+      })) as { structuredContent: { query_contains: string; page_contains: string | null; scope_note: string } };
+      expect(queryOnlyResult.structuredContent.query_contains).toBe('seo');
+      expect(queryOnlyResult.structuredContent.page_contains).toBeNull();
+      expect(queryOnlyResult.structuredContent.scope_note).toContain('not property-wide totals');
+      expect(searchRequests).toBe(6);
     } finally {
       globalThis.fetch = originalFetch;
     }
