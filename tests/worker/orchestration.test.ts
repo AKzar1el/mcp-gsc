@@ -1959,27 +1959,31 @@ describe('Worker orchestration', () => {
         search_type: 'web',
       };
       const unfiltered = await tools['insights.page_queries'].handler(input) as {
-        structuredContent: { query_contains: string | null; queries: Array<{ query: string }> };
+        structuredContent: { query_contains: string | null; device: string | null; queries: Array<{ query: string }> };
       };
-      const scoped = await tools['insights.page_queries'].handler({ ...input, query_contains: 'seo', country: 'deu' }) as {
+      const scoped = await tools['insights.page_queries'].handler({ ...input, query_contains: 'seo', country: 'deu', device: 'mobile' }) as {
         structuredContent: {
           query_contains: string | null;
           country: string | null;
+          device: string | null;
           scope_note: string;
           queries: Array<{ query: string }>;
         };
       };
       expect(unfiltered.structuredContent).toMatchObject({
         query_contains: null,
+        device: null,
         queries: [{ query: 'brand name' }],
       });
       expect(scoped.structuredContent).toMatchObject({
         query_contains: 'seo',
         country: 'DEU',
+        device: 'mobile',
         queries: [{ query: 'seo audit' }],
       });
       expect(scoped.structuredContent.scope_note).toContain('not all queries');
       expect(scoped.structuredContent.scope_note).toContain('searcher country');
+      expect(scoped.structuredContent.scope_note).toContain('device');
       expect(requests).toHaveLength(2);
       expect(requests[0]).toMatchObject({
         dimensions: ['query'],
@@ -1995,6 +1999,7 @@ describe('Worker orchestration', () => {
             { dimension: 'page', operator: 'equals', expression: input.page_url },
             { dimension: 'query', operator: 'contains', expression: 'seo' },
             { dimension: 'country', operator: 'equals', expression: 'DEU' },
+            { dimension: 'device', operator: 'equals', expression: 'MOBILE' },
           ],
         }],
       });
@@ -2060,29 +2065,34 @@ describe('Worker orchestration', () => {
         search_type: 'web',
       };
       const unfiltered = await tools['insights.query_pages'].handler(input) as {
-        structuredContent: { page_contains: string | null; pages: Array<{ page: string }> };
+        structuredContent: { page_contains: string | null; device: string | null; pages: Array<{ page: string }> };
       };
       const scoped = await tools['insights.query_pages'].handler({
         ...input,
         page_contains: '/de/',
         country: 'deu',
+        device: 'mobile',
       }) as {
         structuredContent: {
           page_contains: string | null;
           country: string | null;
+          device: string | null;
           scope_note: string;
           pages: Array<{ page: string }>;
         };
       };
       expect(unfiltered.structuredContent.page_contains).toBeNull();
+      expect(unfiltered.structuredContent.device).toBeNull();
       expect(unfiltered.structuredContent.pages[0]?.page).toBe('https://example.com/en/pricing/');
       expect(scoped.structuredContent).toMatchObject({
         page_contains: '/de/',
         country: 'DEU',
+        device: 'mobile',
         pages: [{ page: 'https://example.com/de/preise/' }],
       });
       expect(scoped.structuredContent.scope_note).toContain('not property-wide');
       expect(scoped.structuredContent.scope_note).toContain('searcher country');
+      expect(scoped.structuredContent.scope_note).toContain('device');
       expect(analyticsRequests).toHaveLength(2);
       expect(analyticsRequests[0]).toMatchObject({
         dimensions: ['page'],
@@ -2098,6 +2108,7 @@ describe('Worker orchestration', () => {
             { dimension: 'query', operator: 'equals', expression: 'pricing' },
             { dimension: 'page', operator: 'contains', expression: '/de/' },
             { dimension: 'country', operator: 'equals', expression: 'DEU' },
+            { dimension: 'device', operator: 'equals', expression: 'MOBILE' },
           ],
         }],
       });
