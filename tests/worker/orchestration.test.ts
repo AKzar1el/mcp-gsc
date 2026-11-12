@@ -1961,9 +1961,10 @@ describe('Worker orchestration', () => {
       const unfiltered = await tools['insights.page_queries'].handler(input) as {
         structuredContent: { query_contains: string | null; queries: Array<{ query: string }> };
       };
-      const scoped = await tools['insights.page_queries'].handler({ ...input, query_contains: 'seo' }) as {
+      const scoped = await tools['insights.page_queries'].handler({ ...input, query_contains: 'seo', country: 'deu' }) as {
         structuredContent: {
           query_contains: string | null;
+          country: string | null;
           scope_note: string;
           queries: Array<{ query: string }>;
         };
@@ -1974,9 +1975,11 @@ describe('Worker orchestration', () => {
       });
       expect(scoped.structuredContent).toMatchObject({
         query_contains: 'seo',
+        country: 'DEU',
         queries: [{ query: 'seo audit' }],
       });
       expect(scoped.structuredContent.scope_note).toContain('not all queries');
+      expect(scoped.structuredContent.scope_note).toContain('searcher country');
       expect(requests).toHaveLength(2);
       expect(requests[0]).toMatchObject({
         dimensions: ['query'],
@@ -1991,6 +1994,7 @@ describe('Worker orchestration', () => {
           filters: [
             { dimension: 'page', operator: 'equals', expression: input.page_url },
             { dimension: 'query', operator: 'contains', expression: 'seo' },
+            { dimension: 'country', operator: 'equals', expression: 'DEU' },
           ],
         }],
       });
@@ -2061,9 +2065,11 @@ describe('Worker orchestration', () => {
       const scoped = await tools['insights.query_pages'].handler({
         ...input,
         page_contains: '/de/',
+        country: 'deu',
       }) as {
         structuredContent: {
           page_contains: string | null;
+          country: string | null;
           scope_note: string;
           pages: Array<{ page: string }>;
         };
@@ -2072,9 +2078,11 @@ describe('Worker orchestration', () => {
       expect(unfiltered.structuredContent.pages[0]?.page).toBe('https://example.com/en/pricing/');
       expect(scoped.structuredContent).toMatchObject({
         page_contains: '/de/',
+        country: 'DEU',
         pages: [{ page: 'https://example.com/de/preise/' }],
       });
       expect(scoped.structuredContent.scope_note).toContain('not property-wide');
+      expect(scoped.structuredContent.scope_note).toContain('searcher country');
       expect(analyticsRequests).toHaveLength(2);
       expect(analyticsRequests[0]).toMatchObject({
         dimensions: ['page'],
@@ -2089,6 +2097,7 @@ describe('Worker orchestration', () => {
           filters: [
             { dimension: 'query', operator: 'equals', expression: 'pricing' },
             { dimension: 'page', operator: 'contains', expression: '/de/' },
+            { dimension: 'country', operator: 'equals', expression: 'DEU' },
           ],
         }],
       });

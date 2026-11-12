@@ -1074,8 +1074,8 @@ test('capabilities catalog advertises supported insight filters and weekly repor
   const catalog = indexSource.slice(start, end);
 
   for (const [toolName, filters] of [
-    ['insights.page_queries', ['query_contains']],
-    ['insights.query_pages', ['page_contains']],
+    ['insights.page_queries', ['query_contains', 'country']],
+    ['insights.query_pages', ['page_contains', 'country']],
     ['insights.quick_wins', ['page_contains', 'query_contains', 'country']],
     ['insights.cannibalization', ['page_contains', 'query_contains', 'country']],
     ['insights.content_decay', ['page_contains', 'query_contains', 'country']],
@@ -1090,6 +1090,17 @@ test('capabilities catalog advertises supported insight filters and weekly repor
   const digestReadmeRow = readmeSource.split('**`reports.weekly_digest`**')[1]?.split('\n')[0] ?? '';
   assert.match(digestReadmeRow, /query_contains/);
   assert.match(digestReadmeRow, /not property-wide totals/);
+  const drilldownReadmeRow = readmeSource.split('**`insights.page_queries`**')[1]?.split('\n')[0] ?? '';
+  assert.match(drilldownReadmeRow, /country.*searcher geography/i);
+});
+
+test('exact page and query drilldowns validate a searcher country rather than inferring page language', () => {
+  for (const toolName of ['insights.page_queries', 'insights.query_pages']) {
+    const registration = indexSource.match(new RegExp(`this\\.server\\.registerTool\\(\\s*'${toolName.replaceAll('.', '\\.')}'([\\s\\S]*?)outputSchema:`))?.[1] ?? '';
+    assert.match(registration, /country:\s*DIRECT_INSIGHT_COUNTRY_SCHEMA/);
+  }
+  assert.match(indexSource, /const DIRECT_INSIGHT_COUNTRY_SCHEMA[\s\S]*?ISO 3166-1 alpha-3/);
+  assert.match(indexSource, /searcher country[^']*not the page language/i);
 });
 
 test('content decay country scope is discoverable, validated and not confused with page language', () => {
