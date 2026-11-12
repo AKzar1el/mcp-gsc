@@ -566,6 +566,8 @@ const PAGE_QUERIES_OUTPUT_SCHEMA = {
 
 const QUERY_PAGES_OUTPUT_SCHEMA = {
   query: z.string(),
+  page_contains: z.string().nullable().describe('Optional URL substring filtered at Google before Search Analytics pagination, or null for no page filter.'),
+  scope_note: z.string(),
   pages: z.array(
     z.object({
       page: z.string(),
@@ -1753,10 +1755,11 @@ class GscMcpRuntime {
       'insights.query_pages',
       {
         title: 'Find pages for a query',
-        description: 'For one exact search query, return the site pages that received impressions for it over a date range. This wraps an exact query dimension filter so agents do not need to construct analytics.query filter groups manually. Exact query matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results and verify which URL Google is surfacing before diagnosing cannibalization or content targeting. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
+        description: 'For one exact search query, return the site pages that received impressions for it over a date range. This wraps an exact query dimension filter so agents do not need to construct analytics.query filter groups manually. Optional page_contains scopes matching page URLs at Google before source pagination, for example /de/; filtered rows are not property-wide. Exact query matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results and verify which URL Google is surfacing before diagnosing cannibalization or content targeting. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           query: z.string().min(1).describe('Exact Search Console query text to filter on. Exact query filters are case-sensitive.'),
+          page_contains: z.string().trim().min(1).max(240).optional().describe('Optional case-insensitive substring of page URLs to filter at Google before pagination, such as /de/. Omit for all pages.'),
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
             searchConsoleDateDescription('Start date (inclusive) in YYYY-MM-DD format.'),
           ),
@@ -1783,7 +1786,7 @@ class GscMcpRuntime {
         outputSchema: QUERY_PAGES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, query, start_date, end_date, search_type, row_limit = 100, start_row = 0 }) => {
+      async ({ site_url, query, page_contains, start_date, end_date, search_type, row_limit = 100, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -1806,6 +1809,7 @@ class GscMcpRuntime {
               groupType: 'and',
               filters: [
                 { dimension: 'query', operator: 'equals', expression: query },
+                ...(page_contains ? [{ dimension: 'page' as const, operator: 'contains' as const, expression: page_contains }] : []),
               ],
             },
           ],
@@ -1831,6 +1835,10 @@ class GscMcpRuntime {
         );
         const payload = {
           query,
+          page_contains: page_contains ?? null,
+          scope_note: page_contains
+            ? 'Pages are filtered to the requested URL substring at Google before pagination; observed rows are not property-wide, and absent rows are not evidence of zero impressions.'
+            : 'Observed query/page rows may be incomplete because Search Console can omit or truncate data; absent rows are not evidence of zero impressions.',
           pages: bounded.items,
           pagination: paginationMetadata(source),
           result_page: bounded.resultPage,
