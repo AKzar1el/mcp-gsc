@@ -439,6 +439,11 @@ test('quick win thresholds require valid impressions and position ranges', () =>
   assert.equal(defaulted.min_impressions, 100);
   assert.equal(defaulted.min_position, 8);
   assert.equal(defaulted.max_position, 20);
+  assert.equal(schema.safeParse({ ...baseInput, country: 'DEU' }).success, true);
+  assert.equal(schema.safeParse({ ...baseInput, country: '  svn  ' }).success, true);
+  for (const country of ['DE', 'DEUT', '123', 'D-E']) {
+    assert.equal(schema.safeParse({ ...baseInput, country }).success, false);
+  }
 });
 
 function makeKey(byteLength = 32): string {

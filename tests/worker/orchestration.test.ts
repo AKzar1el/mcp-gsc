@@ -2925,6 +2925,71 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('scopes quick wins to searcher country alongside page and query before pagination', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'quick-wins-country-user', email: 'quick-wins-country@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const rows = [
+      { country: 'DEU', keys: ['technical seo', 'https://example.com/de/guide'], impressions: 210 },
+      { country: 'USA', keys: ['technical seo', 'https://example.com/de/other'], impressions: 320 },
+    ].map((row) => ({ ...row, clicks: 10, ctr: 0.05, position: 12 }));
+    const requests: Array<Array<{ dimension: string; operator: string; expression: string }>> = [];
+    try {
+      globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as {
+          dimensions: string[];
+          dimensionFilterGroups?: Array<{ groupType: string; filters: Array<{
+            dimension: string; operator: string; expression: string;
+          }> }>;
+        };
+        expect(body.dimensions).toEqual(['query', 'page']);
+        const filters = body.dimensionFilterGroups?.[0]?.filters ?? [];
+        if (filters.length) expect(body.dimensionFilterGroups?.[0]?.groupType).toBe('and');
+        requests.push(filters);
+        return response({ rows: rows.filter((row) => filters.every((filter) => {
+          const value = filter.dimension === 'country'
+            ? row.country : row.keys[filter.dimension === 'query' ? 0 : 1];
+          return filter.operator === 'equals'
+            ? value.toUpperCase() === filter.expression.toUpperCase()
+            : value.toLowerCase().includes(filter.expression.toLowerCase());
+        })) });
+      };
+      const args = {
+        site_url: 'sc-domain:example.com', start_date: '2026-07-01', end_date: '2026-07-31',
+        min_impressions: 100, min_position: 8, max_position: 20, limit: 20, start_row: 0,
+      };
+      const scoped = (await registered['insights.quick_wins'].handler({
+        ...args, page_contains: '/de/', query_contains: 'SEO', country: 'deu',
+      })) as { structuredContent: {
+        country: string | null; scope_note: string; quick_wins: Array<{ page: string }>;
+      } };
+      expect(requests[0]).toEqual([
+        { dimension: 'page', operator: 'contains', expression: '/de/' },
+        { dimension: 'query', operator: 'contains', expression: 'SEO' },
+        { dimension: 'country', operator: 'equals', expression: 'DEU' },
+      ]);
+      expect(scoped.structuredContent.country).toBe('DEU');
+      expect(scoped.structuredContent.scope_note).toMatch(/searcher country.*not property-wide/i);
+      expect(scoped.structuredContent.quick_wins.map((row) => row.page))
+        .toEqual(['https://example.com/de/guide']);
+      const unfiltered = (await registered['insights.quick_wins'].handler(args)) as {
+        structuredContent: { country: string | null; quick_wins: unknown[] };
+      };
+      expect(requests[1]).toEqual([]);
+      expect(unfiltered.structuredContent.country).toBeNull();
+      expect(unfiltered.structuredContent.quick_wins).toHaveLength(2);
+      expect(requests).toHaveLength(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('scopes cannibalization to one locale before aggregating candidate page shares', async () => {
     const server = await createGscMcpServer(
       workerEnv,
