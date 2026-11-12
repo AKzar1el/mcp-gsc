@@ -1078,7 +1078,7 @@ test('capabilities catalog advertises supported insight filters and weekly repor
     ['insights.query_pages', ['page_contains']],
     ['insights.quick_wins', ['page_contains', 'query_contains', 'country']],
     ['insights.cannibalization', ['page_contains', 'query_contains']],
-    ['insights.content_decay', ['page_contains', 'query_contains']],
+    ['insights.content_decay', ['page_contains', 'query_contains', 'country']],
     ['reports.weekly_digest', ['search_type', 'page_contains', 'device', 'query_contains']],
   ] as const) {
     const entry = catalog.split(`name: '${toolName}'`)[1]?.split('\n  },')[0] ?? '';
@@ -1090,6 +1090,15 @@ test('capabilities catalog advertises supported insight filters and weekly repor
   const digestReadmeRow = readmeSource.split('**`reports.weekly_digest`**')[1]?.split('\n')[0] ?? '';
   assert.match(digestReadmeRow, /query_contains/);
   assert.match(digestReadmeRow, /not property-wide totals/);
+});
+
+test('content decay country scope is discoverable, validated and not confused with page language', () => {
+  const registration = indexSource.match(/this\.server\.registerTool\(\s*'insights\.content_decay'([\s\S]*?)outputSchema:/)?.[1] ?? '';
+  assert.match(registration, /country:\s*CONTENT_DECAY_COUNTRY_SCHEMA/);
+  const schema = readFileSync(resolve(projectRoot, 'src/content-decay-schema.ts'), 'utf8');
+  assert.match(schema, /CONTENT_DECAY_COUNTRY_SCHEMA/);
+  assert.match(schema, /ISO 3166-1 alpha-3/);
+  assert.match(readmeSource, /For `insights\.content_decay`, optional `country` scopes[^\n]*searcher/i);
 });
 
 test('direct Search Analytics tools bound start_row before quota reservation', () => {

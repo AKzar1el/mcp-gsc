@@ -25,3 +25,10 @@ export const CONTENT_DECAY_QUERY_CONTAINS_SCHEMA = z
   .max(240)
   .optional()
   .describe('Optional case-insensitive query topic substring, such as technical seo, applied to both Google Search Analytics requests before pagination. Can combine with page_contains as AND; results reflect the filtered query topic, not all property traffic.');
+
+export const CONTENT_DECAY_COUNTRY_SCHEMA = z
+  .string()
+  .trim()
+  .regex(/^[a-zA-Z]{3}$/, 'Use a three-letter ISO 3166-1 alpha-3 country code such as SVN or DEU.')
+  .optional()
+  .describe('Optional ISO 3166-1 alpha-3 searcher country, such as DEU for Germany, not the page language. Applies identically to both periods and combines with page_contains and query_contains as Google-side AND filters.');
