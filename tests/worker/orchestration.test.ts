@@ -3903,6 +3903,7 @@ describe('Worker orchestration', () => {
         page_contains: '/de/',
         device: 'mobile',
         query_contains: 'technical seo',
+        country: 'deu',
       }) as { content: Array<{ text: string }> };
       expect(analyticsRequests).toHaveLength(5);
       expect(analyticsRequests.every((request) => request.type === 'image')).toBe(true);
@@ -3912,12 +3913,14 @@ describe('Worker orchestration', () => {
           { dimension: 'page', operator: 'contains', expression: '/de/' },
           { dimension: 'device', operator: 'equals', expression: 'MOBILE' },
           { dimension: 'query', operator: 'contains', expression: 'technical seo' },
+          { dimension: 'country', operator: 'equals', expression: 'DEU' },
         ],
       }]))).toBe(true);
       expect(imageDigest.content[0]?.text).toContain('**Search type:** Image search');
       expect(imageDigest.content[0]?.text).toContain('Page URL filter');
       expect(imageDigest.content[0]?.text).toContain('**Device filter:** Mobile');
       expect(imageDigest.content[0]?.text).toContain('**Query topic filter:** technical seo');
+      expect(imageDigest.content[0]?.text).toContain('**Country filter:** DEU');
       expect(imageDigest.content[0]?.text).toContain('not property-wide totals');
     } finally {
       globalThis.fetch = originalFetch;

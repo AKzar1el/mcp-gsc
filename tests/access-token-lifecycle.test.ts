@@ -456,6 +456,71 @@ test('weekly digest filters every finalized section by query topic alongside pag
   }
 });
 
+test('weekly digest scopes all finalized requests to one country with topic, page and device filters', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ dimensionFilterGroups?: unknown }> = [];
+  globalThis.fetch = async (_input, init) => {
+    requests.push(JSON.parse(String(init?.body)) as { dimensionFilterGroups?: unknown });
+    return new Response(JSON.stringify({ rows: [] }), {
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/',
+      '2026-08-10', undefined, '2026-08-15', '/sl/', 'web', 'mobile', 'seo', 'svn',
+    );
+    assert.equal(requests.length, 5);
+    for (const request of requests) {
+      assert.deepEqual(request.dimensionFilterGroups, [{
+        groupType: 'and',
+        filters: [
+          { dimension: 'page', operator: 'contains', expression: '/sl/' },
+          { dimension: 'device', operator: 'equals', expression: 'MOBILE' },
+          { dimension: 'query', operator: 'contains', expression: 'seo' },
+          { dimension: 'country', operator: 'equals', expression: 'SVN' },
+        ],
+      }]);
+    }
+    assert.match(digest, /Country filter.*SVN/i);
+    assert.match(digest, /not property-wide/i);
+    assert.match(digest, /does not establish a measured zero/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('weekly digest applies a country filter to preliminary requests without trend claims', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ dataState?: string; dimensionFilterGroups?: unknown }> = [];
+  globalThis.fetch = async (_input, init) => {
+    requests.push(JSON.parse(String(init?.body)) as { dataState?: string; dimensionFilterGroups?: unknown });
+    return new Response(JSON.stringify({ rows: [] }), {
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  try {
+    const today = getSearchConsoleCalendarDate();
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/',
+      today, undefined, today, undefined, 'web', undefined, undefined, 'deu',
+    );
+    assert.equal(requests.length, 3);
+    for (const request of requests) {
+      assert.equal(request.dataState, 'all');
+      assert.deepEqual(request.dimensionFilterGroups, [{
+        groupType: 'and',
+        filters: [{ dimension: 'country', operator: 'equals', expression: 'DEU' }],
+      }]);
+    }
+    assert.match(digest, /Country filter.*DEU/i);
+    assert.match(digest, /Preliminary snapshot/i);
+    assert.doesNotMatch(digest, /## What changed this week|## What to do this week/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('weekly digest honors explicit recent dates as preliminary snapshots without unverified trend advice', async () => {
   const originalFetch = globalThis.fetch;
   const requestedDataStates: Array<string | undefined> = [];
