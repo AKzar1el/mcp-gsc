@@ -2944,6 +2944,91 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('filters cannibalization query topics at Google before pagination and combines URL scope', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'cannibal-topic-user', email: 'cannibal-topic@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{
+      groupType?: string;
+      filters: Array<{ dimension: string; operator: string; expression: string }>;
+    } | undefined> = [];
+    const rows = [
+      { keys: ['pricing calculator', 'https://example.com/de/pricing'], impressions: 400 },
+      { keys: ['pricing calculator', 'https://example.com/de/preise'], impressions: 200 },
+      { keys: ['pricing calculator', 'https://example.com/en/pricing'], impressions: 700 },
+      { keys: ['support options', 'https://example.com/de/support'], impressions: 250 },
+      { keys: ['support options', 'https://example.com/en/support'], impressions: 200 },
+    ].map((row) => ({ ...row, clicks: 10, ctr: 0.05, position: 12 }));
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        expect(requestUrl(input)).toBe(
+          'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query',
+        );
+        const body = JSON.parse(String(init?.body)) as {
+          dimensions: string[];
+          dimensionFilterGroups?: typeof requests;
+        };
+        expect(body.dimensions).toEqual(['query', 'page']);
+        const group = body.dimensionFilterGroups?.[0];
+        requests.push(group);
+        const filteredRows = rows.filter((row) => (group?.filters ?? []).every((filter) => {
+          const value = row.keys[filter.dimension === 'query' ? 0 : 1];
+          return filter.operator === 'contains' && value.toLowerCase().includes(filter.expression.toLowerCase());
+        }));
+        return response({ rows: filteredRows });
+      };
+
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-07-01',
+        end_date: '2026-07-31',
+        min_impressions: 1,
+        min_page_percentage: 1,
+        limit: 20,
+        start_row: 0,
+      };
+      const scoped = (await registered['insights.cannibalization'].handler({
+        ...args, page_contains: '/de/', query_contains: 'PRICING',
+      })) as { structuredContent: { candidates: Array<{ query: string; page_count: number; total_impressions: number }> } };
+      expect(requests[0]).toEqual({
+        groupType: 'and',
+        filters: [
+          { dimension: 'page', operator: 'contains', expression: '/de/' },
+          { dimension: 'query', operator: 'contains', expression: 'PRICING' },
+        ],
+      });
+      expect(scoped.structuredContent.candidates).toMatchObject([
+        { query: 'pricing calculator', page_count: 2, total_impressions: 600 },
+      ]);
+
+      const queryOnly = (await registered['insights.cannibalization'].handler({
+        ...args, query_contains: 'PRICING',
+      })) as { structuredContent: { candidates: Array<{ query: string; page_count: number }> } };
+      expect(requests[1]).toEqual({
+        groupType: 'and',
+        filters: [{ dimension: 'query', operator: 'contains', expression: 'PRICING' }],
+      });
+      expect(queryOnly.structuredContent.candidates[0]).toMatchObject({
+        query: 'pricing calculator', page_count: 3,
+      });
+
+      const defaultResult = (await registered['insights.cannibalization'].handler(args)) as {
+        structuredContent: { candidates: Array<{ query: string }> };
+      };
+      expect(requests[2]).toBeUndefined();
+      expect(defaultResult.structuredContent.candidates).toHaveLength(2);
+      expect(requests).toHaveLength(3);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('focuses content decay on one locale without treating other pages as missing data', async () => {
     const server = await createGscMcpServer(
       workerEnv,
