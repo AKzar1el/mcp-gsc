@@ -1913,6 +1913,92 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('scopes exact-page query drilldowns by topic at Google before source pagination', async () => {
+    await saveUser(workerEnv, 'page-topic-user', 'page-topic@example.test', 'page-topic-refresh');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'page-topic-user', email: 'page-topic@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'page-topic-access-token', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          const groups = body.dimensionFilterGroups as Array<{
+            filters: Array<{ dimension: string; operator: string; expression: string }>;
+          }>;
+          const topicScoped = groups[0]?.filters.some((filter) =>
+            filter.dimension === 'query' && filter.operator === 'contains' && filter.expression === 'seo');
+          return response({
+            rows: [{
+              keys: [topicScoped ? 'seo audit' : 'brand name'],
+              clicks: 4,
+              impressions: 80,
+              ctr: 0.05,
+              position: 8,
+            }],
+          });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const input = {
+        site_url: 'sc-domain:example.com',
+        page_url: 'https://example.com/de/guides/',
+        start_date: '2026-08-01',
+        end_date: '2026-08-31',
+        search_type: 'web',
+      };
+      const unfiltered = await tools['insights.page_queries'].handler(input) as {
+        structuredContent: { query_contains: string | null; queries: Array<{ query: string }> };
+      };
+      const scoped = await tools['insights.page_queries'].handler({ ...input, query_contains: 'seo' }) as {
+        structuredContent: {
+          query_contains: string | null;
+          scope_note: string;
+          queries: Array<{ query: string }>;
+        };
+      };
+      expect(unfiltered.structuredContent).toMatchObject({
+        query_contains: null,
+        queries: [{ query: 'brand name' }],
+      });
+      expect(scoped.structuredContent).toMatchObject({
+        query_contains: 'seo',
+        queries: [{ query: 'seo audit' }],
+      });
+      expect(scoped.structuredContent.scope_note).toContain('not all queries');
+      expect(requests).toHaveLength(2);
+      expect(requests[0]).toMatchObject({
+        dimensions: ['query'],
+        dimensionFilterGroups: [{
+          filters: [{ dimension: 'page', operator: 'equals', expression: input.page_url }],
+        }],
+      });
+      expect(requests[1]).toMatchObject({
+        dimensions: ['query'],
+        dimensionFilterGroups: [{
+          groupType: 'and',
+          filters: [
+            { dimension: 'page', operator: 'equals', expression: input.page_url },
+            { dimension: 'query', operator: 'contains', expression: 'seo' },
+          ],
+        }],
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('scopes exact-query page drilldowns at Google before source pagination', async () => {
     await saveUser(
       workerEnv,
