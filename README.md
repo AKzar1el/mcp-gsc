@@ -134,6 +134,8 @@ For `insights.content_decay`, optional `search_type` selects `web` (default), `i
 
 For `insights.content_decay`, optional `country` scopes **searcher location** using a three-letter ISO 3166-1 alpha-3 code (for example `DEU`), not the language of the page. It can be combined with `page_contains` and `query_contains` in one Google-side AND filter applied identically to both comparison periods, without extra requests. A country-scoped decline is not a property-wide decline, and an absent page row in one period is not evidence of zero traffic.
 
+For `insights.content_decay`, optional `device` selects `desktop`, `mobile`, or `tablet` to investigate declines within the same device segment as a weekly digest or quick-wins report. It combines with `page_contains`, `query_contains`, and `country` as Google-side AND filters across **both** periods without extra requests; omitting it retains all-device behavior. Device-scoped declines are not property-wide or all-device changes, and missing rows are never counted as zero.
+
 For `insights.cannibalization`, optional `country` scopes **searcher location** (ISO 3166-1 alpha-3, such as `DEU`) rather than the page language. It combines with `page_contains` and `query_contains` as Google-side AND filters before pagination without additional requests. Impression shares describe only returned pages within that geography/URL scope, not property-wide query shares or proof of harmful cannibalization.
 
 Search Analytics calendar dates (`start_date`, `end_date`, and comparison-period dates) use Google's Pacific Time calendar (`America/Los_Angeles`, UTC-8/UTC-7 depending on daylight saving time), not the caller's local timezone or UTC. This also governs the server's generated/default Search Analytics date ranges.
