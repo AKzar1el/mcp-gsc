@@ -545,6 +545,7 @@ const QUICK_WIN_OUTPUT_SCHEMA = {
   page_contains: z.string().nullable().describe('Page URL substring filtered at Google, or null when unfiltered.'),
   query_contains: z.string().nullable().describe('Query topic substring filtered at Google, or null when unfiltered.'),
   country: z.string().nullable().describe('ISO alpha-3 searcher country filtered at Google, or null when unfiltered. Not a page language.'),
+  device: z.enum(['desktop', 'mobile', 'tablet']).nullable().describe('Device filtered at Google, or null for all devices.'),
   scope_note: z.string(),
   quick_wins: z.array(
     z.object({
@@ -960,7 +961,7 @@ const TOOL_CATALOG = [
   {
     name: 'insights.quick_wins',
     description:
-      'Find observed query/page rows meeting an impression threshold and configurable average-position opportunity range (8-20 by default), optionally scoped at Google by page_contains URL section, query_contains topic and country (ISO alpha-3 searcher country) before pagination. Average position is not a literal current rank, CTR is context rather than an eligibility filter, and scoped rows are not property-wide totals.',
+      'Find observed query/page rows meeting an impression threshold and configurable average-position opportunity range (8-20 by default), optionally scoped at Google by page_contains URL section, query_contains topic, country (ISO alpha-3 searcher country) and device (desktop/mobile/tablet) before pagination. Average position is not a literal current rank, CTR is context rather than an eligibility filter, and scoped rows are not property-wide totals.',
   },
   {
     name: 'insights.cannibalization',
@@ -2030,12 +2031,12 @@ class GscMcpRuntime {
       'insights.quick_wins',
       {
         title: 'Identify SEO Quick Wins',
-        description: 'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Optional page_contains, query_contains and country (searcher ISO alpha-3, not page language) filter URL sections, query topics and searcher geography together at Google before source pagination. Filtered results are not property-wide. Average position is an aggregate Search Console metric, not a literal current rank; CTR is returned for context and is not an eligibility filter. Results are ordered by impressions and bounded with limit/start_row and explicit result_page metadata. Source pagination flags the local 100,000-row ceiling.',
+        description: 'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Optional page_contains, query_contains, country (searcher ISO alpha-3, not page language) and device (desktop/mobile/tablet) filter URL sections, query topics, searcher geography and device together at Google before source pagination. Filtered results are not property-wide. Average position is an aggregate Search Console metric, not a literal current rank; CTR is returned for context and is not an eligibility filter. Results are ordered by impressions and bounded with limit/start_row and explicit result_page metadata. Source pagination flags the local 100,000-row ceiling.',
         inputSchema: createQuickWinsInputSchema(),
         outputSchema: z.object(QUICK_WIN_OUTPUT_SCHEMA),
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, start_date, end_date, min_impressions, min_position, max_position, page_contains, query_contains, country, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+      async ({ site_url, start_date, end_date, min_impressions, min_position, max_position, page_contains, query_contains, country, device, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -2050,6 +2051,7 @@ class GscMcpRuntime {
           ...(page_contains ? [{ dimension: 'page' as const, operator: 'contains' as const, expression: page_contains }] : []),
           ...(query_contains ? [{ dimension: 'query' as const, operator: 'contains' as const, expression: query_contains }] : []),
           ...(country ? [{ dimension: 'country' as const, operator: 'equals' as const, expression: country.toUpperCase() }] : []),
+          ...(device ? [{ dimension: 'device' as const, operator: 'equals' as const, expression: device.toUpperCase() }] : []),
         ];
         const source = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: start_date,
@@ -2070,8 +2072,9 @@ class GscMcpRuntime {
           page_contains: page_contains ?? null,
           query_contains: query_contains ?? null,
           country: country?.toUpperCase() ?? null,
-          scope_note: page_contains || query_contains || country
-            ? 'Quick-win opportunities are scoped by Google-side URL section, query topic and/or searcher country filters; results are not property-wide. The searcher country does not identify page language. Missing Search Analytics rows do not mean zero traffic.'
+          device: device ?? null,
+          scope_note: page_contains || query_contains || country || device
+            ? 'Quick-win opportunities are scoped by Google-side URL section, query topic, searcher country and/or device filters; results are not property-wide. The searcher country does not identify page language. Missing Search Analytics rows do not mean zero traffic.'
             : 'Quick-win opportunities derive from returned query/page rows, which are not guaranteed exhaustive; missing rows do not mean zero traffic.',
           quick_wins: bounded.items,
           pagination: paginationMetadata(source),
