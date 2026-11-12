@@ -29,3 +29,10 @@ export const CANNIBALIZATION_PAGE_CONTAINS_SCHEMA = z
   .max(240)
   .optional()
   .describe('Optional case-insensitive page URL substring (for example /de/) filtered by Google before query/page grouping. Candidate shares then describe only matching pages, not property-wide results.');
+
+export const CANNIBALIZATION_COUNTRY_SCHEMA = z
+  .string()
+  .trim()
+  .regex(/^[a-zA-Z]{3}$/, 'Use a three-letter ISO 3166-1 alpha-3 country code such as SVN or DEU.')
+  .optional()
+  .describe('Optional ISO 3166-1 alpha-3 searcher country, e.g. DEU for Germany, not the page language. Google filters this geography alongside page_contains and query_contains before source pagination.');

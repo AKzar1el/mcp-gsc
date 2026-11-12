@@ -1077,7 +1077,7 @@ test('capabilities catalog advertises supported insight filters and weekly repor
     ['insights.page_queries', ['query_contains']],
     ['insights.query_pages', ['page_contains']],
     ['insights.quick_wins', ['page_contains', 'query_contains', 'country']],
-    ['insights.cannibalization', ['page_contains', 'query_contains']],
+    ['insights.cannibalization', ['page_contains', 'query_contains', 'country']],
     ['insights.content_decay', ['page_contains', 'query_contains', 'country']],
     ['reports.weekly_digest', ['search_type', 'page_contains', 'device', 'query_contains']],
   ] as const) {
@@ -1099,6 +1099,12 @@ test('content decay country scope is discoverable, validated and not confused wi
   assert.match(schema, /CONTENT_DECAY_COUNTRY_SCHEMA/);
   assert.match(schema, /ISO 3166-1 alpha-3/);
   assert.match(readmeSource, /For `insights\.content_decay`, optional `country` scopes[^\n]*searcher/i);
+});
+
+test('cannibalization country scope is discoverable and described as searcher geography', () => {
+  const registration = indexSource.match(/this\.server\.registerTool\(\s*'insights\.cannibalization'([\s\S]*?)outputSchema:/)?.[1] ?? '';
+  assert.match(registration, /country:\s*CANNIBALIZATION_COUNTRY_SCHEMA/);
+  assert.match(readmeSource, /For `insights\.cannibalization`, optional `country` scopes[^\n]*searcher/i);
 });
 
 test('direct Search Analytics tools bound start_row before quota reservation', () => {
