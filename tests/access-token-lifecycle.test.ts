@@ -391,6 +391,38 @@ test('weekly digest scopes all five analytics requests and its heading to one UR
   }
 });
 
+test('weekly digest scopes all three preliminary requests to a selected device', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ dataState?: string; dimensionFilterGroups?: unknown }> = [];
+  globalThis.fetch = async (_input, init) => {
+    requests.push(JSON.parse(String(init?.body)) as { dataState?: string; dimensionFilterGroups?: unknown });
+    return new Response(JSON.stringify({ rows: [] }), {
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  try {
+    const today = getSearchConsoleCalendarDate();
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/',
+      today, undefined, today, undefined, 'web', 'tablet',
+    );
+    assert.equal(requests.length, 3);
+    for (const request of requests) {
+      assert.equal(request.dataState, 'all');
+      assert.deepEqual(request.dimensionFilterGroups, [{
+        groupType: 'and',
+        filters: [{ dimension: 'device', operator: 'equals', expression: 'TABLET' }],
+      }]);
+    }
+    assert.match(digest, /\*\*Device filter:\*\* Tablet/);
+    assert.match(digest, /exclude other devices/i);
+    assert.match(digest, /Preliminary snapshot/);
+    assert.doesNotMatch(digest, /week-over-week comparisons? were measured/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('weekly digest honors explicit recent dates as preliminary snapshots without unverified trend advice', async () => {
   const originalFetch = globalThis.fetch;
   const requestedDataStates: Array<string | undefined> = [];
