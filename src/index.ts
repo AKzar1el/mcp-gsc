@@ -987,7 +987,7 @@ const TOOL_CATALOG = [
   {
     name: 'reports.weekly_digest',
     description:
-      'Generate a plain-language weekly Search Console report for Web (default), Image, Video or Google Search News-tab performance using search_type, optionally scoped by page_contains URL section and device (desktop, mobile or tablet). Scoped reports are not all-device or property-wide totals.',
+      'Generate a plain-language weekly Search Console report for Web (default), Image, Video or Google Search News-tab performance using search_type, optionally scoped by page_contains URL section, device (desktop, mobile or tablet), and query_contains topic. Scoped reports are not all-device or property-wide totals.',
   },
   {
     name: 'server.capabilities',
@@ -2581,7 +2581,7 @@ class GscMcpRuntime {
       {
         title: 'Weekly GSC Performance Digest',
         description:
-          'Generate a plain-language weekly Search Console report for Web (default), Image, Video or Google Search News-tab performance; Discover and Google News app are excluded because query rows are unavailable. Optional search_type is applied to every Google request, and non-Web reports avoid Web-specific SEO advice. Optional page_contains scopes metrics, queries and page rows to matching URLs; optional device selects desktop, mobile or tablet searches. Both filters apply together at Google to the same five (or three preliminary) requests; scoped results are not property-wide. For finalized weeks, returns the 7-day comparison, top pages and query movers. Defaults end_date to 3 days ago. Passing an explicitly newer end_date includes fresher preliminary data as a clearly labeled snapshot without week-over-week claims or SEO advice.',
+          'Generate a plain-language weekly Search Console report for Web (default), Image, Video or Google Search News-tab performance; Discover and Google News app are excluded because query rows are unavailable. Optional search_type is applied to every Google request, and non-Web reports avoid Web-specific SEO advice. Optional page_contains scopes URLs, device selects desktop/mobile/tablet, and query_contains scopes query topics. All selected filters apply together at Google to the same five (or three preliminary) requests; scoped results are not property-wide. For finalized weeks, returns the 7-day comparison, top pages and query movers. Defaults end_date to 3 days ago. Passing an explicitly newer end_date includes fresher preliminary data as a clearly labeled snapshot without week-over-week claims or SEO advice.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe(
@@ -2592,6 +2592,9 @@ class GscMcpRuntime {
           ),
           device: z.enum(['desktop', 'mobile', 'tablet']).optional().describe(
             'Optional Search Console device scope. When set, every total, query and page request filters to that device before aggregation; combines with page_contains as Google-side AND. Omit for all devices.',
+          ),
+          query_contains: z.string().trim().min(1).max(240).optional().describe(
+            'Optional case-insensitive query topic substring, such as technical SEO. Applied to all digest requests before aggregation, alongside URL and device filters in one Google-side AND group. These are topic-scoped, not property-wide totals.',
           ),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA
             .optional()
@@ -2604,7 +2607,7 @@ class GscMcpRuntime {
         outputSchema: WEEKLY_DIGEST_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, end_date, page_contains, search_type = 'web', device }) => {
+      async ({ site_url, end_date, page_contains, search_type = 'web', device, query_contains }) => {
         const today = getSearchConsoleCalendarDate();
         const resolvedEndDate = resolveWeeklyDigestEndDate(end_date, today);
         assertDateNotInFuture(resolvedEndDate, today, 'end_date');
@@ -2632,6 +2635,7 @@ class GscMcpRuntime {
             page_contains,
             search_type,
             device,
+            query_contains,
           );
           return toolResponse(markdown, { markdown });
         } catch (err) {
