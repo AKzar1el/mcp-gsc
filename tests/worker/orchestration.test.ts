@@ -3160,6 +3160,65 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('filters cannibalization by searcher country alongside locale and query before pagination', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'cannibal-country-user', email: 'cannibal-country@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ groupType: string; filters: Array<{ dimension: string; operator: string; expression: string }> } | undefined> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        expect(requestUrl(input)).toBe(
+          'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query',
+        );
+        const body = JSON.parse(String(init?.body)) as {
+          dimensions: string[];
+          dimensionFilterGroups?: typeof requests;
+        };
+        expect(body.dimensions).toEqual(['query', 'page']);
+        requests.push(body.dimensionFilterGroups?.[0]);
+        return response({ rows: [
+          { keys: ['pricing', 'https://example.com/de/pricing'], impressions: 250, clicks: 15, ctr: 0.06, position: 11 },
+          { keys: ['pricing', 'https://example.com/de/preise'], impressions: 150, clicks: 10, ctr: 0.067, position: 12 },
+        ] });
+      };
+      const args = {
+        site_url: 'sc-domain:example.com', start_date: '2026-07-01', end_date: '2026-07-31',
+        min_impressions: 1, min_page_percentage: 1, limit: 20, start_row: 0,
+      };
+      const scoped = (await registered['insights.cannibalization'].handler({
+        // Direct handler invocation bypasses MCP's Zod trim; test normalized input separately.
+        ...args, page_contains: '/de/', query_contains: 'pricing', country: 'deu',
+      })) as { structuredContent: { country: string | null; scope_note: string; candidates: Array<{ page_count: number }> } };
+      expect(requests[0]).toEqual({
+        groupType: 'and',
+        filters: [
+          { dimension: 'page', operator: 'contains', expression: '/de/' },
+          { dimension: 'query', operator: 'contains', expression: 'pricing' },
+          { dimension: 'country', operator: 'equals', expression: 'DEU' },
+        ],
+      });
+      expect(scoped.structuredContent.country).toBe('DEU');
+      expect(scoped.structuredContent.scope_note).toMatch(/searcher country/i);
+      expect(scoped.structuredContent.scope_note).toMatch(/not property-wide/i);
+      expect(scoped.structuredContent.candidates[0].page_count).toBe(2);
+
+      const unfiltered = (await registered['insights.cannibalization'].handler(args)) as {
+        structuredContent: { country: string | null };
+      };
+      expect(requests[1]).toBeUndefined();
+      expect(unfiltered.structuredContent.country).toBeNull();
+      expect(requests).toHaveLength(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('focuses content decay on one locale without treating other pages as missing data', async () => {
     const server = await createGscMcpServer(
       workerEnv,
