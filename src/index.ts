@@ -61,6 +61,7 @@ import {
   CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
   CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
   CANNIBALIZATION_COUNTRY_SCHEMA,
+  CANNIBALIZATION_DEVICE_SCHEMA,
   CANNIBALIZATION_PAGE_CONTAINS_SCHEMA,
   CANNIBALIZATION_QUERY_CONTAINS_SCHEMA,
 } from './cannibalization-schema';
@@ -598,6 +599,7 @@ const CANNIBALIZATION_OUTPUT_SCHEMA = {
   page_contains: z.string().nullable().describe('Page URL substring passed to Google for the Search Analytics page filter, or null for no page filter.'),
   query_contains: z.string().nullable().describe('Query substring passed to Google for the Search Analytics query filter, or null for no query filter.'),
   country: z.string().nullable().describe('ISO alpha-3 searcher country filtered at Google, or null when unfiltered. Not a page language.'),
+  device: z.enum(['desktop', 'mobile', 'tablet']).nullable().describe('Searcher device filtered at Google, or null for all devices.'),
   scope_note: z.string(),
   candidates: z.array(
     z.object({
@@ -968,7 +970,7 @@ const TOOL_CATALOG = [
   {
     name: 'insights.cannibalization',
     description:
-      'Analyze query/page Search Analytics for queries surfaced by multiple pages, optionally scoped at Google by query_contains topic, page_contains URL section and country (ISO alpha-3 searcher country, not page language) before pagination. Candidate totals and impression shares concern observed rows, not true property-wide query totals.',
+      'Analyze query/page Search Analytics for queries surfaced by multiple pages, optionally scoped at Google by query_contains topic, page_contains URL section, country (ISO alpha-3 searcher country, not page language) and device (desktop/mobile/tablet) before pagination. Candidate totals and impression shares concern observed rows in that device and other selected scopes, not true property-wide query totals.',
   },
   {
     name: 'insights.content_decay',
@@ -2090,7 +2092,7 @@ class GscMcpRuntime {
       'insights.cannibalization',
       {
         title: 'Detect Keyword Cannibalization',
-        description: 'Analyze query/page Search Analytics to find queries split across multiple pages. Optional page_contains, query_contains and country filter matching URL sections, query topics and ISO alpha-3 searcher geography at Google before pagination and aggregation, combined in one AND group. Query filtering retains returned competing pages for matching queries; page/country filtering restricts observed page shares to those scopes, not property-wide totals or page language. Candidates are ranked by observed impressions and bounded with limit/start_row. Google may omit rows; sums can exceed true query-level aggregates. Multiple URLs can reflect legitimate locale or intent differences, not harmful cannibalization.',
+        description: 'Analyze query/page Search Analytics to find queries split across multiple pages. Optional page_contains, query_contains, country and device filter matching URL sections, query topics, ISO alpha-3 searcher geography and desktop/mobile/tablet searches at Google before pagination and aggregation, combined in one AND group. Query filtering retains returned competing pages for matching queries; page/country/device filtering restricts observed page shares to those scopes, not property-wide totals or page language. Candidates are ranked by observed impressions and bounded with limit/start_row. Google may omit rows; sums can exceed true query-level aggregates. Multiple URLs can reflect legitimate locale or intent differences, not harmful cannibalization.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
@@ -2106,13 +2108,14 @@ class GscMcpRuntime {
           query_contains: CANNIBALIZATION_QUERY_CONTAINS_SCHEMA,
           page_contains: CANNIBALIZATION_PAGE_CONTAINS_SCHEMA,
           country: CANNIBALIZATION_COUNTRY_SCHEMA,
+          device: CANNIBALIZATION_DEVICE_SCHEMA,
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,
         },
         outputSchema: CANNIBALIZATION_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, start_date, end_date, min_impressions, min_page_percentage, query_contains, page_contains, country, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+      async ({ site_url, start_date, end_date, min_impressions, min_page_percentage, query_contains, page_contains, country, device, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -2127,6 +2130,7 @@ class GscMcpRuntime {
           ...(page_contains ? [{ dimension: 'page' as const, operator: 'contains' as const, expression: page_contains }] : []),
           ...(query_contains ? [{ dimension: 'query' as const, operator: 'contains' as const, expression: query_contains }] : []),
           ...(country ? [{ dimension: 'country' as const, operator: 'equals' as const, expression: country.toUpperCase() }] : []),
+          ...(device ? [{ dimension: 'device' as const, operator: 'equals' as const, expression: device.toUpperCase() }] : []),
         ];
         const source = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: start_date,
@@ -2169,8 +2173,9 @@ class GscMcpRuntime {
           page_contains: page_contains ?? null,
           query_contains: query_contains ?? null,
           country: country?.toUpperCase() ?? null,
-          scope_note: page_contains || query_contains || country
-            ? 'Candidates and observed impression shares are restricted to Google-filtered query/page rows by URL section, query topic and/or searcher country, not property-wide totals; searcher country is not page language. A page filter restricts which competing URLs are included. Missing Search Analytics rows are not zero.'
+          device: device ?? null,
+          scope_note: page_contains || query_contains || country || device
+            ? 'Candidates and observed impression shares are restricted to Google-filtered query/page rows by URL section, query topic, searcher country and/or device, not property-wide or all-device totals; searcher country is not page language. A page filter restricts which competing URLs are included. Missing Search Analytics rows are not zero.'
             : 'Candidates and observed impression shares use returned query/page rows, not true query-level property totals; missing rows are not zero.',
           candidates: bounded.items,
           pagination: paginationMetadata(source),

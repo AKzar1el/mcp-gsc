@@ -1077,7 +1077,7 @@ test('capabilities catalog advertises supported insight filters and weekly repor
     ['insights.page_queries', ['query_contains', 'country']],
     ['insights.query_pages', ['page_contains', 'country']],
     ['insights.quick_wins', ['page_contains', 'query_contains', 'country', 'device']],
-    ['insights.cannibalization', ['page_contains', 'query_contains', 'country']],
+    ['insights.cannibalization', ['page_contains', 'query_contains', 'country', 'device']],
     ['insights.content_decay', ['page_contains', 'query_contains', 'country', 'device']],
     ['reports.weekly_digest', ['search_type', 'page_contains', 'device', 'query_contains']],
   ] as const) {
@@ -1133,6 +1133,15 @@ test('cannibalization country scope is discoverable and described as searcher ge
   const registration = indexSource.match(/this\.server\.registerTool\(\s*'insights\.cannibalization'([\s\S]*?)outputSchema:/)?.[1] ?? '';
   assert.match(registration, /country:\s*CANNIBALIZATION_COUNTRY_SCHEMA/);
   assert.match(readmeSource, /For `insights\.cannibalization`, optional `country` scopes[^\n]*searcher/i);
+});
+
+test('cannibalization device scope is validated and discoverable for mobile SEO follow-up', () => {
+  const registration = indexSource.match(/this\.server\.registerTool\(\s*'insights\.cannibalization'([\s\S]*?)outputSchema:/)?.[1] ?? '';
+  assert.match(registration, /device:\s*CANNIBALIZATION_DEVICE_SCHEMA/);
+  const schema = readFileSync(resolve(projectRoot, 'src/cannibalization-schema.ts'), 'utf8');
+  assert.match(schema, /CANNIBALIZATION_DEVICE_SCHEMA/);
+  assert.match(schema, /desktop.*mobile.*tablet/);
+  assert.match(readmeSource, /For `insights\.cannibalization`, optional `device` selects/);
 });
 
 test('direct Search Analytics tools bound start_row before quota reservation', () => {
