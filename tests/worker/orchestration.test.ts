@@ -2859,6 +2859,72 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('filters quick-win query topics at Google with optional page scope', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'quick-wins-topic-user', email: 'quick-wins-topic@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const rows = [
+      { keys: ['brand guide', 'https://example.com/de/brand'], impressions: 950 },
+      { keys: ['technical seo', 'https://example.com/en/technical'], impressions: 850 },
+      { keys: ['technical seo', 'https://example.com/de/technical'], impressions: 210 },
+    ].map((row) => ({ ...row, clicks: 10, ctr: 0.05, position: 12 }));
+    const requests: Array<Array<{ dimension: string; operator: string; expression: string }>> = [];
+    try {
+      globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as {
+          dimensions: string[];
+          dimensionFilterGroups?: Array<{ groupType: string; filters: Array<{
+            dimension: string; operator: string; expression: string;
+          }> }>;
+        };
+        expect(body.dimensions).toEqual(['query', 'page']);
+        const filters = body.dimensionFilterGroups?.[0]?.filters ?? [];
+        if (filters.length) expect(body.dimensionFilterGroups?.[0]?.groupType).toBe('and');
+        requests.push(filters);
+        return response({ rows: rows.filter((row) => filters.every((filter) =>
+          row.keys[filter.dimension === 'query' ? 0 : 1]
+            .toLowerCase().includes(filter.expression.toLowerCase())
+        )) });
+      };
+      const args = {
+        site_url: 'sc-domain:example.com', start_date: '2026-07-01', end_date: '2026-07-31',
+        min_impressions: 100, min_position: 8, max_position: 20, limit: 20, start_row: 0,
+      };
+      const scoped = (await registered['insights.quick_wins'].handler({
+        ...args, page_contains: '/de/', query_contains: 'SEO',
+      })) as { structuredContent: {
+        query_contains: string | null; scope_note: string; quick_wins: Array<{ page: string }>;
+      } };
+      expect(requests[0]).toEqual([
+        { dimension: 'page', operator: 'contains', expression: '/de/' },
+        { dimension: 'query', operator: 'contains', expression: 'SEO' },
+      ]);
+      expect(scoped.structuredContent.query_contains).toBe('SEO');
+      expect(scoped.structuredContent.scope_note).toMatch(/not property-wide/i);
+      expect(scoped.structuredContent.quick_wins.map((row) => row.page))
+        .toEqual(['https://example.com/de/technical']);
+      const topicOnly = (await registered['insights.quick_wins'].handler({
+        ...args, query_contains: 'seo',
+      })) as { structuredContent: { quick_wins: Array<{ page: string }> } };
+      expect(requests[1]).toEqual([{ dimension: 'query', operator: 'contains', expression: 'seo' }]);
+      expect(topicOnly.structuredContent.quick_wins).toHaveLength(2);
+      const all = (await registered['insights.quick_wins'].handler(args)) as {
+        structuredContent: { query_contains: string | null; quick_wins: Array<{ page: string }> };
+      };
+      expect(requests[2]).toEqual([]);
+      expect(all.structuredContent.query_contains).toBeNull();
+      expect(all.structuredContent.quick_wins).toHaveLength(3);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('scopes cannibalization to one locale before aggregating candidate page shares', async () => {
     const server = await createGscMcpServer(
       workerEnv,
