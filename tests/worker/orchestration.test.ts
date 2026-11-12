@@ -3328,6 +3328,7 @@ describe('Worker orchestration', () => {
               { dimension: 'page', operator: 'contains', expression: '/DE/' },
               { dimension: 'query', operator: 'contains', expression: 'TECHNICAL SEO' },
               { dimension: 'country', operator: 'equals', expression: 'DEU' },
+              { dimension: 'device', operator: 'equals', expression: 'MOBILE' },
             ],
           }]);
         } else if (expectedSearchType === 'news') {
@@ -3360,6 +3361,7 @@ describe('Worker orchestration', () => {
         page_contains: '/DE/',
         query_contains: 'TECHNICAL SEO',
         country: 'deu',
+        device: 'mobile',
         limit: 20,
         start_row: 0,
       })) as {
@@ -3368,6 +3370,7 @@ describe('Worker orchestration', () => {
           page_contains: string | null;
           query_contains: string | null;
           country: string | null;
+          device: string | null;
           scope_note: string;
           decay_results: Array<{ page: string; previous_clicks: number; recent_clicks: number }>;
           assessment_count: number;
@@ -3380,8 +3383,10 @@ describe('Worker orchestration', () => {
       expect(result.structuredContent.page_contains).toBe('/DE/');
       expect(result.structuredContent.query_contains).toBe('TECHNICAL SEO');
       expect(result.structuredContent.country).toBe('DEU');
+      expect(result.structuredContent.device).toBe('mobile');
       expect(result.structuredContent.scope_note).toContain('not property-wide totals');
       expect(result.structuredContent.scope_note).toMatch(/searcher country/i);
+      expect(result.structuredContent.scope_note).toMatch(/device/i);
       expect(result.structuredContent.decay_results[0]).toMatchObject({
         page: 'https://example.com/de/pricing',
         previous_clicks: 100,
@@ -3397,11 +3402,12 @@ describe('Worker orchestration', () => {
         compare_days: 14,
         limit: 20,
         start_row: 0,
-      })) as { structuredContent: { search_type: string; page_contains: string | null; query_contains: string | null; country: string | null; decay_results: unknown[] } };
+      })) as { structuredContent: { search_type: string; page_contains: string | null; query_contains: string | null; country: string | null; device: string | null; decay_results: unknown[] } };
       expect(defaultResult.structuredContent.search_type).toBe('web');
       expect(defaultResult.structuredContent.page_contains).toBeNull();
       expect(defaultResult.structuredContent.query_contains).toBeNull();
       expect(defaultResult.structuredContent.country).toBeNull();
+      expect(defaultResult.structuredContent.device).toBeNull();
       expect(defaultResult.structuredContent.decay_results).toHaveLength(2);
       expect(searchRequests).toBe(4);
 

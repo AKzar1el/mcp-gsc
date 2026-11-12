@@ -1078,7 +1078,7 @@ test('capabilities catalog advertises supported insight filters and weekly repor
     ['insights.query_pages', ['page_contains', 'country']],
     ['insights.quick_wins', ['page_contains', 'query_contains', 'country', 'device']],
     ['insights.cannibalization', ['page_contains', 'query_contains', 'country']],
-    ['insights.content_decay', ['page_contains', 'query_contains', 'country']],
+    ['insights.content_decay', ['page_contains', 'query_contains', 'country', 'device']],
     ['reports.weekly_digest', ['search_type', 'page_contains', 'device', 'query_contains']],
   ] as const) {
     const entry = catalog.split(`name: '${toolName}'`)[1]?.split('\n  },')[0] ?? '';
@@ -1118,6 +1118,15 @@ test('content decay country scope is discoverable, validated and not confused wi
   assert.match(schema, /CONTENT_DECAY_COUNTRY_SCHEMA/);
   assert.match(schema, /ISO 3166-1 alpha-3/);
   assert.match(readmeSource, /For `insights\.content_decay`, optional `country` scopes[^\n]*searcher/i);
+});
+
+test('content decay device scope is discoverable and consistent between comparison periods', () => {
+  const registration = indexSource.match(/this\.server\.registerTool\(\s*'insights\.content_decay'([\s\S]*?)outputSchema:/)?.[1] ?? '';
+  assert.match(registration, /device:\s*CONTENT_DECAY_DEVICE_SCHEMA/);
+  const schema = readFileSync(resolve(projectRoot, 'src/content-decay-schema.ts'), 'utf8');
+  assert.match(schema, /CONTENT_DECAY_DEVICE_SCHEMA/);
+  assert.match(schema, /desktop.*mobile.*tablet/);
+  assert.match(readmeSource, /For `insights\.content_decay`, optional `device` selects/);
 });
 
 test('cannibalization country scope is discoverable and described as searcher geography', () => {

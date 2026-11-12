@@ -32,3 +32,8 @@ export const CONTENT_DECAY_COUNTRY_SCHEMA = z
   .regex(/^[a-zA-Z]{3}$/, 'Use a three-letter ISO 3166-1 alpha-3 country code such as SVN or DEU.')
   .optional()
   .describe('Optional ISO 3166-1 alpha-3 searcher country, such as DEU for Germany, not the page language. Applies identically to both periods and combines with page_contains and query_contains as Google-side AND filters.');
+
+export const CONTENT_DECAY_DEVICE_SCHEMA = z
+  .enum(['desktop', 'mobile', 'tablet'])
+  .optional()
+  .describe('Optional searcher device (desktop, mobile, or tablet). Applied to both comparison periods as a Google-side AND filter alongside page_contains, query_contains, and country; omitting it preserves all-device behavior.');
