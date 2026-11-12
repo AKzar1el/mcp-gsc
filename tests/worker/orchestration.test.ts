@@ -2719,13 +2719,30 @@ describe('Worker orchestration', () => {
         if (url !== 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
           throw new Error(`Unexpected outbound request: ${url}`);
         }
-        const body = JSON.parse(String(init?.body)) as { dimensions: string[]; type?: string };
+        const body = JSON.parse(String(init?.body)) as {
+          dimensions: string[];
+          type?: string;
+          dimensionFilterGroups?: Array<{
+            groupType: string;
+            filters: Array<{ dimension: string; operator: string; expression: string }>;
+          }>;
+        };
         expect(body.dimensions).toEqual(['page']);
         expect(body.type).toBe(expectedSearchType);
+        if (expectedSearchType === 'image') {
+          expect(body.dimensionFilterGroups).toEqual([{
+            groupType: 'and',
+            filters: [{ dimension: 'page', operator: 'contains', expression: '/DE/' }],
+          }]);
+        } else {
+          expect(body.dimensionFilterGroups).toBeUndefined();
+        }
         searchRequests += 1;
         const recent = searchRequests % 2 === 1;
         return response({
-          rows: ['/de/pricing', '/en/pricing'].map((path) => ({
+          rows: (expectedSearchType === 'image'
+            ? ['/de/pricing']
+            : ['/de/pricing', '/en/pricing']).map((path) => ({
             keys: [`https://example.com${path}`],
             clicks: recent ? 12 : 100,
             impressions: recent ? 400 : 1000,
@@ -2745,6 +2762,8 @@ describe('Worker orchestration', () => {
       })) as {
         structuredContent: {
           search_type: string;
+          page_contains: string | null;
+          scope_note: string;
           decay_results: Array<{ page: string; previous_clicks: number; recent_clicks: number }>;
           assessment_count: number;
           result_page: { total_count: number; has_more: boolean };
@@ -2753,6 +2772,8 @@ describe('Worker orchestration', () => {
 
       expect(result.structuredContent.decay_results).toHaveLength(1);
       expect(result.structuredContent.search_type).toBe('image');
+      expect(result.structuredContent.page_contains).toBe('/DE/');
+      expect(result.structuredContent.scope_note).toContain('not property-wide totals');
       expect(result.structuredContent.decay_results[0]).toMatchObject({
         page: 'https://example.com/de/pricing',
         previous_clicks: 100,
@@ -2768,8 +2789,9 @@ describe('Worker orchestration', () => {
         compare_days: 14,
         limit: 20,
         start_row: 0,
-      })) as { structuredContent: { search_type: string; decay_results: unknown[] } };
+      })) as { structuredContent: { search_type: string; page_contains: string | null; decay_results: unknown[] } };
       expect(defaultResult.structuredContent.search_type).toBe('web');
+      expect(defaultResult.structuredContent.page_contains).toBeNull();
       expect(defaultResult.structuredContent.decay_results).toHaveLength(2);
       expect(searchRequests).toBe(4);
     } finally {
