@@ -1066,7 +1066,7 @@ test('capabilities catalog advertises supported insight filters and weekly repor
     ['insights.quick_wins', ['page_contains', 'query_contains']],
     ['insights.cannibalization', ['page_contains', 'query_contains']],
     ['insights.content_decay', ['page_contains', 'query_contains']],
-    ['reports.weekly_digest', ['search_type', 'page_contains', 'device']],
+    ['reports.weekly_digest', ['search_type', 'page_contains', 'device', 'query_contains']],
   ] as const) {
     const entry = catalog.split(`name: '${toolName}'`)[1]?.split('\n  },')[0] ?? '';
     assert.match(entry, /description:/, `${toolName} must have a capabilities description`);
@@ -1074,6 +1074,9 @@ test('capabilities catalog advertises supported insight filters and weekly repor
       assert.ok(entry.includes(filter), `${toolName} must advertise ${filter} to MCP clients`);
     }
   }
+  const digestReadmeRow = readmeSource.split('**`reports.weekly_digest`**')[1]?.split('\n')[0] ?? '';
+  assert.match(digestReadmeRow, /query_contains/);
+  assert.match(digestReadmeRow, /not property-wide totals/);
 });
 
 test('direct Search Analytics tools bound start_row before quota reservation', () => {

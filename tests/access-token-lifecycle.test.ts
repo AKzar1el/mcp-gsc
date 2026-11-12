@@ -423,6 +423,39 @@ test('weekly digest scopes all three preliminary requests to a selected device',
   }
 });
 
+test('weekly digest filters every finalized section by query topic alongside page and device', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ dimensionFilterGroups?: unknown }> = [];
+  globalThis.fetch = async (_input, init) => {
+    requests.push(JSON.parse(String(init?.body)) as { dimensionFilterGroups?: unknown });
+    return new Response(JSON.stringify({ rows: [] }), {
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/',
+      '2026-08-10', undefined, '2026-08-15', '/de/', 'web', 'mobile', 'technical seo',
+    );
+    assert.equal(requests.length, 5);
+    for (const request of requests) {
+      assert.deepEqual(request.dimensionFilterGroups, [{
+        groupType: 'and',
+        filters: [
+          { dimension: 'page', operator: 'contains', expression: '/de/' },
+          { dimension: 'device', operator: 'equals', expression: 'MOBILE' },
+          { dimension: 'query', operator: 'contains', expression: 'technical seo' },
+        ],
+      }]);
+    }
+    assert.match(digest, /Query topic filter.*technical seo/i);
+    assert.match(digest, /not property-wide/i);
+    assert.match(digest, /does not establish a measured zero/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('weekly digest honors explicit recent dates as preliminary snapshots without unverified trend advice', async () => {
   const originalFetch = globalThis.fetch;
   const requestedDataStates: Array<string | undefined> = [];
