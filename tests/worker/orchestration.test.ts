@@ -1913,6 +1913,104 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('scopes exact-query page drilldowns at Google before source pagination', async () => {
+    await saveUser(
+      workerEnv,
+      'localized-query-user',
+      'localized-query@example.test',
+      'localized-query-refresh-token',
+    );
+    const server = await createGscMcpServer(
+      workerEnv,
+      {
+        google_id: 'localized-query-user',
+        email: 'localized-query@example.test',
+      },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<
+        string,
+        { handler: (args: Record<string, unknown>) => Promise<unknown> }
+      >;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const analyticsRequests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'localized-query-access-token', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          analyticsRequests.push(body);
+          const groups = body.dimensionFilterGroups as Array<{
+            filters: Array<{ dimension: string; operator: string; expression: string }>;
+          }>;
+          const scoped = groups[0]?.filters.some((filter) =>
+            filter.dimension === 'page' && filter.operator === 'contains' && filter.expression === '/de/');
+          return response({
+            rows: [{
+              keys: [scoped ? 'https://example.com/de/preise/' : 'https://example.com/en/pricing/'],
+              clicks: 5,
+              impressions: 100,
+              ctr: 0.05,
+              position: 9,
+            }],
+          });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const input = {
+        site_url: 'sc-domain:example.com',
+        query: 'pricing',
+        start_date: '2026-08-01',
+        end_date: '2026-08-31',
+        search_type: 'web',
+      };
+      const unfiltered = await tools['insights.query_pages'].handler(input) as {
+        structuredContent: { page_contains: string | null; pages: Array<{ page: string }> };
+      };
+      const scoped = await tools['insights.query_pages'].handler({
+        ...input,
+        page_contains: '/de/',
+      }) as {
+        structuredContent: {
+          page_contains: string | null;
+          scope_note: string;
+          pages: Array<{ page: string }>;
+        };
+      };
+      expect(unfiltered.structuredContent.page_contains).toBeNull();
+      expect(unfiltered.structuredContent.pages[0]?.page).toBe('https://example.com/en/pricing/');
+      expect(scoped.structuredContent).toMatchObject({
+        page_contains: '/de/',
+        pages: [{ page: 'https://example.com/de/preise/' }],
+      });
+      expect(scoped.structuredContent.scope_note).toContain('not property-wide');
+      expect(analyticsRequests).toHaveLength(2);
+      expect(analyticsRequests[0]).toMatchObject({
+        dimensions: ['page'],
+        dimensionFilterGroups: [{
+          filters: [{ dimension: 'query', operator: 'equals', expression: 'pricing' }],
+        }],
+      });
+      expect(analyticsRequests[1]).toMatchObject({
+        dimensions: ['page'],
+        dimensionFilterGroups: [{
+          groupType: 'and',
+          filters: [
+            { dimension: 'query', operator: 'equals', expression: 'pricing' },
+            { dimension: 'page', operator: 'contains', expression: '/de/' },
+          ],
+        }],
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('propagates OAuth application props through the stateless MCP handler', async () => {
     await saveUser(
       workerEnv,
