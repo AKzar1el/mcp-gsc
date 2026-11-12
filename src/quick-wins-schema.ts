@@ -42,6 +42,9 @@ export function createQuickWinsInputSchema() {
       country: z.string().trim().regex(/^[a-zA-Z]{3}$/, 'Use a three-letter ISO 3166-1 alpha-3 country code such as SVN or DEU.').optional().describe(
         'Optional searcher country (ISO 3166-1 alpha-3, e.g. DEU for Germany), not URL language. Combined with page_contains and query_contains as Google-side AND filters before pagination; the result is not property-wide.',
       ),
+      device: z.enum(['desktop', 'mobile', 'tablet']).optional().describe(
+        'Optional Search Console searcher device. Combined with page_contains, query_contains and country as Google-side AND filters before pagination. Omit for all devices; filtered results are not property-wide.',
+      ),
       limit: z
         .number()
         .int()

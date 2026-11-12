@@ -1076,7 +1076,7 @@ test('capabilities catalog advertises supported insight filters and weekly repor
   for (const [toolName, filters] of [
     ['insights.page_queries', ['query_contains', 'country']],
     ['insights.query_pages', ['page_contains', 'country']],
-    ['insights.quick_wins', ['page_contains', 'query_contains', 'country']],
+    ['insights.quick_wins', ['page_contains', 'query_contains', 'country', 'device']],
     ['insights.cannibalization', ['page_contains', 'query_contains', 'country']],
     ['insights.content_decay', ['page_contains', 'query_contains', 'country']],
     ['reports.weekly_digest', ['search_type', 'page_contains', 'device', 'query_contains']],
@@ -1092,6 +1092,14 @@ test('capabilities catalog advertises supported insight filters and weekly repor
   assert.match(digestReadmeRow, /not property-wide totals/);
   const drilldownReadmeRow = readmeSource.split('**`insights.page_queries`**')[1]?.split('\n')[0] ?? '';
   assert.match(drilldownReadmeRow, /country.*searcher geography/i);
+});
+
+test('mobile quick wins preserve the weekly device scope through validated Google filters', () => {
+  const schema = readFileSync(resolve(projectRoot, 'src/quick-wins-schema.ts'), 'utf8');
+  assert.match(schema, /device:\s*z\.enum\(\['desktop', 'mobile', 'tablet'\]\)/);
+  assert.match(indexSource, /device:\s*device\s*\?\?\s*null/);
+  assert.match(indexSource, /dimension:\s*'device'\s+as const/);
+  assert.match(readmeSource, /For `insights\.quick_wins`, optional `device` selects/);
 });
 
 test('exact page and query drilldowns validate a searcher country rather than inferring page language', () => {
