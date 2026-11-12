@@ -554,6 +554,8 @@ const QUICK_WIN_OUTPUT_SCHEMA = {
 
 const PAGE_QUERIES_OUTPUT_SCHEMA = {
   page: z.string(),
+  query_contains: z.string().nullable().describe('Optional query topic substring filtered at Google before Search Analytics pagination, or null for no topic filter.'),
+  scope_note: z.string(),
   queries: z.array(
     z.object({
       query: z.string(),
@@ -902,7 +904,7 @@ const TOOL_CATALOG = [
   {
     name: 'insights.page_queries',
     description:
-      'For one exact page URL, list the Search Console queries that produced impressions for it, with clicks, impressions, CTR, average position, search type, and bounded pagination.',
+      'For one exact page URL, list the Search Console queries that produced impressions for it, with optional Google-side query_contains topic filtering before bounded pagination, clicks, impressions, CTR, average position, and search type.',
   },
   {
     name: 'insights.query_pages',
@@ -1664,10 +1666,11 @@ class GscMcpRuntime {
       'insights.page_queries',
       {
         title: 'Find queries for a page',
-        description: 'For one exact page URL within the supplied Search Console property, return the queries that produced impressions for it over a date range. This wraps an exact page dimension filter so agents do not need to construct analytics.query filter groups manually. Exact page matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results; Search Console can still omit anonymized queries. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
+        description: 'For one exact page URL within the supplied Search Console property, return the queries that produced impressions for it over a date range. This wraps an exact page dimension filter so agents do not need to construct analytics.query filter groups manually. Optional query_contains narrows query topics at Google before source pagination; these observed rows are not all queries for the page. Exact page matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results; Search Console can still omit anonymized queries. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           page_url: z.string().url().describe('Exact fully-qualified page URL to filter on, e.g. https://example.com/guides/seo/. The URL must belong to site_url; Search Console exact page filters are case-sensitive.'),
+          query_contains: z.string().trim().min(1).max(240).optional().describe('Optional case-insensitive query substring (e.g. seo) to filter at Google before pagination. Omit for all query topics.'),
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
             searchConsoleDateDescription('Start date (inclusive) in YYYY-MM-DD format.'),
           ),
@@ -1694,7 +1697,7 @@ class GscMcpRuntime {
         outputSchema: PAGE_QUERIES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, page_url, start_date, end_date, search_type, row_limit = 100, start_row = 0 }) => {
+      async ({ site_url, page_url, query_contains, start_date, end_date, search_type, row_limit = 100, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -1718,6 +1721,7 @@ class GscMcpRuntime {
               groupType: 'and',
               filters: [
                 { dimension: 'page', operator: 'equals', expression: page_url },
+                ...(query_contains ? [{ dimension: 'query' as const, operator: 'contains' as const, expression: query_contains }] : []),
               ],
             },
           ],
@@ -1743,6 +1747,10 @@ class GscMcpRuntime {
         );
         const payload = {
           page: page_url,
+          query_contains: query_contains ?? null,
+          scope_note: query_contains
+            ? 'Queries are filtered to the requested case-insensitive topic substring at Google before pagination; these are not all queries for this page, and missing rows do not mean zero impressions.'
+            : 'Observed page/query rows may be incomplete because Search Console can omit or truncate data; missing rows do not mean zero impressions.',
           queries: bounded.items,
           pagination: paginationMetadata(source),
           result_page: bounded.resultPage,
