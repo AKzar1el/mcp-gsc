@@ -1045,6 +1045,15 @@ test('agency weekly reporting guide provides a reproducible read-only client wor
   assert.match(guide, /no client data is transmitted outside the selected MCP connection/i);
 });
 
+test('agency report follow-ups preserve weekly digest device and section scope', () => {
+  const guide = readFileSync(resolve(projectRoot, 'docs/agency-weekly-reporting.md'), 'utf8');
+  assert.match(guide, /Optional device-scoped report:/);
+  assert.match(guide, /"dimension":"device","operator":"equals","expression":"MOBILE"/);
+  assert.match(guide, /both `analytics\.query` and `analytics\.compare` must preserve the same device filter/i);
+  assert.match(guide, /combine the page and device filters in one AND group/i);
+  assert.match(guide, /never compare device-scoped totals with all-device totals/i);
+});
+
 test('direct Search Analytics tools bound start_row before quota reservation', () => {
   for (const name of ['analytics.query', 'insights.page_queries', 'insights.query_pages']) {
     const escapedName = name.replaceAll('.', '\\.');
