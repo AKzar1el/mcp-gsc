@@ -1054,6 +1054,28 @@ test('agency report follow-ups preserve weekly digest device and section scope',
   assert.match(guide, /never compare device-scoped totals with all-device totals/i);
 });
 
+test('capabilities catalog advertises supported insight filters and weekly report segments', () => {
+  const start = indexSource.indexOf('const TOOL_CATALOG = [');
+  const end = indexSource.indexOf('] as const;', start);
+  assert.ok(start >= 0 && end > start, 'runtime tool catalog must remain discoverable');
+  const catalog = indexSource.slice(start, end);
+
+  for (const [toolName, filters] of [
+    ['insights.page_queries', ['query_contains']],
+    ['insights.query_pages', ['page_contains']],
+    ['insights.quick_wins', ['page_contains', 'query_contains']],
+    ['insights.cannibalization', ['page_contains', 'query_contains']],
+    ['insights.content_decay', ['page_contains', 'query_contains']],
+    ['reports.weekly_digest', ['search_type', 'page_contains', 'device']],
+  ] as const) {
+    const entry = catalog.split(`name: '${toolName}'`)[1]?.split('\n  },')[0] ?? '';
+    assert.match(entry, /description:/, `${toolName} must have a capabilities description`);
+    for (const filter of filters) {
+      assert.ok(entry.includes(filter), `${toolName} must advertise ${filter} to MCP clients`);
+    }
+  }
+});
+
 test('direct Search Analytics tools bound start_row before quota reservation', () => {
   for (const name of ['analytics.query', 'insights.page_queries', 'insights.query_pages']) {
     const escapedName = name.replaceAll('.', '\\.');

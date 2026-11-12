@@ -913,7 +913,7 @@ const TOOL_CATALOG = [
   {
     name: 'insights.query_pages',
     description:
-      'For one exact search query, list the site pages that received impressions for it, with clicks, impressions, CTR, average position, search type, and bounded pagination.',
+      'For one exact search query, list the site pages that received impressions for it, with optional Google-side page_contains URL-section filtering before bounded pagination, clicks, impressions, CTR, average position, and search type.',
   },
   {
     name: 'urls.inspect',
@@ -948,17 +948,17 @@ const TOOL_CATALOG = [
   {
     name: 'insights.quick_wins',
     description:
-      'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Average position is an aggregate metric, not a literal current rank; CTR is context, not an eligibility filter.',
+      'Find observed query/page rows meeting an impression threshold and configurable average-position opportunity range (8-20 by default), optionally scoped at Google by page_contains URL section and query_contains topic before pagination. Average position is not a literal current rank, CTR is context rather than an eligibility filter, and scoped rows are not property-wide totals.',
   },
   {
     name: 'insights.cannibalization',
     description:
-      'Analyze query/page Search Analytics for queries surfaced by multiple pages. Candidate totals and impression shares are explicitly scoped to observed query/page rows, not true query-level property totals.',
+      'Analyze query/page Search Analytics for queries surfaced by multiple pages, optionally scoped at Google by query_contains topic and page_contains URL section before pagination. Candidate totals and impression shares concern observed rows, not true property-wide query totals.',
   },
   {
     name: 'insights.content_decay',
     description:
-      'Assess page-level click declines across two contiguous periods for pages returned in both Search Analytics responses, optionally for Web, Image, Video or News-tab search, without treating one-sided row absence as zero traffic.',
+      'Assess page-level click declines across two contiguous periods, optionally scoped at Google by query_contains topic and page_contains URL section in both periods and by Web, Image, Video or News-tab search. Compare pages returned in both responses; one-sided row absence is not zero traffic.',
   },
   {
     name: 'indexing.request',
@@ -987,7 +987,7 @@ const TOOL_CATALOG = [
   {
     name: 'reports.weekly_digest',
     description:
-      'Generate a plain-language weekly SEO report for Web (default), Image, Video or Google Search News-tab performance in one Search Console property, optionally scoped to a URL section.',
+      'Generate a plain-language weekly Search Console report for Web (default), Image, Video or Google Search News-tab performance using search_type, optionally scoped by page_contains URL section and device (desktop, mobile or tablet). Scoped reports are not all-device or property-wide totals.',
   },
   {
     name: 'server.capabilities',
