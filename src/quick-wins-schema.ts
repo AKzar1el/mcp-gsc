@@ -39,6 +39,9 @@ export function createQuickWinsInputSchema() {
       query_contains: z.string().trim().min(1).max(240).optional().describe(
         'Optional case-insensitive query topic substring (for example technical seo). Google filters matching queries before query/page pagination; combine with page_contains to target one topic in one URL section. Filtered results are not property-wide.',
       ),
+      country: z.string().trim().regex(/^[a-zA-Z]{3}$/, 'Use a three-letter ISO 3166-1 alpha-3 country code such as SVN or DEU.').optional().describe(
+        'Optional searcher country (ISO 3166-1 alpha-3, e.g. DEU for Germany), not URL language. Combined with page_contains and query_contains as Google-side AND filters before pagination; the result is not property-wide.',
+      ),
       limit: z
         .number()
         .int()
