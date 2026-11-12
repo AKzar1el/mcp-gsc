@@ -3645,6 +3645,27 @@ describe('Worker orchestration', () => {
       expect(imageMarkdown).toContain('**Search type:** Image search');
       expect(imageMarkdown).toContain('Review this search surface before changing content');
       expect(imageMarkdown).not.toContain('Change the title or meta description');
+
+      analyticsRequests.length = 0;
+      const desktopMarkdown = await generateWeeklyDigest(
+        new GoogleAccessTokenLifecycle(workerEnv),
+        'digest-user',
+        'https://example.com/',
+        '2026-01-14',
+        undefined,
+        '2026-01-17',
+        undefined,
+        'web',
+        'desktop',
+      );
+      expect(analyticsRequests).toHaveLength(5);
+      expect(analyticsRequests.every((request) => JSON.stringify(request.dimensionFilterGroups) === JSON.stringify([{
+        groupType: 'and',
+        filters: [{ dimension: 'device', operator: 'equals', expression: 'DESKTOP' }],
+      }]))).toBe(true);
+      expect(desktopMarkdown).toContain('**Device filter:** Desktop');
+      expect(desktopMarkdown).toContain('## Quick numbers');
+      expect(desktopMarkdown).not.toContain('**Search type:**');
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -3852,18 +3873,28 @@ describe('Worker orchestration', () => {
         '2026-09-16',
       ]);
       expect(analyticsRequests.every((request) => request.type === undefined)).toBe(true);
+      expect(analyticsRequests.every((request) => request.dimensionFilterGroups === undefined)).toBe(true);
 
       analyticsRequests.length = 0;
       const imageDigest = await tools['reports.weekly_digest'].handler({
         site_url: 'https://example.com/',
         search_type: 'image',
         page_contains: '/de/',
+        device: 'mobile',
       }) as { content: Array<{ text: string }> };
       expect(analyticsRequests).toHaveLength(5);
       expect(analyticsRequests.every((request) => request.type === 'image')).toBe(true);
-      expect(analyticsRequests.every((request) => JSON.stringify(request.dimensionFilterGroups).includes('/de/'))).toBe(true);
+      expect(analyticsRequests.every((request) => JSON.stringify(request.dimensionFilterGroups) === JSON.stringify([{
+        groupType: 'and',
+        filters: [
+          { dimension: 'page', operator: 'contains', expression: '/de/' },
+          { dimension: 'device', operator: 'equals', expression: 'MOBILE' },
+        ],
+      }]))).toBe(true);
       expect(imageDigest.content[0]?.text).toContain('**Search type:** Image search');
       expect(imageDigest.content[0]?.text).toContain('Page URL filter');
+      expect(imageDigest.content[0]?.text).toContain('**Device filter:** Mobile');
+      expect(imageDigest.content[0]?.text).toContain('not property-wide totals');
     } finally {
       globalThis.fetch = originalFetch;
       vi.useRealTimers();

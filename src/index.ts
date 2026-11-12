@@ -2573,7 +2573,7 @@ class GscMcpRuntime {
       {
         title: 'Weekly GSC Performance Digest',
         description:
-          'Generate a plain-language weekly Search Console report for Web (default), Image, Video or Google Search News-tab performance; Discover and Google News app are excluded because query rows are unavailable. Optional search_type is applied to every Google request, and non-Web reports avoid Web-specific SEO advice. Optional page_contains scopes all metrics, queries and page rows to matching page URLs using the same five (or three preliminary) Google requests; results are not property-wide when filtered. For finalized weeks, returns the 7-day comparison, top pages and query movers. Defaults end_date to 3 days ago. Passing an explicitly newer end_date includes fresher preliminary data as a clearly labeled snapshot without week-over-week claims or SEO advice.',
+          'Generate a plain-language weekly Search Console report for Web (default), Image, Video or Google Search News-tab performance; Discover and Google News app are excluded because query rows are unavailable. Optional search_type is applied to every Google request, and non-Web reports avoid Web-specific SEO advice. Optional page_contains scopes metrics, queries and page rows to matching URLs; optional device selects desktop, mobile or tablet searches. Both filters apply together at Google to the same five (or three preliminary) requests; scoped results are not property-wide. For finalized weeks, returns the 7-day comparison, top pages and query movers. Defaults end_date to 3 days ago. Passing an explicitly newer end_date includes fresher preliminary data as a clearly labeled snapshot without week-over-week claims or SEO advice.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe(
@@ -2581,6 +2581,9 @@ class GscMcpRuntime {
           ),
           page_contains: z.string().trim().min(1).max(120).optional().describe(
             'Optional case-insensitive page URL substring such as /de/. Applied to every Search Analytics request, including totals and query movers, so the report describes matching pages rather than property-wide traffic.',
+          ),
+          device: z.enum(['desktop', 'mobile', 'tablet']).optional().describe(
+            'Optional Search Console device scope. When set, every total, query and page request filters to that device before aggregation; combines with page_contains as Google-side AND. Omit for all devices.',
           ),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA
             .optional()
@@ -2593,7 +2596,7 @@ class GscMcpRuntime {
         outputSchema: WEEKLY_DIGEST_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, end_date, page_contains, search_type = 'web' }) => {
+      async ({ site_url, end_date, page_contains, search_type = 'web', device }) => {
         const today = getSearchConsoleCalendarDate();
         const resolvedEndDate = resolveWeeklyDigestEndDate(end_date, today);
         assertDateNotInFuture(resolvedEndDate, today, 'end_date');
@@ -2620,6 +2623,7 @@ class GscMcpRuntime {
             today,
             page_contains,
             search_type,
+            device,
           );
           return toolResponse(markdown, { markdown });
         } catch (err) {

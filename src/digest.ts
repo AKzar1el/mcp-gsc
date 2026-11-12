@@ -95,16 +95,27 @@ export async function generateWeeklyDigest(
   today: string = getSearchConsoleCalendarDate(),
   pageContains?: string,
   searchType: 'web' | 'image' | 'video' | 'news' = 'web',
+  device?: 'desktop' | 'mobile' | 'tablet',
 ): Promise<string> {
   const dates = computeDateRanges(endDate);
   const isPreliminary = weeklyDigestAnalyticsRequestCount(endDate, today) === 3;
   // Explicit recent dates opt into Google's fresh rows; historical/default dates remain finalized-only.
   const requestedDataState = isPreliminary ? 'all' : 'final';
-  const dimensionFilterGroups: DimensionFilterGroup[] | undefined = pageContains
-    ? [{ groupType: 'and', filters: [{ dimension: 'page', operator: 'contains', expression: pageContains }] }]
+  const filters: DimensionFilterGroup['filters'] = [];
+  if (pageContains) {
+    filters.push({ dimension: 'page', operator: 'contains', expression: pageContains });
+  }
+  if (device) {
+    filters.push({ dimension: 'device', operator: 'equals', expression: device.toUpperCase() });
+  }
+  const dimensionFilterGroups: DimensionFilterGroup[] | undefined = filters.length > 0
+    ? [{ groupType: 'and', filters }]
     : undefined;
   const pageScopeNotice = pageContains
     ? `> **Page URL filter:** Metrics, queries and pages include only URLs containing ${escapeMarkdownInline(pageContains)} (case-insensitive); this is not property-wide traffic.`
+    : undefined;
+  const deviceScopeNotice = device
+    ? `> **Device filter:** ${device[0].toUpperCase() + device.slice(1)} searches only. Figures exclude other devices and are not property-wide totals.`
     : undefined;
   const searchTypeNotice = searchType === 'web'
     ? undefined
@@ -180,6 +191,7 @@ export async function generateWeeklyDigest(
       '',
       ...(searchTypeNotice ? [searchTypeNotice, ''] : []),
       ...(pageScopeNotice ? [pageScopeNotice, ''] : []),
+      ...(deviceScopeNotice ? [deviceScopeNotice, ''] : []),
       '> **Preliminary Search Console data:** Explicitly requested recent dates may include incomplete metrics. Google may revise these values as reporting finishes.',
       '',
     ];
@@ -239,6 +251,7 @@ export async function generateWeeklyDigest(
       '',
       ...(searchTypeNotice ? [searchTypeNotice, ''] : []),
       ...(pageScopeNotice ? [pageScopeNotice, ''] : []),
+      ...(deviceScopeNotice ? [deviceScopeNotice, ''] : []),
       '## Data availability',
       `Google Search Console returned no aggregate Search Analytics row for ${missingPeriods.join(' and ')}.`,
       'An empty API response does not establish a measured zero for clicks or impressions. It may reflect no search activity or data that has not yet been processed.',
@@ -272,6 +285,7 @@ export async function generateWeeklyDigest(
     siteUrl,
     searchTypeNotice,
     pageScopeNotice,
+    deviceScopeNotice,
     dates,
     currentTotals,
     prevTotals,
@@ -514,6 +528,7 @@ function renderMarkdown(data: {
   siteUrl: string;
   searchTypeNotice?: string;
   pageScopeNotice?: string;
+  deviceScopeNotice?: string;
   dates: DateRanges;
   currentTotals: SiteTotals;
   prevTotals: SiteTotals;
@@ -521,7 +536,7 @@ function renderMarkdown(data: {
   currentPages: PageRow[];
   action: { key: ActionKey; item: ActionItem };
 }): string {
-  const { siteUrl, searchTypeNotice, pageScopeNotice, dates, currentTotals, prevTotals, movers, currentPages, action } = data;
+  const { siteUrl, searchTypeNotice, pageScopeNotice, deviceScopeNotice, dates, currentTotals, prevTotals, movers, currentPages, action } = data;
   const siteName = siteDisplayName(siteUrl);
   const lines: string[] = [];
 
@@ -537,6 +552,7 @@ function renderMarkdown(data: {
   lines.push('');
   if (searchTypeNotice) lines.push(searchTypeNotice, '');
   if (pageScopeNotice) lines.push(pageScopeNotice, '');
+  if (deviceScopeNotice) lines.push(deviceScopeNotice, '');
   lines.push('## Quick numbers');
   lines.push('');
   lines.push(
