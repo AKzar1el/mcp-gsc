@@ -20,7 +20,7 @@ export const CANNIBALIZATION_QUERY_CONTAINS_SCHEMA = z
   .min(1)
   .max(120)
   .optional()
-  .describe('Optional case-insensitive query substring used to focus the returned candidates. Filtering happens after full query/page aggregation, so other competing pages remain visible.');
+  .describe('Optional case-insensitive query substring filtered by Google before source pagination. Query/page aggregation still includes all returned competing pages for matching queries.');
 
 export const CANNIBALIZATION_PAGE_CONTAINS_SCHEMA = z
   .string()

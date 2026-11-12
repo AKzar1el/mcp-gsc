@@ -582,6 +582,7 @@ const QUERY_PAGES_OUTPUT_SCHEMA = {
 
 const CANNIBALIZATION_OUTPUT_SCHEMA = {
   page_contains: z.string().nullable().describe('Page URL substring passed to Google for the Search Analytics page filter, or null for no page filter.'),
+  query_contains: z.string().nullable().describe('Query substring passed to Google for the Search Analytics query filter, or null for no query filter.'),
   scope_note: z.string(),
   candidates: z.array(
     z.object({
@@ -2052,7 +2053,7 @@ class GscMcpRuntime {
       'insights.cannibalization',
       {
         title: 'Detect Keyword Cannibalization',
-        description: 'Analyze query/page Search Analytics to find queries split across multiple pages. Optional page_contains filters matching page URLs at Google before pagination and aggregation (e.g. /de/), so counts and impression shares refer only to that page scope, not property-wide Search Console totals. Optional query_contains focuses on a case-insensitive query substring after aggregation without dropping any remaining competing pages. Candidates are ranked deterministically by observed query/page impression sum; page lists, limit/start_row and result_page are bounded. Query/page rows can omit data and their summed impressions can exceed true query-level aggregates. Multiple ranking URLs can reflect legitimate locale or intent differences, not necessarily harmful cannibalization.',
+        description: 'Analyze query/page Search Analytics to find queries split across multiple pages. Optional page_contains and query_contains filter matching URL sections and query topics at Google before pagination and aggregation, and can be combined in one AND group. Query filtering retains all returned competing pages for matching queries; page filtering restricts observed page shares to that URL scope, not property-wide totals. Candidates are ranked by observed query/page impressions and bounded with limit/start_row. Google may omit rows; sums can exceed true query-level aggregates. Multiple ranking URLs can reflect legitimate locale or intent differences, not harmful cannibalization.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
@@ -2084,14 +2085,18 @@ class GscMcpRuntime {
         const rateLimitError = await this.rateLimitError(googleId, 'insights.cannibalization');
         if (rateLimitError) return rateLimitError;
         const accessToken = await this.getAccessToken(googleId);
+        const sourceFilters = [
+          ...(page_contains ? [{ dimension: 'page' as const, operator: 'contains' as const, expression: page_contains }] : []),
+          ...(query_contains ? [{ dimension: 'query' as const, operator: 'contains' as const, expression: query_contains }] : []),
+        ];
         const source = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: start_date,
           endDate: end_date,
           dimensions: ['query', 'page'],
-          ...(page_contains ? {
+          ...(sourceFilters.length ? {
             dimensionFilterGroups: [{
               groupType: 'and' as const,
-              filters: [{ dimension: 'page', operator: 'contains', expression: page_contains }],
+              filters: sourceFilters,
             }],
           } : {}),
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
@@ -2123,8 +2128,9 @@ class GscMcpRuntime {
         );
         const payload = {
           page_contains: page_contains ?? null,
-          scope_note: page_contains
-            ? 'Candidates and observed impression shares are restricted to Google-filtered page URLs, not property-wide totals; missing Search Analytics rows are not zero.'
+          query_contains: query_contains ?? null,
+          scope_note: page_contains || query_contains
+            ? 'Candidates and observed impression shares are restricted to Google-filtered query/page rows, not property-wide totals; page_contains restricts which competing URLs are included. Missing Search Analytics rows are not zero.'
             : 'Candidates and observed impression shares use returned query/page rows, not true query-level property totals; missing rows are not zero.',
           candidates: bounded.items,
           pagination: paginationMetadata(source),
