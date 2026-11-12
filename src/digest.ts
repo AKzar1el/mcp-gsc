@@ -97,6 +97,7 @@ export async function generateWeeklyDigest(
   searchType: 'web' | 'image' | 'video' | 'news' = 'web',
   device?: 'desktop' | 'mobile' | 'tablet',
   queryContains?: string,
+  country?: string,
 ): Promise<string> {
   const dates = computeDateRanges(endDate);
   const isPreliminary = weeklyDigestAnalyticsRequestCount(endDate, today) === 3;
@@ -112,6 +113,9 @@ export async function generateWeeklyDigest(
   if (queryContains) {
     filters.push({ dimension: 'query', operator: 'contains', expression: queryContains });
   }
+  if (country) {
+    filters.push({ dimension: 'country', operator: 'equals', expression: country.toUpperCase() });
+  }
   const dimensionFilterGroups: DimensionFilterGroup[] | undefined = filters.length > 0
     ? [{ groupType: 'and', filters }]
     : undefined;
@@ -123,6 +127,9 @@ export async function generateWeeklyDigest(
     : undefined;
   const queryScopeNotice = queryContains
     ? `> **Query topic filter:** ${escapeMarkdownInline(queryContains)} (case-insensitive). All figures cover only matching search queries, not property-wide totals; anonymized queries may be omitted by Google.`
+    : undefined;
+  const countryScopeNotice = country
+    ? `> **Country filter:** ${country.toUpperCase()} (ISO 3166-1 alpha-3). Metrics include only searches attributed to this country, not property-wide traffic; a page language or URL path does not determine searcher location.`
     : undefined;
   const searchTypeNotice = searchType === 'web'
     ? undefined
@@ -200,6 +207,7 @@ export async function generateWeeklyDigest(
       ...(pageScopeNotice ? [pageScopeNotice, ''] : []),
       ...(deviceScopeNotice ? [deviceScopeNotice, ''] : []),
       ...(queryScopeNotice ? [queryScopeNotice, ''] : []),
+      ...(countryScopeNotice ? [countryScopeNotice, ''] : []),
       '> **Preliminary Search Console data:** Explicitly requested recent dates may include incomplete metrics. Google may revise these values as reporting finishes.',
       '',
     ];
@@ -261,6 +269,7 @@ export async function generateWeeklyDigest(
       ...(pageScopeNotice ? [pageScopeNotice, ''] : []),
       ...(deviceScopeNotice ? [deviceScopeNotice, ''] : []),
       ...(queryScopeNotice ? [queryScopeNotice, ''] : []),
+      ...(countryScopeNotice ? [countryScopeNotice, ''] : []),
       '## Data availability',
       `Google Search Console returned no aggregate Search Analytics row for ${missingPeriods.join(' and ')}.`,
       'An empty API response does not establish a measured zero for clicks or impressions. It may reflect no search activity or data that has not yet been processed.',
@@ -296,6 +305,7 @@ export async function generateWeeklyDigest(
     pageScopeNotice,
     deviceScopeNotice,
     queryScopeNotice,
+    countryScopeNotice,
     dates,
     currentTotals,
     prevTotals,
@@ -540,6 +550,7 @@ function renderMarkdown(data: {
   pageScopeNotice?: string;
   deviceScopeNotice?: string;
   queryScopeNotice?: string;
+  countryScopeNotice?: string;
   dates: DateRanges;
   currentTotals: SiteTotals;
   prevTotals: SiteTotals;
@@ -547,7 +558,7 @@ function renderMarkdown(data: {
   currentPages: PageRow[];
   action: { key: ActionKey; item: ActionItem };
 }): string {
-  const { siteUrl, searchTypeNotice, pageScopeNotice, deviceScopeNotice, queryScopeNotice, dates, currentTotals, prevTotals, movers, currentPages, action } = data;
+  const { siteUrl, searchTypeNotice, pageScopeNotice, deviceScopeNotice, queryScopeNotice, countryScopeNotice, dates, currentTotals, prevTotals, movers, currentPages, action } = data;
   const siteName = siteDisplayName(siteUrl);
   const lines: string[] = [];
 
@@ -565,6 +576,7 @@ function renderMarkdown(data: {
   if (pageScopeNotice) lines.push(pageScopeNotice, '');
   if (deviceScopeNotice) lines.push(deviceScopeNotice, '');
   if (queryScopeNotice) lines.push(queryScopeNotice, '');
+  if (countryScopeNotice) lines.push(countryScopeNotice, '');
   lines.push('## Quick numbers');
   lines.push('');
   lines.push(

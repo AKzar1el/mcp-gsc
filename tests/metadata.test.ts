@@ -1054,6 +1054,19 @@ test('agency report follow-ups preserve weekly digest device and section scope',
   assert.match(guide, /never compare device-scoped totals with all-device totals/i);
 });
 
+test('weekly digest country scope is discoverable and documented as ISO alpha-3', () => {
+  const catalog = indexSource.split("name: 'reports.weekly_digest'")[1]?.split('\n  },')[0] ?? '';
+  const registration = indexSource.match(/this\.server\.registerTool\(\s*'reports\.weekly_digest'([\s\S]*?)outputSchema:/)?.[1] ?? '';
+  const guide = readFileSync(resolve(projectRoot, 'docs/agency-weekly-reporting.md'), 'utf8');
+  const digestReadmeRow = readmeSource.split('**`reports.weekly_digest`**')[1]?.split('\n')[0] ?? '';
+  assert.match(catalog, /country/);
+  assert.match(registration, /country:\s*z\.string/);
+  assert.match(indexSource, /device,\s*query_contains,\s*country,\s*\);\s*return toolResponse/);
+  assert.match(digestReadmeRow, /country/);
+  assert.match(guide, /ISO 3166-1 alpha-3/);
+  assert.match(guide, /country filter/i);
+});
+
 test('capabilities catalog advertises supported insight filters and weekly report segments', () => {
   const start = indexSource.indexOf('const TOOL_CATALOG = [');
   const end = indexSource.indexOf('] as const;', start);
