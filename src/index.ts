@@ -2646,9 +2646,16 @@ class GscMcpRuntime {
 
         const comparison = processPerformanceComparison(sourceA.rows, sourceB.rows);
         const bounded = windowKnownResults(comparison, start_row, limit);
+        const comparisonScopeNote = [
+          `dimension=${dimension ?? 'query'}`,
+          `search_type=${search_type ?? 'web'}`,
+          `period_a=${start_date_a}..${end_date_a}`,
+          `period_b=${start_date_b}..${end_date_b}`,
+          `dimension_filter_groups=${dimension_filter_groups?.length ?? 0}`,
+        ].join('; ');
         const payload = {
           comparison_scope: 'common_returned_rows_only' as const,
-          comparison_note: COMMON_RETURNED_ROWS_COMPARISON_NOTE,
+          comparison_note: `${COMMON_RETURNED_ROWS_COMPARISON_NOTE} Scope: ${comparisonScopeNote}. Filter groups, if present, are applied equally to both periods.`,
           data_state,
           preliminary_data_possible: data_state !== 'final',
           comparisons: bounded.items,
