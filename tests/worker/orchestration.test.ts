@@ -2275,6 +2275,10 @@ describe('Worker orchestration', () => {
                 end_date: '2026-09-18',
                 dimensions: [],
                 row_limit: 1,
+                dimension_filter_groups: [{
+                  groupType: 'and',
+                  filters: [{ dimension: 'query', operator: 'contains', expression: 'private-topic-fixture' }],
+                }],
               },
             },
           }),
@@ -2294,6 +2298,11 @@ describe('Worker orchestration', () => {
       expect(serialized).toContain('121404');
       expect(serialized).toContain('\"dimensions\":[]');
       expect(serialized).toContain('\"search_type\":\"web\"');
+      expect(serialized).toContain('\"site_url\":\"sc-domain:example.com\"');
+      expect(serialized).toContain('\"start_date\":\"2026-08-22\"');
+      expect(serialized).toContain('\"end_date\":\"2026-09-18\"');
+      expect(serialized).toContain('\"filter_group_count\":1');
+      expect(serialized).not.toContain('private-topic-fixture');
       expect(serialized).toContain('"provider_exhaustiveness_guaranteed":false');
       expect(serialized).toContain('Google Search Analytics does not guarantee all data rows');
       expect(serialized).toContain('do not prove provider-level exhaustiveness');
