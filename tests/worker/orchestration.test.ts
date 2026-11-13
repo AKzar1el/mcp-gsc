@@ -3816,6 +3816,7 @@ describe('Worker orchestration', () => {
         dimension_filter_groups: filters,
       })) as {
         structuredContent: {
+          site_url: string;
           data_state: string;
           preliminary_data_possible: boolean;
           comparison_note: string;
@@ -3847,10 +3848,13 @@ describe('Worker orchestration', () => {
         '2026-08-25',
       ]);
       expect(result.structuredContent).toMatchObject({
+        site_url: 'sc-domain:example.com',
         data_state: 'final',
         preliminary_data_possible: false,
       });
       const scopeNote = result.structuredContent.comparison_note;
+      expect(scopeNote).toContain('site_url=sc-domain:example.com');
+      expect(scopeNote).toContain('data_state=final');
       expect(scopeNote).toContain('dimension=query');
       expect(scopeNote).toContain('search_type=image');
       expect(scopeNote).toContain('period_a=2026-09-01..2026-09-07');
