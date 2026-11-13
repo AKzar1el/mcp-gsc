@@ -1135,6 +1135,13 @@ test('content decay device scope is discoverable and consistent between comparis
   assert.match(readmeSource, /For `insights\.content_decay`, optional `device` selects/);
 });
 
+test('content decay advertises an optional finalized historical comparison end date', () => {
+  const registration = indexSource.match(/this\.server\.registerTool\(\s*'insights\.content_decay'([\s\S]*?)outputSchema:/)?.[1] ?? '';
+  assert.match(registration, /end_date:\s*SEARCH_CONSOLE_DATE_SCHEMA/);
+  assert.match(registration, /historical/i);
+  assert.match(readmeSource, /For `insights\.content_decay`, optional `end_date`/);
+});
+
 test('cannibalization country scope is discoverable and described as searcher geography', () => {
   const registration = indexSource.match(/this\.server\.registerTool\(\s*'insights\.cannibalization'([\s\S]*?)outputSchema:/)?.[1] ?? '';
   assert.match(registration, /country:\s*CANNIBALIZATION_COUNTRY_SCHEMA/);
