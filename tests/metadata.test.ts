@@ -1120,6 +1120,17 @@ test('exact page and query drilldowns validate a searcher country rather than in
   assert.match(indexSource, /searcher country[^']*not the page language/i);
 });
 
+test('exact page/query drilldowns offer opt-in preliminary data without changing finalized defaults', () => {
+  for (const toolName of ['insights.page_queries', 'insights.query_pages']) {
+    const catalog = indexSource.split(`name: '${toolName}'`)[1]?.split('\n  },')[0] ?? '';
+    const registration = indexSource.match(new RegExp(`this\\.server\\.registerTool\\(\\s*'${toolName.replaceAll('.', '\\.')}'([\\s\\S]*?)outputSchema:`))?.[1] ?? '';
+    assert.match(catalog, /data_state=all/);
+    assert.match(registration, /data_state:\s*DIRECT_INSIGHT_DATA_STATE_SCHEMA/);
+  }
+  assert.match(readmeSource, /For `insights\.page_queries` and `insights\.query_pages`, optional `data_state: "all"`/);
+  assert.match(indexSource, /const DIRECT_INSIGHT_DATA_STATE_SCHEMA[\s\S]*?finalized-only default/);
+});
+
 test('direct page and query drilldowns advertise optional device scope', () => {
   assert.equal((indexSource.match(/device:\s*DIRECT_INSIGHT_DEVICE_SCHEMA/g) ?? []).length, 2);
   assert.match(indexSource, /const DIRECT_INSIGHT_DEVICE_SCHEMA[\s\S]*?desktop[\s\S]*?mobile[\s\S]*?tablet/);
