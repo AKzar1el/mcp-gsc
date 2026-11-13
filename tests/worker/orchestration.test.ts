@@ -3179,17 +3179,23 @@ describe('Worker orchestration', () => {
         min_impressions: 100, min_position: 8, max_position: 20, limit: 20, start_row: 0,
       };
       const preliminary = (await registered['insights.quick_wins'].handler({ ...args, data_state: 'all' })) as {
-        structuredContent: { data_state: string; preliminary_data_possible: boolean; quick_wins: unknown[]; note: string };
+        structuredContent: { site_url: string; start_date: string; end_date: string; data_state: string; preliminary_data_possible: boolean; quick_wins: unknown[]; note: string };
       };
       expect(requests[0]?.dataState).toBe('all');
+      expect(preliminary.structuredContent).toMatchObject({
+        site_url: args.site_url, start_date: args.start_date, end_date: args.end_date,
+      });
       expect(preliminary.structuredContent.data_state).toBe('all');
       expect(preliminary.structuredContent.preliminary_data_possible).toBe(true);
       expect(preliminary.structuredContent.note).toMatch(/preliminary/i);
       expect(preliminary.structuredContent.quick_wins).toHaveLength(1);
       const finalized = (await registered['insights.quick_wins'].handler(args)) as {
-        structuredContent: { data_state: string; preliminary_data_possible: boolean };
+        structuredContent: { site_url: string; start_date: string; end_date: string; data_state: string; preliminary_data_possible: boolean };
       };
       expect(requests[1]?.dataState).toBeUndefined();
+      expect(finalized.structuredContent).toMatchObject({
+        site_url: args.site_url, start_date: args.start_date, end_date: args.end_date,
+      });
       expect(finalized.structuredContent.data_state).toBe('final');
       expect(finalized.structuredContent.preliminary_data_possible).toBe(false);
       expect(requests).toHaveLength(2);
@@ -3222,16 +3228,22 @@ describe('Worker orchestration', () => {
         min_impressions: 1, min_page_percentage: 1, limit: 20, start_row: 0,
       };
       const preliminary = (await registered['insights.cannibalization'].handler({ ...args, data_state: 'all' })) as {
-        structuredContent: { data_state: string; preliminary_data_possible: boolean; scope_note: string; candidates: unknown[] };
+        structuredContent: { site_url: string; start_date: string; end_date: string; data_state: string; preliminary_data_possible: boolean; scope_note: string; candidates: unknown[] };
       };
       expect(requests[0]).toMatchObject({ dataState: 'all', dimensions: ['query', 'page'] });
+      expect(preliminary.structuredContent).toMatchObject({
+        site_url: args.site_url, start_date: args.start_date, end_date: args.end_date,
+      });
       expect(preliminary.structuredContent).toMatchObject({ data_state: 'all', preliminary_data_possible: true });
       expect(preliminary.structuredContent.scope_note).toMatch(/preliminary.*change/i);
       expect(preliminary.structuredContent.candidates).toHaveLength(1);
       const finalized = (await registered['insights.cannibalization'].handler(args)) as {
-        structuredContent: { data_state: string; preliminary_data_possible: boolean };
+        structuredContent: { site_url: string; start_date: string; end_date: string; data_state: string; preliminary_data_possible: boolean };
       };
       expect(requests[1]?.dataState).toBeUndefined();
+      expect(finalized.structuredContent).toMatchObject({
+        site_url: args.site_url, start_date: args.start_date, end_date: args.end_date,
+      });
       expect(finalized.structuredContent).toMatchObject({ data_state: 'final', preliminary_data_possible: false });
       expect(requests).toHaveLength(2);
     } finally {
