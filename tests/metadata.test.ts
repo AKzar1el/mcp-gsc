@@ -1107,7 +1107,7 @@ test('quick wins advertises Web/Image/Video/News search surfaces without claimin
   assert.match(schema, /search_type:\s*z\.enum\(\['web', 'image', 'video', 'news'\]\)\.default\('web'\)/);
   const catalog = indexSource.split("name: 'insights.quick_wins'")[1]?.split('\n  },')[0] ?? '';
   assert.match(catalog, /search_type/);
-  assert.match(indexSource, /const QUICK_WIN_OUTPUT_SCHEMA = \{\s*search_type:/);
+  assert.match(indexSource, /const QUICK_WIN_OUTPUT_SCHEMA = \{[\s\S]*?search_type:/);
   assert.match(readmeSource, /For `insights\.quick_wins`, optional `search_type` selects/);
 });
 
@@ -1192,7 +1192,7 @@ test('cannibalization exposes Web/Image/Video/News-tab surfaces and labels scope
   assert.match(schema, /CANNIBALIZATION_SEARCH_TYPE_SCHEMA[\s\S]*?web[\s\S]*?image[\s\S]*?video[\s\S]*?news/);
   const catalog = indexSource.split("name: 'insights.cannibalization'")[1]?.split('\n  },')[0] ?? '';
   assert.match(catalog, /search_type/);
-  assert.match(indexSource, /const CANNIBALIZATION_OUTPUT_SCHEMA = \{\s*search_type:/);
+  assert.match(indexSource, /const CANNIBALIZATION_OUTPUT_SCHEMA = \{[\s\S]*?search_type:/);
   assert.match(readmeSource, /For `insights\.cannibalization`, optional `search_type` selects/);
 });
 
@@ -1203,6 +1203,16 @@ test('cannibalization preliminary data is opt-in and disclosed as provisional', 
   assert.match(schema, /CANNIBALIZATION_DATA_STATE_SCHEMA[\s\S]*?all[\s\S]*?final/);
   assert.match(indexSource, /const CANNIBALIZATION_OUTPUT_SCHEMA = \{[\s\S]*?preliminary_data_possible:/);
   assert.match(readmeSource, /For `insights\.cannibalization`, optional `data_state: "all"`/);
+});
+
+test('saved quick-win and cannibalization insights disclose their exact property and inclusive dates', () => {
+  for (const name of ['QUICK_WIN_OUTPUT_SCHEMA', 'CANNIBALIZATION_OUTPUT_SCHEMA']) {
+    const schema = indexSource.match(new RegExp(`const ${name} = \\{([\\s\\S]*?)search_type:`))?.[1] ?? '';
+    for (const field of ['site_url', 'start_date', 'end_date']) {
+      assert.match(schema, new RegExp(`\\b${field}:`), `${name} must expose ${field}`);
+    }
+  }
+  assert.match(readmeSource, /insights\.quick_wins.*insights\.cannibalization.*site_url.*start_date.*end_date/);
 });
 
 test('direct Search Analytics tools bound start_row before quota reservation', () => {

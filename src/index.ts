@@ -551,6 +551,9 @@ const RESULT_START_ROW_SCHEMA = z
   .describe('Zero-based offset into the deterministically ranked result list.');
 
 const QUICK_WIN_OUTPUT_SCHEMA = {
+  site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe('Exact Search Console property used for this opportunity report.'),
+  start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive first date of the Search Analytics opportunity window.')),
+  end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive last date of the Search Analytics opportunity window.')),
   search_type: z.enum(['web', 'image', 'video', 'news']).describe('The selected Search Console search surface; web by default. Not a cross-surface total.'),
   data_state: z.enum(['all', 'final']).describe('Effective Search Analytics state. Omitted input uses finalized-only data.'),
   preliminary_data_possible: z.boolean().describe('True when Google may include fresh preliminary metrics that can change.'),
@@ -619,6 +622,9 @@ const QUERY_PAGES_OUTPUT_SCHEMA = {
 };
 
 const CANNIBALIZATION_OUTPUT_SCHEMA = {
+  site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe('Exact Search Console property used for the observed query/page overlap report.'),
+  start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive first date of the observed query/page overlap window.')),
+  end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive last date of the observed query/page overlap window.')),
   search_type: z.enum(['web', 'image', 'video', 'news']).describe('Selected Google Search surface; totals/shares describe only observed query/page rows on this surface.'),
   data_state: z.enum(['all', 'final']).describe('Effective Search Analytics freshness: all may include preliminary rows, final is finalized-only.'),
   preliminary_data_possible: z.boolean().describe('True when preliminary query/page metrics and observed impression shares may still change.'),
@@ -2121,6 +2127,9 @@ class GscMcpRuntime {
         const quickWins = processQuickWins(source.rows, min_impressions, min_position, max_position);
         const bounded = windowKnownResults(quickWins, start_row, limit);
         const payload = {
+          site_url,
+          start_date,
+          end_date,
           search_type,
           data_state: data_state ?? 'final',
           preliminary_data_possible: data_state === 'all',
@@ -2227,6 +2236,9 @@ class GscMcpRuntime {
           limit,
         );
         const payload = {
+          site_url,
+          start_date,
+          end_date,
           search_type,
           data_state: data_state ?? 'final',
           preliminary_data_possible: data_state === 'all',
