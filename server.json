@@ -86,7 +86,7 @@
     },
     {
       "name": "indexing.list_pages",
-      "description": "List pages with Search Console impressions. This is performance data, not an index-coverage inventory; use URL Inspection for URL-level index status."
+      "description": "List pages with Search Console impressions, optionally scoped to a URL section with page_contains before pagination. This is performance data, not an index-coverage inventory; use URL Inspection for URL-level index status."
     },
     {
       "name": "analytics.compare",
