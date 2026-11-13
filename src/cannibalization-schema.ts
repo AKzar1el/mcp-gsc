@@ -41,3 +41,8 @@ export const CANNIBALIZATION_DEVICE_SCHEMA = z
   .enum(['desktop', 'mobile', 'tablet'])
   .optional()
   .describe('Optional searcher device: desktop, mobile, or tablet. Google applies it with page_contains, query_contains, and country before pagination; omitting it preserves all-device behavior.');
+
+export const CANNIBALIZATION_SEARCH_TYPE_SCHEMA = z
+  .enum(['web', 'image', 'video', 'news'])
+  .default('web')
+  .describe('Search surface for overlapping query/page URLs: Web (default), Image, Video, or the Search News tab. Discover and the separate Google News service are excluded because they do not expose query dimensions. Results from different surfaces must not be combined.');

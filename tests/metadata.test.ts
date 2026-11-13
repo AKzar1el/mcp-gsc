@@ -1166,6 +1166,17 @@ test('cannibalization device scope is validated and discoverable for mobile SEO 
   assert.match(readmeSource, /For `insights\.cannibalization`, optional `device` selects/);
 });
 
+test('cannibalization exposes Web/Image/Video/News-tab surfaces and labels scoped totals', () => {
+  const registration = indexSource.match(/this\.server\.registerTool\(\s*'insights\.cannibalization'([\s\S]*?)outputSchema:/)?.[1] ?? '';
+  assert.match(registration, /search_type:\s*CANNIBALIZATION_SEARCH_TYPE_SCHEMA/);
+  const schema = readFileSync(resolve(projectRoot, 'src/cannibalization-schema.ts'), 'utf8');
+  assert.match(schema, /CANNIBALIZATION_SEARCH_TYPE_SCHEMA[\s\S]*?web[\s\S]*?image[\s\S]*?video[\s\S]*?news/);
+  const catalog = indexSource.split("name: 'insights.cannibalization'")[1]?.split('\n  },')[0] ?? '';
+  assert.match(catalog, /search_type/);
+  assert.match(indexSource, /const CANNIBALIZATION_OUTPUT_SCHEMA = \{\s*search_type:/);
+  assert.match(readmeSource, /For `insights\.cannibalization`, optional `search_type` selects/);
+});
+
 test('direct Search Analytics tools bound start_row before quota reservation', () => {
   for (const name of ['analytics.query', 'insights.page_queries', 'insights.query_pages']) {
     const escapedName = name.replaceAll('.', '\\.');

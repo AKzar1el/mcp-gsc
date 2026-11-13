@@ -3406,6 +3406,64 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('keeps Image/Video/News-tab cannibalization on its selected search surface', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'cannibal-surface-user', email: 'cannibal-surface@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return response({ rows: [
+          { keys: ['visual seo', 'https://example.com/de/visual'], impressions: 230, clicks: 12, ctr: 0.052, position: 11 },
+          { keys: ['visual seo', 'https://example.com/de/gallery'], impressions: 130, clicks: 6, ctr: 0.046, position: 13 },
+        ] });
+      };
+      const args = {
+        site_url: 'sc-domain:example.com', start_date: '2026-07-01', end_date: '2026-07-31',
+        min_impressions: 1, min_page_percentage: 1, limit: 20, start_row: 0,
+      };
+      const image = (await registered['insights.cannibalization'].handler({
+        ...args, search_type: 'image', page_contains: '/de/', query_contains: 'visual', country: 'deu', device: 'mobile',
+      })) as { structuredContent: { search_type: string; scope_note: string; candidates: Array<{ page_count: number }> } };
+      expect(requests[0].type).toBe('image');
+      expect(requests[0].dimensions).toEqual(['query', 'page']);
+      expect(requests[0].dimensionFilterGroups).toEqual([{
+        groupType: 'and', filters: [
+          { dimension: 'page', operator: 'contains', expression: '/de/' },
+          { dimension: 'query', operator: 'contains', expression: 'visual' },
+          { dimension: 'country', operator: 'equals', expression: 'DEU' },
+          { dimension: 'device', operator: 'equals', expression: 'MOBILE' },
+        ],
+      }]);
+      expect(image.structuredContent.search_type).toBe('image');
+      expect(image.structuredContent.scope_note).toMatch(/Image.*not.*all-search|Image.*not property-wide/i);
+      expect(image.structuredContent.candidates[0].page_count).toBe(2);
+
+      for (const search_type of ['video', 'news']) {
+        const scoped = (await registered['insights.cannibalization'].handler({
+          ...args, search_type,
+        })) as { structuredContent: { search_type: string; candidates: Array<{ page_count: number }> } };
+        expect(requests[requests.length - 1].type).toBe(search_type);
+        expect(scoped.structuredContent.search_type).toBe(search_type);
+        expect(scoped.structuredContent.candidates[0].page_count).toBe(2);
+      }
+
+      const web = (await registered['insights.cannibalization'].handler(args)) as { structuredContent: { search_type: string } };
+      expect(requests[3].type).toBeUndefined();
+      expect(web.structuredContent.search_type).toBe('web');
+      expect(requests).toHaveLength(4);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('focuses content decay on one locale without treating other pages as missing data', async () => {
     const server = await createGscMcpServer(
       workerEnv,
