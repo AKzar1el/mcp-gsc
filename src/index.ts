@@ -737,6 +737,9 @@ const COMMON_RETURNED_ROWS_COMPARISON_NOTE =
   'Comparisons use only dimension keys returned in both period responses. A key missing from one Search Analytics response is not treated as zero because Google does not guarantee every data row.';
 
 const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
+  site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe(
+    'The exact Search Console property requested for both comparison periods.',
+  ),
   comparison_scope: z.literal('common_returned_rows_only'),
   comparison_note: z.string(),
   data_state: z.enum(['all', 'final']).describe(
@@ -2657,13 +2660,16 @@ class GscMcpRuntime {
         const comparison = processPerformanceComparison(sourceA.rows, sourceB.rows);
         const bounded = windowKnownResults(comparison, start_row, limit);
         const comparisonScopeNote = [
+          `site_url=${site_url}`,
           `dimension=${dimension ?? 'query'}`,
           `search_type=${search_type ?? 'web'}`,
+          `data_state=${data_state ?? 'final'}`,
           `period_a=${start_date_a}..${end_date_a}`,
           `period_b=${start_date_b}..${end_date_b}`,
           `dimension_filter_groups=${dimension_filter_groups?.length ?? 0}`,
         ].join('; ');
         const payload = {
+          site_url,
           comparison_scope: 'common_returned_rows_only' as const,
           comparison_note: `${COMMON_RETURNED_ROWS_COMPARISON_NOTE} Scope: ${comparisonScopeNote}. Filter groups, if present, are applied equally to both periods.`,
           data_state,
