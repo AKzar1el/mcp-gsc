@@ -2767,10 +2767,14 @@ describe('Worker orchestration', () => {
       })) as {
         structuredContent: {
           result_page: { has_more: boolean; next_start_row?: number };
+          comparison_note: string;
         };
       };
       expect(comparison.structuredContent.result_page.has_more).toBe(true);
       expect(comparison.structuredContent.result_page.next_start_row).toBeGreaterThan(0);
+      expect(comparison.structuredContent.comparison_note).toContain('dimension=page');
+      expect(comparison.structuredContent.comparison_note).toContain('search_type=web');
+      expect(comparison.structuredContent.comparison_note).toContain('dimension_filter_groups=0');
       expect(
         new TextEncoder().encode(JSON.stringify(comparison.structuredContent)).byteLength,
       ).toBeLessThan(55_000);
@@ -3798,13 +3802,14 @@ describe('Worker orchestration', () => {
         start_date_b: '2026-08-25',
         end_date_b: '2026-08-31',
         dimension: 'query',
-        search_type: 'web',
+        search_type: 'image',
         data_state: 'final',
         dimension_filter_groups: filters,
       })) as {
         structuredContent: {
           data_state: string;
           preliminary_data_possible: boolean;
+          comparison_note: string;
         };
       };
 
@@ -3814,8 +3819,8 @@ describe('Worker orchestration', () => {
         0,
       ]);
       expect(analyticsRequests.map((request) => request.type)).toEqual([
-        'web',
-        'web',
+        'image',
+        'image',
       ]);
       expect(analyticsRequests.map((request) => request.dataState)).toEqual([
         'final',
@@ -3836,6 +3841,13 @@ describe('Worker orchestration', () => {
         data_state: 'final',
         preliminary_data_possible: false,
       });
+      const scopeNote = result.structuredContent.comparison_note;
+      expect(scopeNote).toContain('dimension=query');
+      expect(scopeNote).toContain('search_type=image');
+      expect(scopeNote).toContain('period_a=2026-09-01..2026-09-07');
+      expect(scopeNote).toContain('period_b=2026-08-25..2026-08-31');
+      expect(scopeNote).toContain('dimension_filter_groups=1');
+      expect(scopeNote).not.toContain('example|brand');
     } finally {
       globalThis.fetch = originalFetch;
     }
