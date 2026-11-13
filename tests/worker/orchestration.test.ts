@@ -3198,6 +3198,47 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('labels preliminary cannibalization evidence while preserving finalized default requests', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'cannibal-fresh-user', email: 'cannibal-fresh@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ dataState?: string; dimensions: string[] }> = [];
+    try {
+      globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push(JSON.parse(String(init?.body)) as { dataState?: string; dimensions: string[] });
+        return response({ rows: [
+          { keys: ['pricing', 'https://example.com/pricing'], impressions: 250, clicks: 15, ctr: 0.06, position: 11 },
+          { keys: ['pricing', 'https://example.com/plans'], impressions: 150, clicks: 10, ctr: 0.067, position: 12 },
+        ] });
+      };
+      const args = {
+        site_url: 'sc-domain:example.com', start_date: '2026-07-01', end_date: '2026-07-31',
+        min_impressions: 1, min_page_percentage: 1, limit: 20, start_row: 0,
+      };
+      const preliminary = (await registered['insights.cannibalization'].handler({ ...args, data_state: 'all' })) as {
+        structuredContent: { data_state: string; preliminary_data_possible: boolean; scope_note: string; candidates: unknown[] };
+      };
+      expect(requests[0]).toMatchObject({ dataState: 'all', dimensions: ['query', 'page'] });
+      expect(preliminary.structuredContent).toMatchObject({ data_state: 'all', preliminary_data_possible: true });
+      expect(preliminary.structuredContent.scope_note).toMatch(/preliminary.*change/i);
+      expect(preliminary.structuredContent.candidates).toHaveLength(1);
+      const finalized = (await registered['insights.cannibalization'].handler(args)) as {
+        structuredContent: { data_state: string; preliminary_data_possible: boolean };
+      };
+      expect(requests[1]?.dataState).toBeUndefined();
+      expect(finalized.structuredContent).toMatchObject({ data_state: 'final', preliminary_data_possible: false });
+      expect(requests).toHaveLength(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('scopes cannibalization to one locale before aggregating candidate page shares', async () => {
     const server = await createGscMcpServer(
       workerEnv,
