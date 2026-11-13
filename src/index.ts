@@ -543,6 +543,7 @@ const RESULT_START_ROW_SCHEMA = z
   .describe('Zero-based offset into the deterministically ranked result list.');
 
 const QUICK_WIN_OUTPUT_SCHEMA = {
+  search_type: z.enum(['web', 'image', 'video', 'news']).describe('The selected Search Console search surface; web by default. Not a cross-surface total.'),
   note: z.string(),
   page_contains: z.string().nullable().describe('Page URL substring filtered at Google, or null when unfiltered.'),
   query_contains: z.string().nullable().describe('Query topic substring filtered at Google, or null when unfiltered.'),
@@ -970,7 +971,7 @@ const TOOL_CATALOG = [
   {
     name: 'insights.quick_wins',
     description:
-      'Find observed query/page rows meeting an impression threshold and configurable average-position opportunity range (8-20 by default), optionally scoped at Google by page_contains URL section, query_contains topic, country (ISO alpha-3 searcher country) and device (desktop/mobile/tablet) before pagination. Average position is not a literal current rank, CTR is context rather than an eligibility filter, and scoped rows are not property-wide totals.',
+      'Find observed query/page rows meeting an impression threshold and configurable average-position opportunity range (8-20 by default). Optional search_type selects Web (default), Image, Video, or News-tab opportunities, and page_contains, query_contains, country (ISO alpha-3 searcher country) and device (desktop/mobile/tablet) filter at Google before pagination. Average position is not a literal current rank; CTR is context, not an eligibility filter; selected surfaces and scoped rows are not property-wide totals.',
   },
   {
     name: 'insights.cannibalization',
@@ -2046,12 +2047,12 @@ class GscMcpRuntime {
       'insights.quick_wins',
       {
         title: 'Identify SEO Quick Wins',
-        description: 'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Optional page_contains, query_contains, country (searcher ISO alpha-3, not page language) and device (desktop/mobile/tablet) filter URL sections, query topics, searcher geography and device together at Google before source pagination. Filtered results are not property-wide. Average position is an aggregate Search Console metric, not a literal current rank; CTR is returned for context and is not an eligibility filter. Results are ordered by impressions and bounded with limit/start_row and explicit result_page metadata. Source pagination flags the local 100,000-row ceiling.',
+        description: 'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Optional search_type selects Web (default), Image, Video or News-tab performance; Discover/Google News lack average position and are excluded. Optional page_contains, query_contains, country (searcher ISO alpha-3, not page language) and device (desktop/mobile/tablet) filter URL sections, query topics, searcher geography and device together at Google before source pagination. Selected search surfaces and filtered results are not property-wide or cross-surface totals. Average position is an aggregate Search Console metric, not a literal current rank; CTR is returned for context and is not an eligibility filter. Results are ordered by impressions and bounded with limit/start_row and explicit result_page metadata. Source pagination flags the local 100,000-row ceiling.',
         inputSchema: createQuickWinsInputSchema(),
         outputSchema: z.object(QUICK_WIN_OUTPUT_SCHEMA),
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, start_date, end_date, min_impressions, min_position, max_position, page_contains, query_contains, country, device, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+      async ({ site_url, start_date, end_date, search_type = 'web', min_impressions, min_position, max_position, page_contains, query_contains, country, device, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -2072,6 +2073,7 @@ class GscMcpRuntime {
           startDate: start_date,
           endDate: end_date,
           dimensions: ['query', 'page'],
+          ...(search_type !== 'web' ? { type: search_type } : {}),
           ...(sourceFilters.length ? {
             dimensionFilterGroups: [{
               groupType: 'and' as const,
@@ -2083,14 +2085,16 @@ class GscMcpRuntime {
         const quickWins = processQuickWins(source.rows, min_impressions, min_position, max_position);
         const bounded = windowKnownResults(quickWins, start_row, limit);
         const payload = {
-          note: 'Candidates are observed query/page rows selected by Search Console average position, not proof of a stable or current rank. CTR is reported for context and does not affect eligibility.',
+          search_type,
+          note: 'Candidates are observed query/page rows from the selected search surface, selected by Search Console average position; not proof of a stable or current rank or cross-surface opportunity. CTR is reported for context and does not affect eligibility.',
           page_contains: page_contains ?? null,
           query_contains: query_contains ?? null,
           country: country?.toUpperCase() ?? null,
           device: device ?? null,
-          scope_note: page_contains || query_contains || country || device
+          scope_note: (page_contains || query_contains || country || device
             ? 'Quick-win opportunities are scoped by Google-side URL section, query topic, searcher country and/or device filters; results are not property-wide. The searcher country does not identify page language. Missing Search Analytics rows do not mean zero traffic.'
-            : 'Quick-win opportunities derive from returned query/page rows, which are not guaranteed exhaustive; missing rows do not mean zero traffic.',
+            : 'Quick-win opportunities derive from returned query/page rows, which are not guaranteed exhaustive; missing rows do not mean zero traffic.')
+            + (search_type !== 'web' ? ' Only this selected search surface is represented, not combined Web or all-search traffic.' : ''),
           quick_wins: bounded.items,
           pagination: paginationMetadata(source),
           result_page: bounded.resultPage,
