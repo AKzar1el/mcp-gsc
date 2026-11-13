@@ -663,6 +663,7 @@ const CANNIBALIZATION_OUTPUT_SCHEMA = {
 };
 
 const CONTENT_DECAY_OUTPUT_SCHEMA = {
+  site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe('The exact Search Console property used for both historical comparison periods.'),
   search_type: z.enum(['web', 'image', 'video', 'news']),
   page_contains: z.string().nullable(),
   query_contains: z.string().nullable(),
@@ -2360,6 +2361,7 @@ class GscMcpRuntime {
         const bounded = windowKnownResults(decayResults, start_row, limit);
 
         const payload = {
+          site_url,
           search_type,
           page_contains: page_contains ?? null,
           query_contains: query_contains ?? null,

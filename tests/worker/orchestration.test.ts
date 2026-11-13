@@ -3662,6 +3662,7 @@ describe('Worker orchestration', () => {
         start_row: 0,
       })) as {
         structuredContent: {
+          site_url: string;
           search_type: string;
           page_contains: string | null;
           query_contains: string | null;
@@ -3675,6 +3676,7 @@ describe('Worker orchestration', () => {
       };
 
       expect(result.structuredContent.decay_results).toHaveLength(1);
+      expect(result.structuredContent.site_url).toBe('sc-domain:example.com');
       expect(result.structuredContent.search_type).toBe('image');
       expect(result.structuredContent.page_contains).toBe('/DE/');
       expect(result.structuredContent.query_contains).toBe('TECHNICAL SEO');

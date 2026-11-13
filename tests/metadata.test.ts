@@ -1170,6 +1170,11 @@ test('content decay advertises an optional finalized historical comparison end d
   assert.match(readmeSource, /For `insights\.content_decay`, optional `end_date`/);
 });
 
+test('content decay exposes the exact property for saved cross-period results', () => {
+  assert.match(indexSource, /const CONTENT_DECAY_OUTPUT_SCHEMA = \{\s*site_url:\s*SEARCH_CONSOLE_PROPERTY_SCHEMA/);
+  assert.match(readmeSource, /`insights\.content_decay` includes the exact requested `site_url`/);
+});
+
 test('cannibalization country scope is discoverable and described as searcher geography', () => {
   const registration = indexSource.match(/this\.server\.registerTool\(\s*'insights\.cannibalization'([\s\S]*?)outputSchema:/)?.[1] ?? '';
   assert.match(registration, /country:\s*CANNIBALIZATION_COUNTRY_SCHEMA/);
