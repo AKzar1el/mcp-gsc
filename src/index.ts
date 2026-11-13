@@ -62,6 +62,7 @@ import {
   CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
   CANNIBALIZATION_COUNTRY_SCHEMA,
   CANNIBALIZATION_DEVICE_SCHEMA,
+  CANNIBALIZATION_SEARCH_TYPE_SCHEMA,
   CANNIBALIZATION_PAGE_CONTAINS_SCHEMA,
   CANNIBALIZATION_QUERY_CONTAINS_SCHEMA,
 } from './cannibalization-schema';
@@ -602,6 +603,7 @@ const QUERY_PAGES_OUTPUT_SCHEMA = {
 };
 
 const CANNIBALIZATION_OUTPUT_SCHEMA = {
+  search_type: z.enum(['web', 'image', 'video', 'news']).describe('Selected Google Search surface; totals/shares describe only observed query/page rows on this surface.'),
   page_contains: z.string().nullable().describe('Page URL substring passed to Google for the Search Analytics page filter, or null for no page filter.'),
   query_contains: z.string().nullable().describe('Query substring passed to Google for the Search Analytics query filter, or null for no query filter.'),
   country: z.string().nullable().describe('ISO alpha-3 searcher country filtered at Google, or null when unfiltered. Not a page language.'),
@@ -976,7 +978,7 @@ const TOOL_CATALOG = [
   {
     name: 'insights.cannibalization',
     description:
-      'Analyze query/page Search Analytics for queries surfaced by multiple pages, optionally scoped at Google by query_contains topic, page_contains URL section, country (ISO alpha-3 searcher country, not page language) and device (desktop/mobile/tablet) before pagination. Candidate totals and impression shares concern observed rows in that device and other selected scopes, not true property-wide query totals.',
+      'Analyze query/page Search Analytics for queries surfaced by multiple pages on optional search_type Web (default), Image, Video or Search News tab, scoped at Google by query_contains topic, page_contains URL section, country (ISO alpha-3 searcher country, not page language) and device (desktop/mobile/tablet) before pagination. Candidate totals and impression shares concern observed rows on the selected search surface and filters, not true property-wide or all-search query totals.',
   },
   {
     name: 'insights.content_decay',
@@ -2107,9 +2109,10 @@ class GscMcpRuntime {
       'insights.cannibalization',
       {
         title: 'Detect Keyword Cannibalization',
-        description: 'Analyze query/page Search Analytics to find queries split across multiple pages. Optional page_contains, query_contains, country and device filter matching URL sections, query topics, ISO alpha-3 searcher geography and desktop/mobile/tablet searches at Google before pagination and aggregation, combined in one AND group. Query filtering retains returned competing pages for matching queries; page/country/device filtering restricts observed page shares to those scopes, not property-wide totals or page language. Candidates are ranked by observed impressions and bounded with limit/start_row. Google may omit rows; sums can exceed true query-level aggregates. Multiple URLs can reflect legitimate locale or intent differences, not harmful cannibalization.',
+        description: 'Analyze query/page Search Analytics to find queries split across multiple pages on Web (default), Image, Video or Search News-tab results via optional search_type. Discover and the separate Google News service are excluded because query data is unavailable. Optional page_contains, query_contains, country and device filter matching URL sections, query topics, ISO alpha-3 searcher geography and desktop/mobile/tablet searches at Google before pagination and aggregation, combined in one AND group. Query filtering retains returned competing pages for matching queries; page/country/device filtering restricts observed page shares to those scopes, not property-wide or all-search totals or page language. Candidates are ranked by observed impressions and bounded with limit/start_row. Google may omit rows; sums can exceed true query-level aggregates. Multiple URLs can reflect legitimate locale or intent differences, not harmful cannibalization.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
+          search_type: CANNIBALIZATION_SEARCH_TYPE_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
             searchConsoleDateDescription('Start date (inclusive) in YYYY-MM-DD format.'),
           ),
@@ -2130,7 +2133,7 @@ class GscMcpRuntime {
         outputSchema: CANNIBALIZATION_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, start_date, end_date, min_impressions, min_page_percentage, query_contains, page_contains, country, device, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+      async ({ site_url, search_type = 'web', start_date, end_date, min_impressions, min_page_percentage, query_contains, page_contains, country, device, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -2151,6 +2154,7 @@ class GscMcpRuntime {
           startDate: start_date,
           endDate: end_date,
           dimensions: ['query', 'page'],
+          ...(search_type !== 'web' ? { type: search_type } : {}),
           ...(sourceFilters.length ? {
             dimensionFilterGroups: [{
               groupType: 'and' as const,
@@ -2185,13 +2189,14 @@ class GscMcpRuntime {
           limit,
         );
         const payload = {
+          search_type,
           page_contains: page_contains ?? null,
           query_contains: query_contains ?? null,
           country: country?.toUpperCase() ?? null,
           device: device ?? null,
-          scope_note: page_contains || query_contains || country || device
+          scope_note: `Selected ${search_type === 'news' ? 'News-tab' : search_type === 'web' ? 'Web' : search_type === 'image' ? 'Image' : 'Video'} search surface only; not property-wide or all-search totals. ` + (page_contains || query_contains || country || device
             ? 'Candidates and observed impression shares are restricted to Google-filtered query/page rows by URL section, query topic, searcher country and/or device, not property-wide or all-device totals; searcher country is not page language. A page filter restricts which competing URLs are included. Missing Search Analytics rows are not zero.'
-            : 'Candidates and observed impression shares use returned query/page rows, not true query-level property totals; missing rows are not zero.',
+            : 'Candidates and observed impression shares use returned query/page rows, not true query-level property totals; missing rows are not zero.'),
           candidates: bounded.items,
           pagination: paginationMetadata(source),
           result_page: bounded.resultPage,
