@@ -1111,6 +1111,14 @@ test('quick wins advertises Web/Image/Video/News search surfaces without claimin
   assert.match(readmeSource, /For `insights\.quick_wins`, optional `search_type` selects/);
 });
 
+test('quick wins advertises preliminary-data opt-in and truthful response state', () => {
+  assert.match(quickWinsSource, /data_state:\s*z\.enum\(\['all', 'final'\]\)\.optional\(\)/);
+  const registration = indexSource.match(/this\.server\.registerTool\(\s*'insights\.quick_wins'([\s\S]*?)outputSchema:/)?.[1] ?? '';
+  assert.match(registration, /preliminary/);
+  assert.match(indexSource, /const QUICK_WIN_OUTPUT_SCHEMA = \{[\s\S]*?preliminary_data_possible:/);
+  assert.match(readmeSource, /For `insights\.quick_wins`, optional `data_state: "all"`/);
+});
+
 test('exact page and query drilldowns validate a searcher country rather than inferring page language', () => {
   for (const toolName of ['insights.page_queries', 'insights.query_pages']) {
     const registration = indexSource.match(new RegExp(`this\\.server\\.registerTool\\(\\s*'${toolName.replaceAll('.', '\\.')}'([\\s\\S]*?)outputSchema:`))?.[1] ?? '';

@@ -3158,6 +3158,46 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('offers explicitly preliminary quick wins without changing the finalized default', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'quick-wins-fresh-user', email: 'quick-wins-fresh@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ dataState?: string }> = [];
+    try {
+      globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push(JSON.parse(String(init?.body)) as { dataState?: string });
+        return response({ rows: [{ keys: ['seo guide', 'https://example.com/guide'], clicks: 4, impressions: 150, ctr: 4 / 150, position: 11 }] });
+      };
+      const args = {
+        site_url: 'sc-domain:example.com', start_date: '2026-07-01', end_date: '2026-07-31',
+        min_impressions: 100, min_position: 8, max_position: 20, limit: 20, start_row: 0,
+      };
+      const preliminary = (await registered['insights.quick_wins'].handler({ ...args, data_state: 'all' })) as {
+        structuredContent: { data_state: string; preliminary_data_possible: boolean; quick_wins: unknown[]; note: string };
+      };
+      expect(requests[0]?.dataState).toBe('all');
+      expect(preliminary.structuredContent.data_state).toBe('all');
+      expect(preliminary.structuredContent.preliminary_data_possible).toBe(true);
+      expect(preliminary.structuredContent.note).toMatch(/preliminary/i);
+      expect(preliminary.structuredContent.quick_wins).toHaveLength(1);
+      const finalized = (await registered['insights.quick_wins'].handler(args)) as {
+        structuredContent: { data_state: string; preliminary_data_possible: boolean };
+      };
+      expect(requests[1]?.dataState).toBeUndefined();
+      expect(finalized.structuredContent.data_state).toBe('final');
+      expect(finalized.structuredContent.preliminary_data_possible).toBe(false);
+      expect(requests).toHaveLength(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('scopes cannibalization to one locale before aggregating candidate page shares', async () => {
     const server = await createGscMcpServer(
       workerEnv,

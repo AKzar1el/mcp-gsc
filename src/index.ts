@@ -551,6 +551,8 @@ const RESULT_START_ROW_SCHEMA = z
 
 const QUICK_WIN_OUTPUT_SCHEMA = {
   search_type: z.enum(['web', 'image', 'video', 'news']).describe('The selected Search Console search surface; web by default. Not a cross-surface total.'),
+  data_state: z.enum(['all', 'final']).describe('Effective Search Analytics state. Omitted input uses finalized-only data.'),
+  preliminary_data_possible: z.boolean().describe('True when Google may include fresh preliminary metrics that can change.'),
   note: z.string(),
   page_contains: z.string().nullable().describe('Page URL substring filtered at Google, or null when unfiltered.'),
   query_contains: z.string().nullable().describe('Query topic substring filtered at Google, or null when unfiltered.'),
@@ -2077,12 +2079,12 @@ class GscMcpRuntime {
       'insights.quick_wins',
       {
         title: 'Identify SEO Quick Wins',
-        description: 'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Optional search_type selects Web (default), Image, Video or News-tab performance; Discover/Google News lack average position and are excluded. Optional page_contains, query_contains, country (searcher ISO alpha-3, not page language) and device (desktop/mobile/tablet) filter URL sections, query topics, searcher geography and device together at Google before source pagination. Selected search surfaces and filtered results are not property-wide or cross-surface totals. Average position is an aggregate Search Console metric, not a literal current rank; CTR is returned for context and is not an eligibility filter. Results are ordered by impressions and bounded with limit/start_row and explicit result_page metadata. Source pagination flags the local 100,000-row ceiling.',
+        description: 'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Optional data_state all includes recent preliminary figures that may change; omitted retains finalized-only default. Optional search_type selects Web (default), Image, Video or News-tab performance; Discover/Google News lack average position and are excluded. Optional page_contains, query_contains, country (searcher ISO alpha-3, not page language) and device (desktop/mobile/tablet) filter URL sections, query topics, searcher geography and device together at Google before source pagination. Selected search surfaces and filtered results are not property-wide or cross-surface totals. Average position is an aggregate Search Console metric, not a literal current rank; CTR is returned for context and is not an eligibility filter. Results are ordered by impressions and bounded with limit/start_row and explicit result_page metadata. Source pagination flags the local 100,000-row ceiling.',
         inputSchema: createQuickWinsInputSchema(),
         outputSchema: z.object(QUICK_WIN_OUTPUT_SCHEMA),
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, start_date, end_date, search_type = 'web', min_impressions, min_position, max_position, page_contains, query_contains, country, device, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+      async ({ site_url, start_date, end_date, search_type = 'web', data_state, min_impressions, min_position, max_position, page_contains, query_contains, country, device, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -2104,6 +2106,7 @@ class GscMcpRuntime {
           endDate: end_date,
           dimensions: ['query', 'page'],
           ...(search_type !== 'web' ? { type: search_type } : {}),
+          ...(data_state ? { dataState: data_state } : {}),
           ...(sourceFilters.length ? {
             dimensionFilterGroups: [{
               groupType: 'and' as const,
@@ -2116,7 +2119,9 @@ class GscMcpRuntime {
         const bounded = windowKnownResults(quickWins, start_row, limit);
         const payload = {
           search_type,
-          note: 'Candidates are observed query/page rows from the selected search surface, selected by Search Console average position; not proof of a stable or current rank or cross-surface opportunity. CTR is reported for context and does not affect eligibility.',
+          data_state: data_state ?? 'final',
+          preliminary_data_possible: data_state === 'all',
+          note: 'Candidates are observed query/page rows from the selected search surface, selected by Search Console average position; not proof of a stable or current rank or cross-surface opportunity. CTR is reported for context and does not affect eligibility.' + (data_state === 'all' ? ' Preliminary Search Console metrics may change as Google finalizes data.' : ''),
           page_contains: page_contains ?? null,
           query_contains: query_contains ?? null,
           country: country?.toUpperCase() ?? null,

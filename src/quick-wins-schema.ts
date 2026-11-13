@@ -35,6 +35,9 @@ export function createQuickWinsInputSchema() {
       search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe(
         'Google Search surface for opportunity rows: Web (default), Image, Video, or News tab. Thresholds and average position apply only within that surface; not Discover or Google News, which lack average position.',
       ),
+      data_state: z.enum(['all', 'final']).optional().describe(
+        "Omit for Google's finalized-only default; 'all' includes recent preliminary Search Analytics rows that may still change. 'final' requests finalized data only.",
+      ),
       ...QUICK_WINS_THRESHOLDS_SHAPE,
       page_contains: z.string().trim().min(1).max(240).optional().describe(
         'Optional case-insensitive page URL substring (for example /de/). Google filters matching pages before query/page pagination, so opportunities are limited to that URL subset, not property-wide results.',
