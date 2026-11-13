@@ -1102,6 +1102,15 @@ test('mobile quick wins preserve the weekly device scope through validated Googl
   assert.match(readmeSource, /For `insights\.quick_wins`, optional `device` selects/);
 });
 
+test('quick wins advertises Web/Image/Video/News search surfaces without claiming all-search totals', () => {
+  const schema = readFileSync(resolve(projectRoot, 'src/quick-wins-schema.ts'), 'utf8');
+  assert.match(schema, /search_type:\s*z\.enum\(\['web', 'image', 'video', 'news'\]\)\.default\('web'\)/);
+  const catalog = indexSource.split("name: 'insights.quick_wins'")[1]?.split('\n  },')[0] ?? '';
+  assert.match(catalog, /search_type/);
+  assert.match(indexSource, /const QUICK_WIN_OUTPUT_SCHEMA = \{\s*search_type:/);
+  assert.match(readmeSource, /For `insights\.quick_wins`, optional `search_type` selects/);
+});
+
 test('exact page and query drilldowns validate a searcher country rather than inferring page language', () => {
   for (const toolName of ['insights.page_queries', 'insights.query_pages']) {
     const registration = indexSource.match(new RegExp(`this\\.server\\.registerTool\\(\\s*'${toolName.replaceAll('.', '\\.')}'([\\s\\S]*?)outputSchema:`))?.[1] ?? '';

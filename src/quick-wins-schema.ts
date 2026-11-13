@@ -32,6 +32,9 @@ export function createQuickWinsInputSchema() {
           'End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.',
         ),
       ),
+      search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe(
+        'Google Search surface for opportunity rows: Web (default), Image, Video, or News tab. Thresholds and average position apply only within that surface; not Discover or Google News, which lack average position.',
+      ),
       ...QUICK_WINS_THRESHOLDS_SHAPE,
       page_contains: z.string().trim().min(1).max(240).optional().describe(
         'Optional case-insensitive page URL substring (for example /de/). Google filters matching pages before query/page pagination, so opportunities are limited to that URL subset, not property-wide results.',

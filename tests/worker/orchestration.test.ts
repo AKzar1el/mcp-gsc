@@ -3073,6 +3073,61 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('finds image/video/news quick wins on the selected Search surface while preserving Web default', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'quick-wins-surface-user', email: 'quick-wins-surface@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ type?: string; filters: Array<{ dimension: string; expression: string }> }> = [];
+    try {
+      globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as {
+          type?: string;
+          dimensionFilterGroups?: Array<{ filters: Array<{ dimension: string; expression: string }> }>;
+        };
+        requests.push({ type: body.type, filters: body.dimensionFilterGroups?.[0]?.filters ?? [] });
+        return response({ rows: [{
+          keys: [body.type === 'image' ? 'image seo' : 'search seo', 'https://example.com/de/guide'],
+          clicks: 10, impressions: 150, ctr: 10 / 150, position: 12,
+        }] });
+      };
+      const args = {
+        site_url: 'sc-domain:example.com', start_date: '2026-07-01', end_date: '2026-07-31',
+        min_impressions: 100, min_position: 8, max_position: 20, limit: 20, start_row: 0,
+      };
+      const image = (await registered['insights.quick_wins'].handler({
+        ...args, search_type: 'image', page_contains: '/de/', device: 'mobile',
+      })) as { structuredContent: { search_type: string; note: string; quick_wins: Array<{ query: string }> } };
+      expect(requests[0]).toEqual({ type: 'image', filters: [
+        { dimension: 'page', operator: 'contains', expression: '/de/' },
+        { dimension: 'device', operator: 'equals', expression: 'MOBILE' },
+      ] });
+      expect(image.structuredContent.search_type).toBe('image');
+      expect(image.structuredContent.quick_wins[0]?.query).toBe('image seo');
+      expect(image.structuredContent.note).toMatch(/selected search surface/i);
+      const video = (await registered['insights.quick_wins'].handler({ ...args, search_type: 'video' })) as {
+        structuredContent: { search_type: string };
+      };
+      const news = (await registered['insights.quick_wins'].handler({ ...args, search_type: 'news' })) as {
+        structuredContent: { search_type: string };
+      };
+      const web = (await registered['insights.quick_wins'].handler(args)) as {
+        structuredContent: { search_type: string };
+      };
+      expect(requests.slice(1).map((entry) => entry.type ?? 'web')).toEqual(['video', 'news', 'web']);
+      expect([video.structuredContent.search_type, news.structuredContent.search_type, web.structuredContent.search_type])
+        .toEqual(['video', 'news', 'web']);
+      expect(requests).toHaveLength(4);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('scopes cannibalization to one locale before aggregating candidate page shares', async () => {
     const server = await createGscMcpServer(
       workerEnv,
