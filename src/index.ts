@@ -391,6 +391,12 @@ const INSPECTION_BATCH_OUTPUT_SCHEMA = {
 };
 
 const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
+  site_url: z.string().describe('Exact Search Console property requested for these rows.'),
+  start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive requested start date.')),
+  end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive requested end date.')),
+  filter_group_count: z.number().int().nonnegative().describe(
+    'Number of requested Google-side filter groups. Filter expressions are intentionally not echoed.',
+  ),
   row_count: z.number().int().nonnegative(),
   start_row: z.number().int().nonnegative(),
   rows: z.array(z.object(SEARCH_ROW_OUTPUT_SCHEMA)),
@@ -1651,6 +1657,10 @@ class GscMcpRuntime {
           start_row + sourceRowLimit,
         );
         const payload: Record<string, unknown> = {
+          site_url,
+          start_date,
+          end_date,
+          filter_group_count: dimension_filter_groups?.length ?? 0,
           row_count: bounded.items.length,
           start_row,
           rows: bounded.items,
