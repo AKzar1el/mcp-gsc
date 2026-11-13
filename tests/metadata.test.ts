@@ -1196,6 +1196,15 @@ test('cannibalization exposes Web/Image/Video/News-tab surfaces and labels scope
   assert.match(readmeSource, /For `insights\.cannibalization`, optional `search_type` selects/);
 });
 
+test('cannibalization preliminary data is opt-in and disclosed as provisional', () => {
+  const registration = indexSource.match(/this\.server\.registerTool\(\s*'insights\.cannibalization'([\s\S]*?)outputSchema:/)?.[1] ?? '';
+  assert.match(registration, /data_state:\s*CANNIBALIZATION_DATA_STATE_SCHEMA/);
+  const schema = readFileSync(resolve(projectRoot, 'src/cannibalization-schema.ts'), 'utf8');
+  assert.match(schema, /CANNIBALIZATION_DATA_STATE_SCHEMA[\s\S]*?all[\s\S]*?final/);
+  assert.match(indexSource, /const CANNIBALIZATION_OUTPUT_SCHEMA = \{[\s\S]*?preliminary_data_possible:/);
+  assert.match(readmeSource, /For `insights\.cannibalization`, optional `data_state: "all"`/);
+});
+
 test('direct Search Analytics tools bound start_row before quota reservation', () => {
   for (const name of ['analytics.query', 'insights.page_queries', 'insights.query_pages']) {
     const escapedName = name.replaceAll('.', '\\.');

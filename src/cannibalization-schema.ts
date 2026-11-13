@@ -46,3 +46,8 @@ export const CANNIBALIZATION_SEARCH_TYPE_SCHEMA = z
   .enum(['web', 'image', 'video', 'news'])
   .default('web')
   .describe('Search surface for overlapping query/page URLs: Web (default), Image, Video, or the Search News tab. Discover and the separate Google News service are excluded because they do not expose query dimensions. Results from different surfaces must not be combined.');
+
+export const CANNIBALIZATION_DATA_STATE_SCHEMA = z
+  .enum(['all', 'final'])
+  .optional()
+  .describe('Optional Search Analytics freshness: all includes preliminary query/page rows that may change; final or omission returns finalized-only data. This does not change the request count.');
