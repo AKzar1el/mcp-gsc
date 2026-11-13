@@ -3484,6 +3484,58 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('anchors content decay to a historical finalized end date and rejects unavailable periods', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'historical-decay-user', email: 'historical-decay@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const today = getSearchConsoleCalendarDate();
+    const daysAgo = (days: number) => {
+      const date = new Date(`${today}T00:00:00Z`);
+      date.setUTCDate(date.getUTCDate() - days);
+      return date.toISOString().slice(0, 10);
+    };
+    const sourceRequests: Array<{ startDate: string; endDate: string }> = [];
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        expect(requestUrl(input)).toBe('https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query');
+        const body = JSON.parse(String(init?.body)) as { startDate: string; endDate: string };
+        sourceRequests.push({ startDate: body.startDate, endDate: body.endDate });
+        return response({ rows: [{
+          keys: ['https://example.com/de/guide'],
+          clicks: 12, impressions: 500, ctr: 0.024, position: 12,
+        }] });
+      };
+      const result = (await registered['insights.content_decay'].handler({
+        site_url: 'sc-domain:example.com', compare_days: 7, end_date: daysAgo(35),
+      })) as { structuredContent: {
+        comparison_periods: { recent: { start: string; end: string }; previous: { start: string; end: string } };
+      } };
+      expect(result.structuredContent.comparison_periods).toEqual({
+        recent: { start: daysAgo(41), end: daysAgo(35) },
+        previous: { start: daysAgo(48), end: daysAgo(42) },
+      });
+      expect(sourceRequests).toEqual([
+        { startDate: daysAgo(41), endDate: daysAgo(35) },
+        { startDate: daysAgo(48), endDate: daysAgo(42) },
+      ]);
+      await expect(registered['insights.content_decay'].handler({
+        site_url: 'sc-domain:example.com', compare_days: 7, end_date: today,
+      })).rejects.toThrow(/finalized/i);
+      await expect(registered['insights.content_decay'].handler({
+        site_url: 'sc-domain:example.com', compare_days: 7, end_date: '2020-01-01',
+      })).rejects.toThrow(/16.month/i);
+      expect(sourceRequests).toHaveLength(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('marks indexing.list_pages terminal after a short non-empty Search Analytics page', async () => {
     await saveUser(
       workerEnv,

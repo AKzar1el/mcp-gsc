@@ -2200,10 +2200,13 @@ class GscMcpRuntime {
       'insights.content_decay',
       {
         title: 'Detect Content Decay',
-        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Optional search_type selects Web (default), Image, Video or News-tab search consistently for both periods; Discover and Google News are excluded from this position-aware heuristic. Compare 1-240 days per period so both periods fit in Search Console\'s 16-month performance history with the three-day finalized-data lag. Optional page_contains, query_contains, country and device scope both Google Search Analytics requests to a URL section (such as /de/), search topic (such as technical seo), ISO alpha-3 searcher country (such as DEU, not page language) and searcher device (desktop/mobile/tablet) using AND before pagination; this changes the comparison population, not property-wide totals. No additional requests are made, and missing rows are never treated as zero. Only pages returned in both Search Analytics period responses are compared; Google does not guarantee every data row. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
+        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Optional end_date anchors a historical comparison to a selected finalized Pacific Search Console date (at least three days before today); omit for the latest finalized date. Compare 1-240 days per period within Search Console\'s rolling 16-month history. Optional search_type selects Web (default), Image, Video or News-tab search consistently for both periods; Discover and Google News are excluded from this position-aware heuristic. Optional page_contains, query_contains, country and device scope both Google Search Analytics requests to a URL section (such as /de/), search topic (such as technical seo), ISO alpha-3 searcher country (such as DEU, not page language) and searcher device (desktop/mobile/tablet) using AND before pagination; this changes the comparison population, not property-wide totals. No additional requests are made, and missing rows are never treated as zero. Only pages returned in both Search Analytics period responses are compared; Google does not guarantee every data row. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           compare_days: CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
+          end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(
+            searchConsoleDateDescription('Optional historical end date (inclusive) of the recent comparison period. Must be at least three days before the current Search Console date, and both periods must fit within the rolling 16-month data window. Omit to compare the latest finalized periods.'),
+          ),
           search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe('Search Console search type applied identically to both comparison periods: web (default), image, video or news (Google Search News tab). Discover and Google News are excluded because this heuristic relies on average position.'),
           page_contains: CONTENT_DECAY_PAGE_CONTAINS_SCHEMA,
           query_contains: CONTENT_DECAY_QUERY_CONTAINS_SCHEMA,
@@ -2215,26 +2218,46 @@ class GscMcpRuntime {
         outputSchema: CONTENT_DECAY_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, compare_days, search_type = 'web', page_contains, query_contains, country, device, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
-        const googleId = this.requireGoogleId();
-        const rateLimitError = await this.rateLimitError(googleId, 'insights.content_decay');
-        if (rateLimitError) return rateLimitError;
-        const accessToken = await this.getAccessToken(googleId);
-
+      async ({ site_url, compare_days, end_date, search_type = 'web', page_contains, query_contains, country, device, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         const formatDate = (d: Date) => d.toISOString().split('T')[0];
 
         const today = getSearchConsoleCalendarDate();
-        const endRecentDate = new Date(`${today}T00:00:00Z`);
-        endRecentDate.setUTCDate(endRecentDate.getUTCDate() - 3);
+        const latestFinalizedDate = new Date(`${today}T00:00:00Z`);
+        latestFinalizedDate.setUTCDate(latestFinalizedDate.getUTCDate() - 3);
+        const latestFinalized = formatDate(latestFinalizedDate);
+        if (end_date) {
+          SEARCH_CONSOLE_DATE_SCHEMA.parse(end_date);
+          if (end_date > latestFinalized) {
+            throw new Error(`end_date must be no later than the latest finalized Search Console date (${latestFinalized}).`);
+          }
+        }
+        const endRecentDate = new Date(`${end_date ?? latestFinalized}T00:00:00Z`);
         const startRecentDate = new Date(endRecentDate.getTime() - (compare_days - 1) * 24 * 60 * 60 * 1000);
 
         const endPreviousDate = new Date(startRecentDate.getTime() - 24 * 60 * 60 * 1000);
         const startPreviousDate = new Date(endPreviousDate.getTime() - (compare_days - 1) * 24 * 60 * 60 * 1000);
 
+        const earliestDate = new Date(`${today}T00:00:00Z`);
+        const dayOfMonth = earliestDate.getUTCDate();
+        earliestDate.setUTCDate(1);
+        earliestDate.setUTCMonth(earliestDate.getUTCMonth() - 16);
+        const lastDayOfMonth = new Date(Date.UTC(
+          earliestDate.getUTCFullYear(), earliestDate.getUTCMonth() + 1, 0,
+        )).getUTCDate();
+        earliestDate.setUTCDate(Math.min(dayOfMonth, lastDayOfMonth));
+        if (startPreviousDate < earliestDate) {
+          throw new Error(`Comparison periods must fit within Search Console's rolling 16-month history (earliest date: ${formatDate(earliestDate)}).`);
+        }
+
         const recentStart = formatDate(startRecentDate);
         const recentEnd = formatDate(endRecentDate);
         const previousStart = formatDate(startPreviousDate);
         const previousEnd = formatDate(endPreviousDate);
+
+        const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'insights.content_decay');
+        if (rateLimitError) return rateLimitError;
+        const accessToken = await this.getAccessToken(googleId);
 
         const filters = [
           ...(page_contains ? [{ dimension: 'page' as const, operator: 'contains' as const, expression: page_contains }] : []),
