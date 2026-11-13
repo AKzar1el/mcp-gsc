@@ -1870,31 +1870,46 @@ describe('Worker orchestration', () => {
         start_date: '2026-08-01',
         end_date: '2026-08-31',
         search_type: 'web',
-      }) as { structuredContent: { page: string; queries: Array<{ query: string }> } };
+        data_state: 'all',
+      }) as { structuredContent: { page: string; queries: Array<{ query: string }>; data_state: string; preliminary_data_possible: boolean } };
       const queryResult = await tools['insights.query_pages'].handler({
         site_url: 'sc-domain:example.com',
         query: 'seo audit',
         start_date: '2026-08-01',
         end_date: '2026-08-31',
         search_type: 'web',
-      }) as { structuredContent: { query: string; pages: Array<{ page: string }> } };
+      }) as { structuredContent: { query: string; pages: Array<{ page: string }>; data_state: string; preliminary_data_possible: boolean } };
+      await tools['insights.query_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        query: 'seo audit',
+        start_date: '2026-08-01',
+        end_date: '2026-08-31',
+        search_type: 'image',
+        data_state: 'all',
+      });
 
       expect(pageResult.structuredContent).toMatchObject({
         page: 'https://example.com/seo-audit/',
         queries: [{ query: 'seo audit' }],
+        data_state: 'all',
+        preliminary_data_possible: true,
       });
       expect(queryResult.structuredContent).toMatchObject({
         query: 'seo audit',
         pages: [{ page: 'https://example.com/seo-audit/' }],
+        data_state: 'final',
+        preliminary_data_possible: false,
       });
-      expect(analyticsRequests).toHaveLength(2);
+      expect(analyticsRequests).toHaveLength(3);
       expect(analyticsRequests.map((request) => request.startRow ?? 0)).toEqual([
+        0,
         0,
         0,
       ]);
       expect(analyticsRequests[0]).toMatchObject({
         dimensions: ['query'],
         type: 'web',
+        dataState: 'all',
         dimensionFilterGroups: [{
           groupType: 'and',
           filters: [{ dimension: 'page', operator: 'equals', expression: 'https://example.com/seo-audit/' }],
@@ -1908,6 +1923,8 @@ describe('Worker orchestration', () => {
           filters: [{ dimension: 'query', operator: 'equals', expression: 'seo audit' }],
         }],
       });
+      expect(analyticsRequests[1]).not.toHaveProperty('dataState');
+      expect(analyticsRequests[2]).toMatchObject({ dimensions: ['page'], type: 'image', dataState: 'all' });
     } finally {
       globalThis.fetch = originalFetch;
     }

@@ -576,8 +576,13 @@ const DIRECT_INSIGHT_COUNTRY_SCHEMA = z.string().trim()
 const DIRECT_INSIGHT_DEVICE_SCHEMA = z.enum(['desktop', 'mobile', 'tablet']).optional()
   .describe('Optional searcher device; ANDed with exact page/query, topic or URL substring, and country at Google before pagination. Omit to include all devices.');
 
+const DIRECT_INSIGHT_DATA_STATE_SCHEMA = z.enum(['all', 'final']).optional()
+  .describe("Omit for Google's finalized-only default; 'all' includes fresh preliminary Search Analytics data that may still change. 'final' requests finalized rows only.");
+
 const PAGE_QUERIES_OUTPUT_SCHEMA = {
   page: z.string(),
+  data_state: z.enum(['all', 'final']).describe('Effective Search Analytics data state; omitted input uses final.'),
+  preliminary_data_possible: z.boolean().describe('True for all, when fresh rows can still change.'),
   query_contains: z.string().nullable().describe('Optional query topic substring filtered at Google before Search Analytics pagination, or null for no topic filter.'),
   country: z.string().nullable().describe('ISO alpha-3 searcher country filtered at Google, or null when unfiltered; not a page language.'),
   device: z.enum(['desktop', 'mobile', 'tablet']).nullable().describe('Searcher device filtered at Google, or null for all devices.'),
@@ -594,6 +599,8 @@ const PAGE_QUERIES_OUTPUT_SCHEMA = {
 
 const QUERY_PAGES_OUTPUT_SCHEMA = {
   query: z.string(),
+  data_state: z.enum(['all', 'final']).describe('Effective Search Analytics data state; omitted input uses final.'),
+  preliminary_data_possible: z.boolean().describe('True for all, when fresh rows can still change.'),
   page_contains: z.string().nullable().describe('Optional URL substring filtered at Google before Search Analytics pagination, or null for no page filter.'),
   country: z.string().nullable().describe('ISO alpha-3 searcher country filtered at Google, or null when unfiltered; not a page language.'),
   device: z.enum(['desktop', 'mobile', 'tablet']).nullable().describe('Searcher device filtered at Google, or null for all devices.'),
@@ -942,12 +949,12 @@ const TOOL_CATALOG = [
   {
     name: 'insights.page_queries',
     description:
-      'For one exact page URL, list the Search Console queries that produced impressions for it, with optional Google-side query_contains, ISO alpha-3 searcher country and desktop/mobile/tablet device filtering before bounded pagination, clicks, impressions, CTR, average position, and search type.',
+      'For one exact page URL, list the Search Console queries that produced impressions for it, with optional Google-side query_contains, ISO alpha-3 searcher country and desktop/mobile/tablet device filtering before bounded pagination, clicks, impressions, CTR, average position, search type and opt-in data_state=all for fresh preliminary data (final by default).',
   },
   {
     name: 'insights.query_pages',
     description:
-      'For one exact search query, list the site pages that received impressions for it, with optional Google-side page_contains URL-section, ISO alpha-3 searcher country and desktop/mobile/tablet device filtering before bounded pagination, clicks, impressions, CTR, average position, and search type.',
+      'For one exact search query, list the site pages that received impressions for it, with optional Google-side page_contains URL-section, ISO alpha-3 searcher country and desktop/mobile/tablet device filtering before bounded pagination, clicks, impressions, CTR, average position, search type and opt-in data_state=all for fresh preliminary data (final by default).',
   },
   {
     name: 'urls.inspect',
@@ -1727,6 +1734,7 @@ class GscMcpRuntime {
             .enum(['web', 'image', 'video', 'news'])
             .default('web')
             .describe('Which search index to query. Defaults to web. Discover and Google News are not supported because this tool groups by query.'),
+          data_state: DIRECT_INSIGHT_DATA_STATE_SCHEMA,
           row_limit: z
             .number()
             .int()
@@ -1741,7 +1749,7 @@ class GscMcpRuntime {
         outputSchema: PAGE_QUERIES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, page_url, query_contains, country, device, start_date, end_date, search_type, row_limit = 100, start_row = 0 }) => {
+      async ({ site_url, page_url, query_contains, country, device, start_date, end_date, search_type, data_state, row_limit = 100, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -1760,6 +1768,7 @@ class GscMcpRuntime {
           dimensions: ['query'],
           startRow: start_row,
           type: search_type,
+          dataState: data_state,
           dimensionFilterGroups: [
             {
               groupType: 'and',
@@ -1793,6 +1802,8 @@ class GscMcpRuntime {
         );
         const payload = {
           page: page_url,
+          data_state: data_state ?? 'final',
+          preliminary_data_possible: data_state === 'all',
           query_contains: query_contains ?? null,
           country: country?.toUpperCase() ?? null,
           device: device ?? null,
@@ -1832,6 +1843,7 @@ class GscMcpRuntime {
             .enum(['web', 'image', 'video', 'news'])
             .default('web')
             .describe('Which search index to query. Defaults to web. Discover and Google News are not supported because this tool filters by query.'),
+          data_state: DIRECT_INSIGHT_DATA_STATE_SCHEMA,
           row_limit: z
             .number()
             .int()
@@ -1846,7 +1858,7 @@ class GscMcpRuntime {
         outputSchema: QUERY_PAGES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, query, page_contains, country, device, start_date, end_date, search_type, row_limit = 100, start_row = 0 }) => {
+      async ({ site_url, query, page_contains, country, device, start_date, end_date, search_type, data_state, row_limit = 100, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -1864,6 +1876,7 @@ class GscMcpRuntime {
           dimensions: ['page'],
           startRow: start_row,
           type: search_type,
+          dataState: data_state,
           dimensionFilterGroups: [
             {
               groupType: 'and',
@@ -1897,6 +1910,8 @@ class GscMcpRuntime {
         );
         const payload = {
           query,
+          data_state: data_state ?? 'final',
+          preliminary_data_possible: data_state === 'all',
           page_contains: page_contains ?? null,
           country: country?.toUpperCase() ?? null,
           device: device ?? null,
