@@ -188,6 +188,8 @@ The finalized digest links each returned top page directly to its page URL for m
 
 Finalized digests also highlight up to three **returned pages with impressions but no observed clicks**, ordered by observed impressions, for follow-up query/page inspection. This uses only the existing up-to-10 current-week page rows and adds no Google API requests. It is not an exhaustive zero-click page audit: Google's top-row selection can omit pages, and absence from this section does not establish that a page had clicks, no impressions, or no opportunity.
 
+Finalized digests separately highlight up to three **returned search queries with impressions but no observed clicks**, excluding diagnostic search-operator queries. Each candidate includes its observed average position when available to help distinguish ranking visibility from potential click-through issues. Average position is not a live Google ranking, and missing position is never reported as position zero. This is limited to the already-requested up-to-25 query rows (which can omit anonymized or lower-ranked queries), with no additional API requests or property-wide claims.
+
 For explicitly recent preliminary digests, a missing aggregate totals row is not treated as zero traffic. Any separately returned page/query samples are still shown as non-exhaustive observations, without fabricated site totals or week-over-week conclusions.
 
 ## What you can ask

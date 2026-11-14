@@ -774,10 +774,13 @@ function renderMarkdown(data: {
   if (noClickQueries.length > 0) {
     lines.push('### Returned search queries with impressions but no clicks');
     lines.push('');
-    lines.push('> These candidates come only from the up-to-25 returned query rows (not exhaustive); anonymized queries may be omitted and diagnostic search-operator queries are excluded. Missing queries are not zero. Check search intent, ranking context and SERP features before changing content.');
+    lines.push('> These candidates come only from the up-to-25 returned query rows (not exhaustive); anonymized queries may be omitted and diagnostic search-operator queries are excluded. Missing queries are not zero. Average position is an observed Search Console metric, not a live rank, and is omitted when unavailable. Check search intent, ranking context and SERP features before changing content.');
     lines.push('');
     for (const query of noClickQueries) {
-      lines.push(`- **${escapeMarkdownInline(query.query)}** — ${formatNumber(query.impressions)} impressions, 0 observed clicks.`);
+      const positionContext = Number.isFinite(query.position) && query.position >= 1
+        ? `, average position ${query.position.toFixed(1)}`
+        : '';
+      lines.push(`- **${escapeMarkdownInline(query.query)}** — ${formatNumber(query.impressions)} impressions, 0 observed clicks${positionContext}.`);
     }
     lines.push('');
   }
