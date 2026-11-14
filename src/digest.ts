@@ -203,6 +203,7 @@ export async function generateWeeklyDigest(
       `# Your weekly site report - ${escapeMarkdownInline(siteDisplayName(siteUrl))}`,
       `### Preliminary snapshot for ${dates.currentStart} to ${dates.currentEnd}`,
       '',
+      ...searchConsoleReviewLines(siteUrl),
       ...(searchTypeNotice ? [searchTypeNotice, ''] : []),
       ...(pageScopeNotice ? [pageScopeNotice, ''] : []),
       ...(deviceScopeNotice ? [deviceScopeNotice, ''] : []),
@@ -265,6 +266,7 @@ export async function generateWeeklyDigest(
       `# Your weekly site report - ${escapeMarkdownInline(siteDisplayName(siteUrl))}`,
       `### Week of ${dates.currentStart} to ${dates.currentEnd}`,
       '',
+      ...searchConsoleReviewLines(siteUrl),
       ...(searchTypeNotice ? [searchTypeNotice, ''] : []),
       ...(pageScopeNotice ? [pageScopeNotice, ''] : []),
       ...(deviceScopeNotice ? [deviceScopeNotice, ''] : []),
@@ -544,6 +546,15 @@ function escapeMarkdownInline(value: string): string {
     .replace(/([\\`*_{}\[\]()#+.!|~-])/g, '\\$1');
 }
 
+function searchConsoleReviewLines(siteUrl: string): string[] {
+  const href = `https://search.google.com/search-console/performance/search-analytics?resource_id=${encodeURIComponent(siteUrl)}`;
+  return [
+    `[Open this property in Search Console Performance](${href})`,
+    '> Choose the same dates and filters in Search Console; this link opens the property but does not apply this report\'s filters.',
+    '',
+  ];
+}
+
 function renderMarkdown(data: {
   siteUrl: string;
   searchTypeNotice?: string;
@@ -572,6 +583,7 @@ function renderMarkdown(data: {
   lines.push(`# Your weekly site report — ${escapeMarkdownInline(siteName)}`);
   lines.push(`### Week of ${dates.currentStart} to ${dates.currentEnd}`);
   lines.push('');
+  lines.push(...searchConsoleReviewLines(siteUrl));
   if (searchTypeNotice) lines.push(searchTypeNotice, '');
   if (pageScopeNotice) lines.push(pageScopeNotice, '');
   if (deviceScopeNotice) lines.push(deviceScopeNotice, '');
