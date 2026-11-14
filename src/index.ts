@@ -75,6 +75,7 @@ import {
   searchConsoleDateDescription,
 } from './date-validation';
 import {
+  CONTENT_DECAY_CLASSIFICATION_FILTER_SCHEMA,
   CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
   CONTENT_DECAY_COUNTRY_SCHEMA,
   CONTENT_DECAY_DEVICE_SCHEMA,
@@ -674,6 +675,7 @@ const CANNIBALIZATION_OUTPUT_SCHEMA = {
 const CONTENT_DECAY_OUTPUT_SCHEMA = {
   site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe('The exact Search Console property used for both historical comparison periods.'),
   search_type: z.enum(['web', 'image', 'video', 'news']),
+  classification_filter: CONTENT_DECAY_CLASSIFICATION_FILTER_SCHEMA,
   page_contains: z.string().nullable(),
   query_contains: z.string().nullable(),
   country: z.string().nullable(),
@@ -2297,7 +2299,7 @@ class GscMcpRuntime {
       'insights.content_decay',
       {
         title: 'Detect Content Decay',
-        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Optional end_date anchors a historical comparison to a selected finalized Pacific Search Console date (at least three days before today); omit for the latest finalized date. Compare 1-240 days per period within Search Console\'s rolling 16-month history. Optional search_type selects Web (default), Image, Video or News-tab search consistently for both periods; Discover and Google News are excluded from this position-aware heuristic. Optional page_contains, query_contains, country and device scope both Google Search Analytics requests to a URL section (such as /de/), search topic (such as technical seo), ISO alpha-3 searcher country (such as DEU, not page language) and searcher device (desktop/mobile/tablet) using AND before pagination; this changes the comparison population, not property-wide totals. No additional requests are made, and missing rows are never treated as zero. Only pages returned in both Search Analytics period responses are compared; observed_page_overlap reports how many returned page URLs are common or exclusive to each period. An absent row is not evidence of zero traffic, and Google does not guarantee every data row. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
+        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Optional end_date anchors a historical comparison to a selected finalized Pacific Search Console date (at least three days before today); omit for the latest finalized date. Compare 1-240 days per period within Search Console\'s rolling 16-month history. Optional search_type selects Web (default), Image, Video or News-tab search consistently for both periods; Discover and Google News are excluded from this position-aware heuristic. Optional page_contains, query_contains, country and device scope both Google Search Analytics requests to a URL section (such as /de/), search topic (such as technical seo), ISO alpha-3 searcher country (such as DEU, not page language) and searcher device (desktop/mobile/tablet) using AND before pagination; this changes the comparison population, not property-wide totals. Optional classification_filter narrows returned assessments locally to likely_decay or either weaker evidence class, preserving original unfiltered assessment/decay counts. No additional requests are made, and missing rows are never treated as zero. Only pages returned in both Search Analytics period responses are compared; observed_page_overlap reports how many returned page URLs are common or exclusive to each period. An absent row is not evidence of zero traffic, and Google does not guarantee every data row. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           compare_days: CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
@@ -2305,6 +2307,7 @@ class GscMcpRuntime {
             searchConsoleDateDescription('Optional historical end date (inclusive) of the recent comparison period. Must be at least three days before the current Search Console date, and both periods must fit within the rolling 16-month data window. Omit to compare the latest finalized periods.'),
           ),
           search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe('Search Console search type applied identically to both comparison periods: web (default), image, video or news (Google Search News tab). Discover and Google News are excluded because this heuristic relies on average position.'),
+          classification_filter: CONTENT_DECAY_CLASSIFICATION_FILTER_SCHEMA,
           page_contains: CONTENT_DECAY_PAGE_CONTAINS_SCHEMA,
           query_contains: CONTENT_DECAY_QUERY_CONTAINS_SCHEMA,
           country: CONTENT_DECAY_COUNTRY_SCHEMA,
@@ -2315,7 +2318,7 @@ class GscMcpRuntime {
         outputSchema: CONTENT_DECAY_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, compare_days, end_date, search_type = 'web', page_contains, query_contains, country, device, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+      async ({ site_url, compare_days, end_date, search_type = 'web', classification_filter = 'all', page_contains, query_contains, country, device, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         const formatDate = (d: Date) => d.toISOString().split('T')[0];
 
         const today = getSearchConsoleCalendarDate();
@@ -2399,18 +2402,23 @@ class GscMcpRuntime {
         const recentPages = observedPages(recentSource.rows);
         const previousPages = observedPages(previousSource.rows);
         const comparableCount = [...recentPages].filter((page) => previousPages.has(page)).length;
-        const bounded = windowKnownResults(decayResults, start_row, limit);
+        const filteredResults = classification_filter === 'all'
+          ? decayResults
+          : decayResults.filter((result) => result.classification === classification_filter);
+        const bounded = windowKnownResults(filteredResults, start_row, limit);
 
         const payload = {
           site_url,
           search_type,
+          classification_filter,
           page_contains: page_contains ?? null,
           query_contains: query_contains ?? null,
           country: country?.toUpperCase() ?? null,
           device: device ?? null,
-          scope_note: page_contains || query_contains || country || device
+          scope_note: (page_contains || query_contains || country || device
             ? 'Both comparison periods contain only Google-filtered matching page URLs, search query topics, searcher country (not page language) and/or device, not property-wide totals or all-device totals. Missing rows are not zero.'
-            : 'Both comparison periods use observed property-page rows; missing rows are not zero.',
+            : 'Both comparison periods use observed property-page rows; missing rows are not zero.')
+            + (classification_filter === 'all' ? '' : ' The classification filter narrows returned assessment rows only; assessment_count and decay_count still describe all observed declines before this local filter.'),
           comparison_periods: {
             recent: { start: recentStart, end: recentEnd },
             previous: { start: previousStart, end: previousEnd },

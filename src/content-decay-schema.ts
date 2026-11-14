@@ -37,3 +37,8 @@ export const CONTENT_DECAY_DEVICE_SCHEMA = z
   .enum(['desktop', 'mobile', 'tablet'])
   .optional()
   .describe('Optional searcher device (desktop, mobile, or tablet). Applied to both comparison periods as a Google-side AND filter alongside page_contains, query_contains, and country; omitting it preserves all-device behavior.');
+
+export const CONTENT_DECAY_CLASSIFICATION_FILTER_SCHEMA = z
+  .enum(['all', 'likely_decay', 'weak_insufficient_evidence', 'improving_visibility_with_click_volatility'])
+  .default('all')
+  .describe('Optional local result filter: all (default) returns every observed click-decline assessment; choose one evidence classification to focus returned rows. It does not change Google requests, source coverage, or total assessment/decay counts.');
