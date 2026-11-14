@@ -3984,6 +3984,16 @@ describe('Worker orchestration', () => {
                 ctr: 0.1,
                 position: 5,
               },
+              {
+                keys: [body.startDate === '2026-09-01' ? 'recent only' : 'previous only'],
+                clicks: 2,
+                impressions: 30,
+                ctr: 0.067,
+                position: 9,
+              },
+              ...(body.startDate === '2026-09-01'
+                ? [{ keys: ['not-comparable'], clicks: 2, impressions: 30, ctr: 0.067 }]
+                : []),
             ],
           });
         }
@@ -4006,6 +4016,15 @@ describe('Worker orchestration', () => {
           data_state: string;
           preliminary_data_possible: boolean;
           comparison_note: string;
+          comparisons: Array<{ key: string }>;
+          observed_dimension_overlap: {
+            period_a_count: number;
+            period_b_count: number;
+            comparable_count: number;
+            period_a_only_count: number;
+            period_b_only_count: number;
+            note: string;
+          };
         };
       };
 
@@ -4038,6 +4057,15 @@ describe('Worker orchestration', () => {
         data_state: 'final',
         preliminary_data_possible: false,
       });
+      expect(result.structuredContent.comparisons.map((item) => item.key)).toEqual(['example query']);
+      expect(result.structuredContent.observed_dimension_overlap).toMatchObject({
+        period_a_count: 2,
+        period_b_count: 2,
+        comparable_count: 1,
+        period_a_only_count: 1,
+        period_b_only_count: 1,
+      });
+      expect(result.structuredContent.observed_dimension_overlap.note).toContain('not zero');
       const scopeNote = result.structuredContent.comparison_note;
       expect(scopeNote).toContain('site_url=sc-domain:example.com');
       expect(scopeNote).toContain('data_state=final');
