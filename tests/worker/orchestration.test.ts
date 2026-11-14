@@ -1879,26 +1879,40 @@ describe('Worker orchestration', () => {
         end_date: '2026-08-31',
         search_type: 'web',
       }) as { structuredContent: { query: string; pages: Array<{ page: string }>; data_state: string; preliminary_data_possible: boolean } };
-      await tools['insights.query_pages'].handler({
+      const imageResult = await tools['insights.query_pages'].handler({
         site_url: 'sc-domain:example.com',
         query: 'seo audit',
         start_date: '2026-08-01',
         end_date: '2026-08-31',
         search_type: 'image',
         data_state: 'all',
-      });
+      }) as { structuredContent: Record<string, unknown> };
 
       expect(pageResult.structuredContent).toMatchObject({
         page: 'https://example.com/seo-audit/',
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-08-01',
+        end_date: '2026-08-31',
+        search_type: 'web',
         queries: [{ query: 'seo audit' }],
         data_state: 'all',
         preliminary_data_possible: true,
       });
       expect(queryResult.structuredContent).toMatchObject({
         query: 'seo audit',
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-08-01',
+        end_date: '2026-08-31',
+        search_type: 'web',
         pages: [{ page: 'https://example.com/seo-audit/' }],
         data_state: 'final',
         preliminary_data_possible: false,
+      });
+      expect(imageResult.structuredContent).toMatchObject({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-08-01',
+        end_date: '2026-08-31',
+        search_type: 'image',
       });
       expect(analyticsRequests).toHaveLength(3);
       expect(analyticsRequests.map((request) => request.startRow ?? 0)).toEqual([
