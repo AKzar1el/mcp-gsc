@@ -55,6 +55,12 @@ interface Movers {
   newImpressions: Mover[];
 }
 
+interface ObservedQueryOverlap {
+  current: number;
+  previous: number;
+  common: number;
+}
+
 type ActionKey =
   | 'indexing_blocked'
   | 'ctr_zero'
@@ -289,6 +295,14 @@ export async function generateWeeklyDigest(
   const prevQueries = rowsToQueries(prevQueriesResponse.rows);
   const currentPages = rowsToPages(currentPagesResponse.rows);
 
+  const currentQueryKeys = new Set(currentQueries.map((row) => row.query).filter(Boolean));
+  const previousQueryKeys = new Set(prevQueries.map((row) => row.query).filter(Boolean));
+  const observedQueryOverlap: ObservedQueryOverlap = {
+    current: currentQueryKeys.size,
+    previous: previousQueryKeys.size,
+    common: [...currentQueryKeys].filter((query) => previousQueryKeys.has(query)).length,
+  };
+
   const movers = computeMovers(currentQueries, prevQueries);
   const action = searchType === 'web'
     ? pickActionAndBuild(currentTotals, prevTotals, movers, currentQueries)
@@ -312,6 +326,7 @@ export async function generateWeeklyDigest(
     currentTotals,
     prevTotals,
     movers,
+    observedQueryOverlap,
     currentPages,
     action,
   });
@@ -566,10 +581,11 @@ function renderMarkdown(data: {
   currentTotals: SiteTotals;
   prevTotals: SiteTotals;
   movers: Movers;
+  observedQueryOverlap: ObservedQueryOverlap;
   currentPages: PageRow[];
   action: { key: ActionKey; item: ActionItem };
 }): string {
-  const { siteUrl, searchTypeNotice, pageScopeNotice, deviceScopeNotice, queryScopeNotice, countryScopeNotice, dates, currentTotals, prevTotals, movers, currentPages, action } = data;
+  const { siteUrl, searchTypeNotice, pageScopeNotice, deviceScopeNotice, queryScopeNotice, countryScopeNotice, dates, currentTotals, prevTotals, movers, observedQueryOverlap, currentPages, action } = data;
   const siteName = siteDisplayName(siteUrl);
   const lines: string[] = [];
 
@@ -606,6 +622,9 @@ function renderMarkdown(data: {
   lines.push('');
   lines.push(
     '> Query movers compare only query rows returned in both weekly Search Console result sets. A query missing from one bounded response is not treated as zero because Search Analytics returns top rows and does not guarantee every data row.',
+  );
+  lines.push(
+    `> **Returned query-row overlap:** ${observedQueryOverlap.current} distinct current-week queries, ${observedQueryOverlap.previous} previous-week queries, ${observedQueryOverlap.common} observed in both. Each period contains at most 25 returned query rows; these counts are not exhaustive.`,
   );
   lines.push('');
 
@@ -671,6 +690,10 @@ function renderMarkdown(data: {
       lines.push(
         `Your overall numbers moved this week, but the available query rows do not establish which queries drove the change. ${describeSiteLevelMove(siteImpressionsChangePct, siteClicksChangePct, sitePositionDelta)}`,
       );
+      lines.push('');
+    } else if (observedQueryOverlap.common === 0) {
+      lines.push('### Query trends not comparable');
+      lines.push('Aggregate site totals are stable, but the bounded query results have no shared returned queries. Stability of individual query performance cannot be established from these samples.');
       lines.push('');
     } else {
       lines.push('### Steady week');
