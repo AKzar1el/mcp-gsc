@@ -172,6 +172,8 @@ Weekly digest output includes an exact-property link to the Google Search Consol
 
 The finalized digest links each returned top page directly to its page URL for manual review, retaining short, disambiguated display labels. Recent preliminary snapshots also link their selected page rows and show observed clicks alongside impressions for both selected pages and queries, without asserting week-over-week trends. Only ordinary HTTP(S) URLs become clickable links; malformed or unsafe URL schemes remain escaped plain text. Following a link is the reader's choice and does not make any extra Search Console API request.
 
+For explicitly recent preliminary digests, a missing aggregate totals row is not treated as zero traffic. Any separately returned page/query samples are still shown as non-exhaustive observations, without fabricated site totals or week-over-week conclusions.
+
 ## What you can ask
 
 **Agency reporting workflow:** [Read-only weekly Search Console reporting for SEO agencies](docs/agency-weekly-reporting.md) walks through exact-property verification, one bounded weekly digest, matched-period comparisons, evidence checks, and a reusable human-reviewed client report. It contains no fabricated client metrics or automated outreach.

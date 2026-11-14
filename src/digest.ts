@@ -230,19 +230,21 @@ export async function generateWeeklyDigest(
         `- ${formatNumber(totals.clicks)} clicks`,
         `- ${formatNumber(totals.impressions)} impressions`,
       );
-      const pages = rowsToPages(currentPagesResponse.rows).slice(0, 3);
-      if (pages.length > 0) {
-        lines.push('', '## Selected returned page rows (not exhaustive)');
-        for (const page of pages) {
-          lines.push(`- ${topPageMarkdown(page.page, page.page)}: ${formatNumber(page.clicks)} clicks, ${formatNumber(page.impressions)} impressions`);
-        }
+    }
+    // A missing aggregate row is not a zero, but independently returned
+    // dimension rows can still provide useful preliminary evidence.
+    const pages = rowsToPages(currentPagesResponse.rows).slice(0, 3);
+    if (pages.length > 0) {
+      lines.push('', '## Selected returned page rows (not exhaustive)');
+      for (const page of pages) {
+        lines.push(`- ${topPageMarkdown(page.page, page.page)}: ${formatNumber(page.clicks)} clicks, ${formatNumber(page.impressions)} impressions`);
       }
-      const queries = rowsToQueries(currentQueriesResponse.rows).slice(0, 3);
-      if (queries.length > 0) {
-        lines.push('', '## Selected returned query rows (not exhaustive)');
-        for (const query of queries) {
-          lines.push(`- ${escapeMarkdownInline(query.query)}: ${formatNumber(query.clicks)} clicks, ${formatNumber(query.impressions)} impressions`);
-        }
+    }
+    const queries = rowsToQueries(currentQueriesResponse.rows).slice(0, 3);
+    if (queries.length > 0) {
+      lines.push('', '## Selected returned query rows (not exhaustive)');
+      for (const query of queries) {
+        lines.push(`- ${escapeMarkdownInline(query.query)}: ${formatNumber(query.clicks)} clicks, ${formatNumber(query.impressions)} impressions`);
       }
     }
     lines.push(

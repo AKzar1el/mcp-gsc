@@ -693,6 +693,37 @@ test('weekly digest never fabricates zero traffic when recent preliminary rows a
   }
 });
 
+test('preliminary weekly digest retains returned page and query evidence when aggregate totals are unavailable', async () => {
+  const originalFetch = globalThis.fetch;
+  const dimensions: string[] = [];
+  globalThis.fetch = async (_input, init) => {
+    const request = JSON.parse(String(init?.body)) as { dimensions?: string[]; dataState?: string };
+    assert.equal(request.dataState, 'all');
+    dimensions.push(request.dimensions?.[0] ?? 'totals');
+    const rows = request.dimensions?.[0] === 'page'
+      ? [{ keys: ['https://example.com/de/guide'], clicks: 2, impressions: 25, ctr: 0.08, position: 9 }]
+      : request.dimensions?.[0] === 'query'
+        ? [{ keys: ['example guide'], clicks: 2, impressions: 25, ctr: 0.08, position: 9 }]
+        : [];
+    return new Response(JSON.stringify({ rows }), { headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', getSearchConsoleCalendarDate(),
+    );
+    assert.deepEqual(dimensions.sort(), ['page', 'query', 'totals']);
+    assert.match(digest, /no aggregate row yet/i);
+    assert.match(digest, /missing data is not a measured zero/i);
+    assert.match(digest, /Selected returned page rows \(not exhaustive\)/);
+    assert.match(digest, /https:\/\/example\.com\/de\/guide/);
+    assert.match(digest, /Selected returned query rows \(not exhaustive\)/);
+    assert.match(digest, /example guide: 2 clicks, 25 impressions/);
+    assert.doesNotMatch(digest, /## Available current-week metrics|## What changed this week|## What to do this week/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('weekly digest does not infer branded demand from operator-only query rows', async () => {
   const fixture = createLifecycle();
   const restoreFetch = installDigestAnalyticsMock([
