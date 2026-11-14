@@ -1166,6 +1166,44 @@ test('weekly digest highlights only the highest-impression returned queries with
   }
 });
 
+test('weekly digest excludes diagnostic search operators from zero-click query opportunities', async () => {
+  const restoreFetch = installDigestAnalyticsMock([
+    { keys: ['site:example.com'], clicks: 0, impressions: 300, ctr: 0, position: 1 },
+    { keys: ['inurl:example.com/guides'], clicks: 0, impressions: 220, ctr: 0, position: 3 },
+    { keys: ['seo site:example.com'], clicks: 0, impressions: 180, ctr: 0, position: 2 },
+    { keys: ['seo audit checklist'], clicks: 0, impressions: 80, ctr: 0, position: 12 },
+    { keys: ['best site tools'], clicks: 0, impressions: 55, ctr: 0, position: 14 },
+  ]);
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const section = digest.split('### Returned search queries with impressions but no clicks')[1]
+      ?.split('## What to do this week')[0] ?? '';
+    assert.match(section, /seo audit checklist.*80 impressions/);
+    assert.match(section, /best site tools.*55 impressions/);
+    assert.doesNotMatch(section, /site:example|inurl:example/);
+    assert.match(section, /search-operator.*excluded/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest does not present operator-only diagnostics as zero-click opportunities', async () => {
+  const restoreFetch = installDigestAnalyticsMock([
+    { keys: ['site:example.com'], clicks: 0, impressions: 300, ctr: 0, position: 1 },
+  ]);
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.doesNotMatch(digest, /### Returned search queries with impressions but no clicks/);
+    assert.match(digest, /visible query rows are search-operator checks/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test('weekly digest does not infer query distribution from missing query rows on growth', async () => {
   const restoreFetch = installDigestAnalyticsMock([], {
     currentTotals: { clicks: 2, impressions: 40, ctr: 0.05, position: 8 },
