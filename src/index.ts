@@ -777,6 +777,14 @@ const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
   ),
   comparison_scope: z.literal('common_returned_rows_only'),
   comparison_note: z.string(),
+  observed_dimension_overlap: z.object({
+    period_a_count: z.number().int().nonnegative(),
+    period_b_count: z.number().int().nonnegative(),
+    comparable_count: z.number().int().nonnegative(),
+    period_a_only_count: z.number().int().nonnegative(),
+    period_b_only_count: z.number().int().nonnegative(),
+    note: z.string(),
+  }).describe('Distinct dimension keys observed in each Google response with position data; missing keys are not zero traffic.'),
   data_state: z.enum(['all', 'final']).describe(
     'The Search Analytics dataState applied identically to both comparison periods.',
   ),
@@ -2739,6 +2747,13 @@ class GscMcpRuntime {
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
         const comparison = processPerformanceComparison(sourceA.rows, sourceB.rows);
+        const observedKeys = (rows: typeof sourceA.rows) => new Set(
+          rows.filter((row) => (row.keys?.length ?? 0) > 0 && row.position !== undefined)
+            .map((row) => row.keys![0]),
+        );
+        const keysA = observedKeys(sourceA.rows);
+        const keysB = observedKeys(sourceB.rows);
+        const commonCount = [...keysA].filter((key) => keysB.has(key)).length;
         const bounded = windowKnownResults(comparison, start_row, limit);
         const comparisonScopeNote = [
           `site_url=${site_url}`,
@@ -2753,6 +2768,14 @@ class GscMcpRuntime {
           site_url,
           comparison_scope: 'common_returned_rows_only' as const,
           comparison_note: `${COMMON_RETURNED_ROWS_COMPARISON_NOTE} Scope: ${comparisonScopeNote}. Filter groups, if present, are applied equally to both periods.`,
+          observed_dimension_overlap: {
+            period_a_count: keysA.size,
+            period_b_count: keysB.size,
+            comparable_count: commonCount,
+            period_a_only_count: keysA.size - commonCount,
+            period_b_only_count: keysB.size - commonCount,
+            note: 'Counts reflect distinct dimension keys with position data in the two Google responses. Missing rows are not zero traffic; one-period-only keys are not compared.',
+          },
           data_state,
           preliminary_data_possible: data_state !== 'final',
           comparisons: bounded.items,
