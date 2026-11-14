@@ -719,7 +719,7 @@ function renderMarkdown(data: {
       // Keep concise paths unless dropping the host would merge distinct URLs.
       const displayPage = (pagePathCounts.get(path) ?? 0) > 1 ? p.page : path;
       lines.push(
-        `- **${escapeMarkdownInline(displayPage)}** — ${formatNumber(p.clicks)} clicks, ${formatNumber(p.impressions)} times shown.`,
+        `- ${topPageMarkdown(p.page, displayPage)} — ${formatNumber(p.clicks)} clicks, ${formatNumber(p.impressions)} times shown.`,
       );
     }
   }
@@ -808,6 +808,21 @@ function relativePagePath(pageUrl: string): string {
     return u.pathname + u.search;
   } catch {
     return pageUrl;
+  }
+}
+
+function topPageMarkdown(pageUrl: string, displayPage: string): string {
+  const label = `**${escapeMarkdownInline(displayPage)}**`;
+  try {
+    const url = new URL(pageUrl);
+    if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) {
+      return label;
+    }
+    // Parentheses in a URL would terminate an ordinary Markdown link target.
+    const href = url.href.replace(/\(/g, '%28').replace(/\)/g, '%29');
+    return `[${label}](${href})`;
+  } catch {
+    return label;
   }
 }
 

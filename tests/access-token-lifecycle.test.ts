@@ -959,6 +959,25 @@ test('weekly digest distinguishes the same path across different hosts', async (
   }
 });
 
+test('weekly digest links safely to returned top pages without allowing unsafe URL schemes', async () => {
+  const restoreFetch = installDigestAnalyticsMock([], {
+    currentPageRows: [
+      { keys: ['https://example.com/docs(v2)?ref=search'], clicks: 7, impressions: 70, ctr: 0.1, position: 6 },
+      { keys: ['javascript:alert(1)'], clicks: 3, impressions: 30, ctr: 0.1, position: 9 },
+    ],
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.ok(digest.includes('[**/docs\\(v2\\)?ref=search**](https://example.com/docs%28v2%29?ref=search)'));
+    assert.ok(digest.includes('**alert\\(1\\)**'));
+    assert.doesNotMatch(digest, /\]\(javascript:/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test('weekly digest does not infer zero page impressions from an empty Pages response', async () => {
   const restoreFetch = installDigestAnalyticsMock([], {
     currentTotals: { clicks: 0, impressions: 40, ctr: 0, position: 8 },
