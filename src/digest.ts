@@ -285,6 +285,20 @@ export async function generateWeeklyDigest(
       `Google Search Console returned no aggregate Search Analytics row for ${missingPeriods.join(' and ')}.`,
       'An empty API response does not establish a measured zero for clicks or impressions. It may reflect no search activity or data that has not yet been processed.',
       'A week-over-week comparison and SEO action recommendation are withheld rather than treating absent rows as confirmed traffic loss.',
+      // The aggregate can be absent even when dimensioned rows are available.
+      // Preserve only directly returned current-period observations, not inferred totals.
+      ...(currentPagesResponse.rows.length > 0 ? [
+        '',
+        '## Selected returned page rows (not exhaustive)',
+        ...rowsToPages(currentPagesResponse.rows).slice(0, 3).map((page) =>
+          `- ${topPageMarkdown(page.page, page.page)}: ${formatNumber(page.clicks)} clicks, ${formatNumber(page.impressions)} impressions`),
+      ] : []),
+      ...(currentQueriesResponse.rows.length > 0 ? [
+        '',
+        '## Selected returned query rows (not exhaustive)',
+        ...rowsToQueries(currentQueriesResponse.rows).slice(0, 3).map((query) =>
+          `- ${escapeMarkdownInline(query.query)}: ${formatNumber(query.clicks)} clicks, ${formatNumber(query.impressions)} impressions`),
+      ] : []),
       '',
       '## What to check',
       '1. Open the Search Console Performance report and check its latest available reporting date.',

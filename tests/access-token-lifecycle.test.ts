@@ -724,6 +724,33 @@ test('preliminary weekly digest retains returned page and query evidence when ag
   }
 });
 
+test('finalized weekly digest retains observed page and query rows without aggregate totals', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    const request = JSON.parse(String(init?.body)) as { dimensions?: string[]; startDate: string };
+    const isCurrent = request.startDate === '2026-08-04';
+    const rows = isCurrent && request.dimensions?.[0] === 'page'
+      ? [{ keys: ['https://example.com/guide'], clicks: 3, impressions: 30, ctr: 0.1, position: 8 }]
+      : isCurrent && request.dimensions?.[0] === 'query'
+        ? [{ keys: ['guide topic'], clicks: 3, impressions: 30, ctr: 0.1, position: 8 }]
+        : [];
+    return new Response(JSON.stringify({ rows }), { headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10', undefined, '2026-08-14',
+    );
+    assert.match(digest, /no aggregate Search Analytics row/i);
+    assert.match(digest, /Selected returned page rows \(not exhaustive\)/);
+    assert.match(digest, /example\.com\/guide/);
+    assert.match(digest, /Selected returned query rows \(not exhaustive\)/);
+    assert.match(digest, /guide topic: 3 clicks, 30 impressions/);
+    assert.doesNotMatch(digest, /## What changed this week|## What to do this week|\b0 clicks|\b0 impressions/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('weekly digest does not infer branded demand from operator-only query rows', async () => {
   const fixture = createLifecycle();
   const restoreFetch = installDigestAnalyticsMock([
