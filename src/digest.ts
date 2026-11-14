@@ -759,7 +759,9 @@ function siteDisplayName(siteUrl: string): string {
     return siteUrl.slice('sc-domain:'.length);
   }
   try {
-    return new URL(siteUrl).hostname;
+    const url = new URL(siteUrl);
+    // URL-prefix properties can share a host but represent different site sections.
+    return url.host + (url.pathname === '/' ? '' : url.pathname);
   } catch {
     return siteUrl;
   }
