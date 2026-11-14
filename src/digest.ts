@@ -234,14 +234,14 @@ export async function generateWeeklyDigest(
       if (pages.length > 0) {
         lines.push('', '## Selected returned page rows (not exhaustive)');
         for (const page of pages) {
-          lines.push(`- ${escapeMarkdownInline(page.page)}: ${formatNumber(page.impressions)} impressions`);
+          lines.push(`- ${topPageMarkdown(page.page, page.page)}: ${formatNumber(page.clicks)} clicks, ${formatNumber(page.impressions)} impressions`);
         }
       }
       const queries = rowsToQueries(currentQueriesResponse.rows).slice(0, 3);
       if (queries.length > 0) {
         lines.push('', '## Selected returned query rows (not exhaustive)');
         for (const query of queries) {
-          lines.push(`- ${escapeMarkdownInline(query.query)}: ${formatNumber(query.impressions)} impressions`);
+          lines.push(`- ${escapeMarkdownInline(query.query)}: ${formatNumber(query.clicks)} clicks, ${formatNumber(query.impressions)} impressions`);
         }
       }
     }
