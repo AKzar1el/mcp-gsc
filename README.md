@@ -182,6 +182,8 @@ Large analytics responses are bounded at the MCP boundary instead of being gener
 
 Weekly digest output includes an exact-property link to the Google Search Console Performance report for quick human investigation. It preserves URL-prefix paths and `sc-domain:` property identifiers. The viewer must have access to that property and manually choose the same date range, search type, and filters as the digest; the link does not set those parameters, grant permissions, or make an additional Google API request.
 
+Finalized weekly digests now report observed click-through rate (CTR) alongside clicks and impressions, with week-over-week changes expressed in **percentage points**, not relative percentages. Zero-impression periods do not supply a comparable CTR baseline. Preliminary snapshots display only observed current-week CTR without a week-over-week claim. These use already-requested aggregate rows and add no API calls or permission requirements.
+
 The finalized digest links each returned top page directly to its page URL for manual review, retaining short, disambiguated display labels. Recent preliminary snapshots also link their selected page rows and show observed clicks alongside impressions for both selected pages and queries, without asserting week-over-week trends. Only ordinary HTTP(S) URLs become clickable links; malformed or unsafe URL schemes remain escaped plain text. Following a link is the reader's choice and does not make any extra Search Console API request.
 
 For explicitly recent preliminary digests, a missing aggregate totals row is not treated as zero traffic. Any separately returned page/query samples are still shown as non-exhaustive observations, without fabricated site totals or week-over-week conclusions.

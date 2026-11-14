@@ -229,6 +229,7 @@ export async function generateWeeklyDigest(
         '## Available current-week metrics',
         `- ${formatNumber(totals.clicks)} clicks`,
         `- ${formatNumber(totals.impressions)} impressions`,
+        `- ${formatCtr(totals)} click-through rate (CTR; preliminary, no week-over-week comparison)`,
       );
     }
     // A missing aggregate row is not a zero, but independently returned
@@ -616,6 +617,9 @@ function renderMarkdown(data: {
     `- **Clicks from Google Search:** ${formatNumber(currentTotals.clicks)} (${formatPctChange(currentTotals.clicks, prevTotals.clicks)})`,
   );
   lines.push(
+    `- **Click-through rate (CTR):** ${formatCtr(currentTotals)} (${formatCtrChange(currentTotals, prevTotals)})`,
+  );
+  lines.push(
     `- **Average Search Console position:** ${formatPosition(currentTotals.position)} (${formatPositionChange(currentTotals.position, prevTotals.position)})`,
   );
   lines.push('');
@@ -748,6 +752,7 @@ function renderMarkdown(data: {
     '- **Impressions:** Your site appeared in Google Search results. This counts result appearances according to Search Console\'s reporting rules; it is not a unique-person count.',
   );
   lines.push('- **Clicks:** Your link was clicked from Google Search results.');
+  lines.push('- **Click-through rate (CTR):** Clicks divided by impressions for the same selected search scope. Changes in CTR are shown in percentage points, not relative percentages. A period without impressions has no comparable CTR.');
   lines.push(
     '- **Average position:** Search Console averages the topmost position of your result across recorded impressions. Lower values mean a higher average position, but this is not a literal current rank or results-page number.',
   );
@@ -759,6 +764,21 @@ function renderMarkdown(data: {
 
 function formatNumber(n: number): string {
   return Math.round(n).toLocaleString('en-US');
+}
+
+function formatCtr(totals: SiteTotals): string {
+  return totals.impressions > 0
+    ? `${(totals.ctr * 100).toFixed(1)}%`
+    : 'unavailable (zero recorded impressions)';
+}
+
+function formatCtrChange(current: SiteTotals, previous: SiteTotals): string {
+  if (current.impressions <= 0 || previous.impressions <= 0) {
+    return 'no comparable CTR baseline';
+  }
+  const difference = (current.ctr - previous.ctr) * 100;
+  if (Math.abs(difference) < 0.05) return 'same as last week';
+  return `${Math.abs(difference).toFixed(1)} percentage points ${difference > 0 ? 'higher' : 'lower'} vs last week`;
 }
 
 function formatPosition(n: number): string {

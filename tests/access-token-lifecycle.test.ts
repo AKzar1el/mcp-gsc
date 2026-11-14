@@ -952,6 +952,54 @@ test('weekly digest treats a query click drop as an observation, not a proven ca
   }
 });
 
+test('weekly digest reports measured CTR changes in percentage points, not relative percent', async () => {
+  const restoreFetch = installDigestAnalyticsMock([], {
+    currentTotals: { clicks: 12, impressions: 1000, ctr: 0.012, position: 8 },
+    previousTotals: { clicks: 8, impressions: 400, ctr: 0.02, position: 8 },
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.match(digest, /Click-through rate \(CTR\).*1\.2%.*0\.8 percentage points lower vs last week/i);
+    assert.doesNotMatch(digest, /CTR.*-40%/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest with zero prior impressions does not invent a comparable CTR baseline', async () => {
+  const restoreFetch = installDigestAnalyticsMock([], {
+    currentTotals: { clicks: 5, impressions: 100, ctr: 0.05, position: 8 },
+    previousTotals: { clicks: 0, impressions: 0, ctr: 0, position: 0 },
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.match(digest, /Click-through rate \(CTR\).*5\.0%.*no comparable CTR baseline/i);
+    assert.doesNotMatch(digest, /CTR.*5\.0 percentage points higher/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest preliminary snapshot reports observed CTR without prior-week comparison', async () => {
+  const restoreFetch = installDigestAnalyticsMock([], {
+    currentTotals: { clicks: 7, impressions: 100, ctr: 0.07, position: 9 },
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/',
+      '2026-08-10', undefined, '2026-08-11',
+    );
+    assert.match(digest, /7\.0% click-through rate \(CTR; preliminary, no week-over-week comparison\)/i);
+    assert.doesNotMatch(digest, /percentage points (higher|lower) vs last week/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test('weekly digest renders provider queries and page paths as plain Markdown text', async () => {
   const query = 'picks **hot** [free](https://fake.invalid)\n## fake heading';
   const restoreFetch = installDigestAnalyticsMock(
