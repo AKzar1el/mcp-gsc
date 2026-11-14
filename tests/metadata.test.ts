@@ -43,7 +43,11 @@ const cursorSkills = [
   {
     path: 'skills/gsc-weekly-review/SKILL.md',
     name: 'gsc-weekly-review',
-    requiredTerms: ['reports.weekly_digest', 'analytics.compare', 'average position'],
+    requiredTerms: [
+      'reports.weekly_digest', 'analytics.compare', 'average position',
+      'search_type', 'page_contains', 'query_contains', 'device', 'country',
+      'ISO 3166-1 alpha-3', 'same scope',
+    ],
   },
   {
     path: 'skills/gsc-indexing-triage/SKILL.md',
@@ -53,7 +57,10 @@ const cursorSkills = [
   {
     path: 'skills/gsc-search-opportunities/SKILL.md',
     name: 'gsc-search-opportunities',
-    requiredTerms: ['insights.quick_wins', 'insights.cannibalization', 'not guaranteed exhaustive'],
+    requiredTerms: [
+      'insights.quick_wins', 'insights.cannibalization', 'not guaranteed exhaustive',
+      'page_contains', 'query_contains', 'country', 'before pagination', 'not a page language',
+    ],
   },
 ] as const;
 
