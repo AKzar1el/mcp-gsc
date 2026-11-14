@@ -1166,6 +1166,29 @@ test('weekly digest highlights only the highest-impression returned queries with
   }
 });
 
+test('weekly zero-click query context reports observed average position without inventing missing ranks', async () => {
+  const restoreFetch = installDigestAnalyticsMock([
+    { keys: ['high impression query'], clicks: 0, impressions: 140, ctr: 0, position: 8.74 },
+    { keys: ['unknown position query'], clicks: 0, impressions: 80, ctr: 0, position: 0 },
+    { keys: ['farther query'], clicks: 0, impressions: 40, ctr: 0, position: 42.16 },
+  ]);
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const section = digest.split('### Returned search queries with impressions but no clicks')[1]
+      ?.split('## What to do this week')[0] ?? '';
+    assert.match(section, /high impression query.*140 impressions, 0 observed clicks, average position 8\.7/);
+    assert.match(section, /farther query.*40 impressions, 0 observed clicks, average position 42\.2/);
+    const missingPositionLine = section.split('\n').find((line) => line.includes('unknown position query')) ?? '';
+    assert.match(missingPositionLine, /80 impressions, 0 observed clicks/);
+    assert.doesNotMatch(missingPositionLine, /average position|position 0/);
+    assert.match(section, /average position.*not a live rank/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test('weekly digest excludes diagnostic search operators from zero-click query opportunities', async () => {
   const restoreFetch = installDigestAnalyticsMock([
     { keys: ['site:example.com'], clicks: 0, impressions: 300, ctr: 0, position: 1 },
