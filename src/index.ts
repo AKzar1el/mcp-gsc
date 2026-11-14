@@ -586,6 +586,10 @@ const DIRECT_INSIGHT_DATA_STATE_SCHEMA = z.enum(['all', 'final']).optional()
   .describe("Omit for Google's finalized-only default; 'all' includes fresh preliminary Search Analytics data that may still change. 'final' requests finalized rows only.");
 
 const PAGE_QUERIES_OUTPUT_SCHEMA = {
+  site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe('Exact Search Console property used for this page-to-query drilldown.'),
+  start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive first date of the page-to-query report.')),
+  end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive last date of the page-to-query report.')),
+  search_type: z.enum(['web', 'image', 'video', 'news']).describe('Google Search surface used for the returned page queries.'),
   page: z.string(),
   data_state: z.enum(['all', 'final']).describe('Effective Search Analytics data state; omitted input uses final.'),
   preliminary_data_possible: z.boolean().describe('True for all, when fresh rows can still change.'),
@@ -604,6 +608,10 @@ const PAGE_QUERIES_OUTPUT_SCHEMA = {
 };
 
 const QUERY_PAGES_OUTPUT_SCHEMA = {
+  site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe('Exact Search Console property used for this query-to-pages drilldown.'),
+  start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive first date of the query-to-pages report.')),
+  end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive last date of the query-to-pages report.')),
+  search_type: z.enum(['web', 'image', 'video', 'news']).describe('Google Search surface used for the returned query pages.'),
   query: z.string(),
   data_state: z.enum(['all', 'final']).describe('Effective Search Analytics data state; omitted input uses final.'),
   preliminary_data_possible: z.boolean().describe('True for all, when fresh rows can still change.'),
@@ -1821,6 +1829,10 @@ class GscMcpRuntime {
           rows.sourceRowOffsets,
         );
         const payload = {
+          site_url,
+          start_date,
+          end_date,
+          search_type,
           page: page_url,
           data_state: data_state ?? 'final',
           preliminary_data_possible: data_state === 'all',
@@ -1929,6 +1941,10 @@ class GscMcpRuntime {
           rows.sourceRowOffsets,
         );
         const payload = {
+          site_url,
+          start_date,
+          end_date,
+          search_type,
           query,
           data_state: data_state ?? 'final',
           preliminary_data_possible: data_state === 'all',
