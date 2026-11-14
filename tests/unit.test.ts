@@ -2548,6 +2548,21 @@ test('processCannibalization: groups by query and finds multiple pages with min 
   assert.equal(candidates[0].pages.length, 2);
 });
 
+test('processCannibalization: eligibility uses exact observed impression shares before rounding for display', () => {
+  const rows = [
+    { keys: ['below threshold', 'https://example.com/main'], clicks: 20, impressions: 9004, ctr: 0.01, position: 3 },
+    { keys: ['below threshold', 'https://example.com/other'], clicks: 3, impressions: 996, ctr: 0.003, position: 12 },
+    { keys: ['exact threshold', 'https://example.com/main'], clicks: 20, impressions: 9000, ctr: 0.01, position: 3 },
+    { keys: ['exact threshold', 'https://example.com/other'], clicks: 3, impressions: 1000, ctr: 0.003, position: 12 },
+    { keys: ['above threshold', 'https://example.com/main'], clicks: 20, impressions: 8996, ctr: 0.01, position: 3 },
+    { keys: ['above threshold', 'https://example.com/other'], clicks: 3, impressions: 1004, ctr: 0.003, position: 12 },
+  ];
+  const candidates = processCannibalization(rows, 50, 10);
+  assert.deepEqual(candidates.map((candidate) => candidate.query).sort(), ['above threshold', 'exact threshold']);
+  assert.equal(candidates.find((candidate) => candidate.query === 'exact threshold')?.pages[1].impression_share, 10);
+  assert.equal(processCannibalization(rows, 50, 9.9).length, 3);
+});
+
 test('processContentDecay: identifies page traffic drop and calculates click drop metrics', () => {
   const recentRows = [
     { keys: ['page1'], clicks: 50, impressions: 1000, ctr: 0.05, position: 5 }, // decay (from 100 to 50)

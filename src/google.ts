@@ -1458,11 +1458,15 @@ export function processCannibalization(
     const totalClicks = pages.reduce((sum, p) => sum + p.clicks, 0);
 
     const competingPages = pages
+      .filter((p) =>
+        totalImpressions > 0 &&
+        p.impressions >= minImpressions &&
+        (p.impressions / totalImpressions) * 100 >= minPagePercentage
+      )
       .map((p) => ({
         ...p,
         impression_share: Math.round((p.impressions / totalImpressions) * 1000) / 10,
-      }))
-      .filter((p) => p.impressions >= minImpressions && p.impression_share >= minPagePercentage);
+      }));
 
     if (competingPages.length >= 2) {
       cannibalizationCandidates.push({

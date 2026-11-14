@@ -12,7 +12,7 @@ export const CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA = z
   .min(0)
   .max(100)
   .default(10)
-  .describe('Minimum percentage of total query impressions a page must have to count as a cannibalizing page (0-100). Default is 10%.');
+  .describe('Minimum percentage of observed query/page impression sum a page must have to qualify (0-100). Eligibility uses the unrounded share; returned impression_share is rounded for display. Default is 10%.');
 
 export const CANNIBALIZATION_QUERY_CONTAINS_SCHEMA = z
   .string()
