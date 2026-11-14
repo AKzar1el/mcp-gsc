@@ -731,6 +731,23 @@ function renderMarkdown(data: {
   }
   lines.push('');
 
+  // Reuse the already returned page sample; requesting additional rows would
+  // consume extra Google quota and still would not make this sample exhaustive.
+  const noClickPages = currentPages
+    .filter((page) => page.clicks === 0 && page.impressions > 0)
+    .sort((a, b) => b.impressions - a.impressions)
+    .slice(0, 3);
+  if (noClickPages.length > 0) {
+    lines.push('### Returned pages with impressions but no clicks');
+    lines.push('');
+    lines.push('> These candidates appear only in the up-to-10 returned page rows (not exhaustive). Missing pages are not zero; inspect matching queries and page-level context before changing content.');
+    lines.push('');
+    for (const page of noClickPages) {
+      lines.push(`- ${topPageMarkdown(page.page, page.page)} — ${formatNumber(page.impressions)} impressions, 0 observed clicks.`);
+    }
+    lines.push('');
+  }
+
   lines.push('## What to do this week');
   lines.push('');
   lines.push(`### 🎯 ${action.item.headline}`);

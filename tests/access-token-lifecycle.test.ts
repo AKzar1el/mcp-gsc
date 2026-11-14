@@ -1085,6 +1085,32 @@ test('weekly digest does not infer zero page impressions from an empty Pages res
   }
 });
 
+test('weekly digest flags only returned pages with observed impressions but no clicks', async () => {
+  const restoreFetch = installDigestAnalyticsMock([], {
+    currentTotals: { clicks: 11, impressions: 560, ctr: 11 / 560, position: 8 },
+    currentPageRows: [
+      { keys: ['https://example.com/active'], clicks: 11, impressions: 200, ctr: 0.055, position: 7 },
+      { keys: ['https://example.com/low-signal'], clicks: 0, impressions: 35, ctr: 0, position: 14 },
+      { keys: ['https://example.com/high-signal'], clicks: 0, impressions: 70, ctr: 0, position: 12 },
+      { keys: ['https://example.com/no-impressions'], clicks: 0, impressions: 0, ctr: 0, position: 0 },
+    ],
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const section = digest.split('### Returned pages with impressions but no clicks')[1]?.split('## What to do this week')[0] ?? '';
+    assert.match(section, /high-signal.*70 impressions/);
+    assert.match(section, /low-signal.*35 impressions/);
+    assert.ok(section.indexOf('high-signal') < section.indexOf('low-signal'));
+    assert.doesNotMatch(section, /active|no-impressions/);
+    assert.match(section, /returned page rows.*not exhaustive/i);
+    assert.match(section, /inspect matching queries.*before changing content/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test('weekly digest does not infer query distribution from missing query rows on growth', async () => {
   const restoreFetch = installDigestAnalyticsMock([], {
     currentTotals: { clicks: 2, impressions: 40, ctr: 0.05, position: 8 },
