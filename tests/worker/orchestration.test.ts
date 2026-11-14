@@ -3780,6 +3780,67 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('filters content decay by observed classification without hiding source coverage', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'decay-classification-user', email: 'decay-classification@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    let requests = 0;
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL) => {
+        expect(requestUrl(input)).toBe('https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query');
+        requests += 1;
+        const recent = requests % 2 === 1;
+        return response({ rows: [
+          { keys: ['https://example.com/declining'], clicks: recent ? 50 : 100,
+            impressions: recent ? 600 : 1000, ctr: 0.08, position: recent ? 10 : 4 },
+          { keys: ['https://example.com/volatile'], clicks: recent ? 6 : 8,
+            impressions: 100, ctr: 0.06, position: 5 },
+          { keys: ['https://example.com/improving'], clicks: recent ? 3 : 5,
+            impressions: recent ? 150 : 100, ctr: 0.02, position: recent ? 7 : 10 },
+        ] });
+      };
+
+      const analyze = async (classification_filter?: string) => {
+        const result = await registered['insights.content_decay'].handler({
+          site_url: 'sc-domain:example.com', compare_days: 14,
+          ...(classification_filter ? { classification_filter } : {}),
+        });
+        return (result as { structuredContent: {
+          classification_filter: string;
+          assessment_count: number;
+          decay_count: number;
+          decay_results: Array<{ page: string; classification: string }>;
+          observed_page_overlap: { comparable_count: number };
+          result_page: { total_count: number };
+        } }).structuredContent;
+      };
+
+      const all = await analyze();
+      expect(all.classification_filter).toBe('all');
+      expect(all.decay_results.map((r) => r.classification)).toEqual([
+        'likely_decay', 'weak_insufficient_evidence', 'improving_visibility_with_click_volatility',
+      ]);
+      const likely = await analyze('likely_decay');
+      expect(likely.classification_filter).toBe('likely_decay');
+      expect(likely.decay_results.map((r) => r.page)).toEqual(['https://example.com/declining']);
+      expect(likely.result_page.total_count).toBe(1);
+      expect(likely.assessment_count).toBe(3);
+      expect(likely.decay_count).toBe(1);
+      expect(likely.observed_page_overlap.comparable_count).toBe(3);
+      const improving = await analyze('improving_visibility_with_click_volatility');
+      expect(improving.decay_results.map((r) => r.page)).toEqual(['https://example.com/improving']);
+      expect(requests).toBe(6);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('distinguishes observed missing-period pages from comparable content-decay rows', async () => {
     const server = await createGscMcpServer(
       workerEnv,
