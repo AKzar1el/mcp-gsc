@@ -176,7 +176,7 @@ The finalized digest links each returned top page directly to its page URL for m
 
 **Agency reporting workflow:** [Read-only weekly Search Console reporting for SEO agencies](docs/agency-weekly-reporting.md) walks through exact-property verification, one bounded weekly digest, matched-period comparisons, evidence checks, and a reusable human-reviewed client report. It contains no fabricated client metrics or automated outreach.
 
-Weekly digest headings retain the URL path for a URL-prefix property (for example, `example.com/de/` versus `example.com/fr/`) so reports for different site sections remain distinguishable. Root URL-prefix and `sc-domain:` properties keep their short host/domain headings; the report still reflects only rows returned by Search Console, not guaranteed complete traffic.
+Weekly digest headings retain the URL path for a URL-prefix property (for example, `example.com/de/` versus `example.com/fr/`) so reports for different site sections remain distinguishable. HTTP URL-prefix headings explicitly retain `http://` to distinguish them from HTTPS properties; Domain property headings identify their broader property type. Common HTTPS root properties keep short host headings. This reflects Search Console's separate protocol/property scopes, not guaranteed complete traffic.
 
 Finalized weekly digests now report the distinct query rows observed in each bounded week and how many appeared in both. When neither week supplies a matching returned query, stable site-level totals are **not** presented as evidence of stable query-level performance. These counts use the same up-to-25 query rows already fetched per period, without extra Google requests, and do not establish exhaustive query coverage.
 
