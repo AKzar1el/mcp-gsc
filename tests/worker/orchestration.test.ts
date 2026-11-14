@@ -3813,6 +3813,7 @@ describe('Worker orchestration', () => {
         });
         return (result as { structuredContent: {
           classification_filter: string;
+          min_click_loss: number | null;
           assessment_count: number;
           decay_count: number;
           decay_results: Array<{ page: string; classification: string }>;
@@ -3835,6 +3836,63 @@ describe('Worker orchestration', () => {
       expect(likely.observed_page_overlap.comparable_count).toBe(3);
       const improving = await analyze('improving_visibility_with_click_volatility');
       expect(improving.decay_results.map((r) => r.page)).toEqual(['https://example.com/improving']);
+      expect(all.min_click_loss).toBeNull();
+      expect(requests).toBe(6);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('focuses observed click declines by absolute impact without changing coverage counts', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'decay-impact-user', email: 'decay-impact@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    let requests = 0;
+    try {
+      globalThis.fetch = async () => {
+        requests += 1;
+        const recent = requests % 2 === 1;
+        return response({ rows: [
+          { keys: ['https://example.com/high-impact'], clicks: recent ? 50 : 100,
+            impressions: recent ? 600 : 1000, ctr: 0.08, position: recent ? 10 : 4 },
+          { keys: ['https://example.com/small-change'], clicks: recent ? 8 : 10,
+            impressions: 200, ctr: 0.04, position: 7 },
+        ] });
+      };
+      const analyze = async (min_click_loss: number, classification_filter?: string) => {
+        const result = await registered['insights.content_decay'].handler({
+          site_url: 'sc-domain:example.com', compare_days: 14, min_click_loss,
+          ...(classification_filter ? { classification_filter } : {}),
+        });
+        return (result as { structuredContent: {
+          min_click_loss: number;
+          assessment_count: number;
+          decay_count: number;
+          decay_results: Array<{ page: string }>;
+          observed_page_overlap: { comparable_count: number };
+          result_page: { total_count: number };
+        } }).structuredContent;
+      };
+      const prioritized = await analyze(20);
+      expect(prioritized.min_click_loss).toBe(20);
+      expect(prioritized.decay_results.map((row) => row.page)).toEqual(['https://example.com/high-impact']);
+      expect(prioritized.result_page.total_count).toBe(1);
+      expect(prioritized.assessment_count).toBe(2);
+      expect(prioritized.decay_count).toBe(1);
+      expect(prioritized.observed_page_overlap.comparable_count).toBe(2);
+      const zero = await analyze(0);
+      expect(zero.min_click_loss).toBe(0);
+      expect(zero.decay_results).toHaveLength(2);
+      const combined = await analyze(20, 'weak_insufficient_evidence');
+      expect(combined.decay_results).toHaveLength(0);
+      expect(combined.assessment_count).toBe(2);
+      expect(combined.result_page.total_count).toBe(0);
       expect(requests).toBe(6);
     } finally {
       globalThis.fetch = originalFetch;

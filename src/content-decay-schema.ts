@@ -42,3 +42,10 @@ export const CONTENT_DECAY_CLASSIFICATION_FILTER_SCHEMA = z
   .enum(['all', 'likely_decay', 'weak_insufficient_evidence', 'improving_visibility_with_click_volatility'])
   .default('all')
   .describe('Optional local result filter: all (default) returns every observed click-decline assessment; choose one evidence classification to focus returned rows. It does not change Google requests, source coverage, or total assessment/decay counts.');
+
+export const CONTENT_DECAY_MIN_CLICK_LOSS_SCHEMA = z
+  .number()
+  .int()
+  .nonnegative()
+  .optional()
+  .describe('Optional minimum absolute observed click decline between comparable periods (e.g. 20 means at least 20 fewer clicks). Applied only to returned assessment rows, not Google requests or unfiltered evidence counts. Omit for all observed declines; zero does not exclude any.');
