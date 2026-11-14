@@ -3722,6 +3722,66 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('distinguishes observed missing-period pages from comparable content-decay rows', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'decay-overlap-user', email: 'decay-overlap@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    let requests = 0;
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL) => {
+        expect(requestUrl(input)).toBe('https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query');
+        requests += 1;
+        const paths = requests === 1
+          ? ['/shared', '/recent-only']
+          : ['/shared', '/previous-only'];
+        return response({ rows: paths.map((path) => ({
+          keys: [`https://example.com${path}`],
+          clicks: requests === 1 ? 10 : 50,
+          impressions: requests === 1 ? 100 : 500,
+          ctr: 0.1,
+          position: requests === 1 ? 12 : 4,
+        })) });
+      };
+      const result = (await registered['insights.content_decay'].handler({
+        site_url: 'sc-domain:example.com',
+        compare_days: 14,
+      })) as { structuredContent: {
+        assessment_count: number;
+        decay_results: Array<{ page: string }>;
+        observed_page_overlap: {
+          recent_count: number;
+          previous_count: number;
+          comparable_count: number;
+          recent_only_count: number;
+          previous_only_count: number;
+          note: string;
+        };
+      } };
+
+      expect(result.structuredContent.observed_page_overlap).toMatchObject({
+        recent_count: 2,
+        previous_count: 2,
+        comparable_count: 1,
+        recent_only_count: 1,
+        previous_only_count: 1,
+      });
+      expect(result.structuredContent.observed_page_overlap.note).toMatch(/not.*zero traffic/i);
+      expect(result.structuredContent.assessment_count).toBe(1);
+      expect(result.structuredContent.decay_results.map((row) => row.page)).toEqual([
+        'https://example.com/shared',
+      ]);
+      expect(requests).toBe(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('anchors content decay to a historical finalized end date and rejects unavailable periods', async () => {
     const server = await createGscMcpServer(
       workerEnv,
