@@ -411,6 +411,49 @@ test('weekly digest links to its exact Search Console property without implying 
   }
 });
 
+test('weekly digest distinguishes steady aggregate totals from unmatched returned query rows', async () => {
+  const row = (query: string) => ({
+    keys: [query], clicks: 1, impressions: 25, ctr: 0.04, position: 8,
+  });
+  const totals = { clicks: 10, impressions: 100, ctr: 0.1, position: 8 };
+  const restoreFetch = installDigestAnalyticsMock([row('current-only')], {
+    previousQueryRows: [row('previous-only')],
+    currentTotals: totals,
+    previousTotals: totals,
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.match(digest, /Returned query-row overlap:.*1.*1.*0/);
+    assert.match(digest, /Query trends not comparable/);
+    assert.doesNotMatch(digest, /Nothing major changed this week/);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest reports only the distinct queries actually seen in both bounded periods', async () => {
+  const row = (query: string) => ({
+    keys: [query], clicks: 1, impressions: 25, ctr: 0.04, position: 8,
+  });
+  const totals = { clicks: 10, impressions: 100, ctr: 0.1, position: 8 };
+  const restoreFetch = installDigestAnalyticsMock([row('shared'), row('this-week')], {
+    previousQueryRows: [row('shared'), row('last-week')],
+    currentTotals: totals,
+    previousTotals: totals,
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.match(digest, /Returned query-row overlap:.*2.*2.*1/);
+    assert.doesNotMatch(digest, /Query trends not comparable/);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test('weekly digest queries only finalized Search Console data for all five report sections', async () => {
   const restoreFetch = installDigestAnalyticsMock([]);
   const originalMockFetch = globalThis.fetch;

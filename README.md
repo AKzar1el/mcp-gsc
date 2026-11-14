@@ -176,6 +176,8 @@ Weekly digest output includes an exact-property link to the Google Search Consol
 
 Weekly digest headings retain the URL path for a URL-prefix property (for example, `example.com/de/` versus `example.com/fr/`) so reports for different site sections remain distinguishable. Root URL-prefix and `sc-domain:` properties keep their short host/domain headings; the report still reflects only rows returned by Search Console, not guaranteed complete traffic.
 
+Finalized weekly digests now report the distinct query rows observed in each bounded week and how many appeared in both. When neither week supplies a matching returned query, stable site-level totals are **not** presented as evidence of stable query-level performance. These counts use the same up-to-25 query rows already fetched per period, without extra Google requests, and do not establish exhaustive query coverage.
+
 Once connected, ask your assistant things like:
 
 - *"What are my top 20 queries by clicks in the last 28 days?"*
