@@ -3172,6 +3172,50 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('filters quick wins by optional CTR ceiling without another provider request', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'quick-wins-ctr-user', email: 'quick-wins-ctr@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    let requests = 0;
+    try {
+      globalThis.fetch = async () => {
+        requests += 1;
+        return response({ rows: [
+          { keys: ['higher ctr', 'https://example.com/a'], clicks: 10, impressions: 200, ctr: 0.05, position: 12 },
+          { keys: ['low ctr', 'https://example.com/b'], clicks: 2, impressions: 200, ctr: 0.01, position: 12 },
+          { keys: ['no clicks', 'https://example.com/c'], clicks: 0, impressions: 150, ctr: 0, position: 12 },
+        ] });
+      };
+      const args = {
+        site_url: 'sc-domain:example.com', start_date: '2026-07-01', end_date: '2026-07-31',
+        min_impressions: 100, min_position: 8, max_position: 20, limit: 20, start_row: 0,
+      };
+      const invoke = async (additional: Record<string, unknown>) => {
+        const result = (await registered['insights.quick_wins'].handler({ ...args, ...additional })) as {
+          structuredContent: { max_ctr: number | null; quick_wins: Array<{ query: string }> };
+        };
+        return result.structuredContent;
+      };
+      const filtered = await invoke({ max_ctr: 0.02 });
+      expect(filtered.max_ctr).toBe(0.02);
+      expect(filtered.quick_wins.map((row) => row.query)).toEqual(['low ctr', 'no clicks']);
+      const zero = await invoke({ max_ctr: 0 });
+      expect(zero.quick_wins.map((row) => row.query)).toEqual(['no clicks']);
+      const unfiltered = await invoke({});
+      expect(unfiltered.max_ctr).toBeNull();
+      expect(unfiltered.quick_wins).toHaveLength(3);
+      expect(requests).toBe(3);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('offers explicitly preliminary quick wins without changing the finalized default', async () => {
     const server = await createGscMcpServer(
       workerEnv,

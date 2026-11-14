@@ -1383,6 +1383,7 @@ export function processQuickWins(
   minImpressions: number,
   minPosition: number,
   maxPosition: number,
+  maxCtr?: number,
 ): QuickWinResult[] {
   return rows
     .filter(hasRecordedPosition)
@@ -1391,7 +1392,8 @@ export function processQuickWins(
         (row.keys?.length ?? 0) >= 2 &&
         row.position >= minPosition &&
         row.position <= maxPosition &&
-        row.impressions >= minImpressions
+        row.impressions >= minImpressions &&
+        (maxCtr === undefined || row.ctr <= maxCtr)
     )
     .sort(
       (a, b) =>

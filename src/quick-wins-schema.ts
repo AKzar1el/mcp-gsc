@@ -18,6 +18,7 @@ const QUICK_WINS_THRESHOLDS_SHAPE = {
   min_impressions: z.number().int().min(0).default(100).describe('Minimum impressions required to consider an observed query/page row. Must be at least 0. Default is 100.'),
   min_position: z.number().positive().default(8).describe('Minimum Search Console average position for the opportunity range (inclusive). This is an aggregate metric, not a literal current rank. Must be greater than 0. Default is 8.'),
   max_position: z.number().positive().default(20).describe('Maximum Search Console average position for the opportunity range (inclusive). This is an aggregate metric, not a literal current rank. Must be greater than 0. Default is 20.'),
+  max_ctr: z.number().min(0).max(1).optional().describe('Optional inclusive upper bound on observed Search Console CTR expressed as a fraction (0.02 means 2%). Applied locally to returned rows after Google pagination; omit to keep all CTR values. A low CTR does not itself prove an SEO problem.'),
 };
 
 export function createQuickWinsInputSchema() {
