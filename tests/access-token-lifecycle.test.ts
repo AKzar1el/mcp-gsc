@@ -1138,6 +1138,34 @@ test('weekly digest flags only returned pages with observed impressions but no c
   }
 });
 
+test('weekly digest highlights only the highest-impression returned queries with zero clicks', async () => {
+  const restoreFetch = installDigestAnalyticsMock([
+    { keys: ['smaller opportunity'], clicks: 0, impressions: 35, ctr: 0, position: 11 },
+    { keys: ['clicked query'], clicks: 6, impressions: 200, ctr: 0.03, position: 6 },
+    { keys: ['largest opportunity'], clicks: 0, impressions: 120, ctr: 0, position: 9 },
+    { keys: ['unseen opportunity'], clicks: 0, impressions: 0, ctr: 0, position: 0 },
+    { keys: ['medium opportunity'], clicks: 0, impressions: 80, ctr: 0, position: 12 },
+    { keys: ['fourth opportunity'], clicks: 0, impressions: 20, ctr: 0, position: 14 },
+  ]);
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const section = digest.split('### Returned search queries with impressions but no clicks')[1]
+      ?.split('## What to do this week')[0] ?? '';
+    assert.match(section, /largest opportunity.*120 impressions/);
+    assert.match(section, /medium opportunity.*80 impressions/);
+    assert.match(section, /smaller opportunity.*35 impressions/);
+    assert.ok(section.indexOf('largest opportunity') < section.indexOf('medium opportunity'));
+    assert.ok(section.indexOf('medium opportunity') < section.indexOf('smaller opportunity'));
+    assert.doesNotMatch(section, /clicked query|unseen opportunity|fourth opportunity/);
+    assert.match(section, /up-to-25 returned query rows.*not exhaustive/i);
+    assert.match(section, /anonymized queries.*omitted/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test('weekly digest does not infer query distribution from missing query rows on growth', async () => {
   const restoreFetch = installDigestAnalyticsMock([], {
     currentTotals: { clicks: 2, impressions: 40, ctr: 0.05, position: 8 },
