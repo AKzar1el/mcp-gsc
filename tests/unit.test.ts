@@ -2517,6 +2517,17 @@ test('processQuickWins: filters queries ranking 8-20 with min impressions and so
   assert.equal(wins[1].query, 'query2');
 });
 
+test('processQuickWins: optional CTR ceiling keeps low-click opportunities and zero-CTR rows', () => {
+  const rows = [
+    { keys: ['higher ctr', 'https://example.com/a'], clicks: 10, impressions: 200, ctr: 0.05, position: 12 },
+    { keys: ['low ctr', 'https://example.com/b'], clicks: 2, impressions: 200, ctr: 0.01, position: 12 },
+    { keys: ['no clicks', 'https://example.com/c'], clicks: 0, impressions: 150, ctr: 0, position: 12 },
+  ];
+  assert.equal(processQuickWins(rows, 100, 8, 20).length, 3);
+  assert.deepEqual(processQuickWins(rows, 100, 8, 20, 0.02).map((row) => row.query), ['low ctr', 'no clicks']);
+  assert.deepEqual(processQuickWins(rows, 100, 8, 20, 0).map((row) => row.query), ['no clicks']);
+});
+
 test('processCannibalization: groups by query and finds multiple pages with min impressions and share percentage', () => {
   const rows = [
     // Cannibalized query: query1 is split across page1 and page2
