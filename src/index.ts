@@ -699,6 +699,11 @@ const CONTENT_DECAY_OUTPUT_SCHEMA = {
   }),
   decay_count: z.number().int().nonnegative(),
   assessment_count: z.number().int().nonnegative(),
+  observed_click_loss: z.object({
+    all_declining_pages: z.number().nonnegative(),
+    likely_decay_pages: z.number().nonnegative(),
+    note: z.string(),
+  }),
   decay_results: z.array(
     z.object({
       page: z.string(),
@@ -2301,7 +2306,7 @@ class GscMcpRuntime {
       'insights.content_decay',
       {
         title: 'Detect Content Decay',
-        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Optional end_date anchors a historical comparison to a selected finalized Pacific Search Console date (at least three days before today); omit for the latest finalized date. Compare 1-240 days per period within Search Console\'s rolling 16-month history. Optional search_type selects Web (default), Image, Video or News-tab search consistently for both periods; Discover and Google News are excluded from this position-aware heuristic. Optional page_contains, query_contains, country and device scope both Google Search Analytics requests to a URL section (such as /de/), search topic (such as technical seo), ISO alpha-3 searcher country (such as DEU, not page language) and searcher device (desktop/mobile/tablet) using AND before pagination; this changes the comparison population, not property-wide totals. Optional classification_filter narrows returned assessments locally to likely_decay or either weaker evidence class; optional min_click_loss selects an absolute minimum observed click decline, preserving original unfiltered assessment/decay counts. No additional requests are made, and missing rows are never treated as zero. Only pages returned in both Search Analytics period responses are compared; observed_page_overlap reports how many returned page URLs are common or exclusive to each period. An absent row is not evidence of zero traffic, and Google does not guarantee every data row. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
+        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Optional end_date anchors a historical comparison to a selected finalized Pacific Search Console date (at least three days before today); omit for the latest finalized date. Compare 1-240 days per period within Search Console\'s rolling 16-month history. Optional search_type selects Web (default), Image, Video or News-tab search consistently for both periods; Discover and Google News are excluded from this position-aware heuristic. Optional page_contains, query_contains, country and device scope both Google Search Analytics requests to a URL section (such as /de/), search topic (such as technical seo), ISO alpha-3 searcher country (such as DEU, not page language) and searcher device (desktop/mobile/tablet) using AND before pagination; this changes the comparison population, not property-wide totals. Optional classification_filter narrows returned assessments locally to likely_decay or either weaker evidence class; optional min_click_loss selects an absolute minimum observed click decline, preserving original unfiltered assessment/decay counts. observed_click_loss summarizes the observed declines over all comparable declining pages and the likely_decay subset, before local filters and output pagination; it is not a property-wide traffic-loss estimate. No additional requests are made, and missing rows are never treated as zero. Only pages returned in both Search Analytics period responses are compared; observed_page_overlap reports how many returned page URLs are common or exclusive to each period. An absent row is not evidence of zero traffic, and Google does not guarantee every data row. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           compare_days: CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
@@ -2442,6 +2447,12 @@ class GscMcpRuntime {
             (result) => result.classification === 'likely_decay',
           ).length,
           assessment_count: decayResults.length,
+          observed_click_loss: {
+            all_declining_pages: decayResults.reduce((total, result) => total - result.click_difference, 0),
+            likely_decay_pages: decayResults.reduce((total, result) =>
+              total + (result.classification === 'likely_decay' ? -result.click_difference : 0), 0),
+            note: 'Sum of observed click declines for comparable returned page rows before local result filters or pagination; not property-wide traffic lost. Missing Google rows are not measured zeros, and declines do not establish a cause.',
+          },
           decay_results: bounded.items,
           pagination: {
             recent: paginationMetadata(recentSource),

@@ -3874,6 +3874,7 @@ describe('Worker orchestration', () => {
           min_click_loss: number;
           assessment_count: number;
           decay_count: number;
+          observed_click_loss: { all_declining_pages: number; likely_decay_pages: number; note: string };
           decay_results: Array<{ page: string }>;
           observed_page_overlap: { comparable_count: number };
           result_page: { total_count: number };
@@ -3885,14 +3886,19 @@ describe('Worker orchestration', () => {
       expect(prioritized.result_page.total_count).toBe(1);
       expect(prioritized.assessment_count).toBe(2);
       expect(prioritized.decay_count).toBe(1);
+      expect(prioritized.observed_click_loss.all_declining_pages).toBe(52);
+      expect(prioritized.observed_click_loss.likely_decay_pages).toBe(50);
+      expect(prioritized.observed_click_loss.note).toContain('not property-wide');
       expect(prioritized.observed_page_overlap.comparable_count).toBe(2);
       const zero = await analyze(0);
       expect(zero.min_click_loss).toBe(0);
       expect(zero.decay_results).toHaveLength(2);
+      expect(zero.observed_click_loss).toEqual(prioritized.observed_click_loss);
       const combined = await analyze(20, 'weak_insufficient_evidence');
       expect(combined.decay_results).toHaveLength(0);
       expect(combined.assessment_count).toBe(2);
       expect(combined.result_page.total_count).toBe(0);
+      expect(combined.observed_click_loss).toEqual(prioritized.observed_click_loss);
       expect(requests).toBe(6);
     } finally {
       globalThis.fetch = originalFetch;
