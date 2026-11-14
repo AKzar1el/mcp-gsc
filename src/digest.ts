@@ -767,13 +767,14 @@ function renderMarkdown(data: {
   // The existing bounded query response can highlight search terms worth
   // reviewing without a further Search Analytics request or inferred zeros.
   const noClickQueries = currentQueries
-    .filter((query) => query.query.trim() !== '' && query.clicks === 0 && query.impressions > 0)
+    .filter((query) => query.query.trim() !== '' && !isOperatorQuery(query.query)
+      && query.clicks === 0 && query.impressions > 0)
     .sort((a, b) => b.impressions - a.impressions)
     .slice(0, 3);
   if (noClickQueries.length > 0) {
     lines.push('### Returned search queries with impressions but no clicks');
     lines.push('');
-    lines.push('> These candidates come only from the up-to-25 returned query rows (not exhaustive); anonymized queries may be omitted. Missing queries are not zero. Check search intent, ranking context and SERP features before changing content.');
+    lines.push('> These candidates come only from the up-to-25 returned query rows (not exhaustive); anonymized queries may be omitted and diagnostic search-operator queries are excluded. Missing queries are not zero. Check search intent, ranking context and SERP features before changing content.');
     lines.push('');
     for (const query of noClickQueries) {
       lines.push(`- **${escapeMarkdownInline(query.query)}** — ${formatNumber(query.impressions)} impressions, 0 observed clicks.`);
