@@ -344,6 +344,7 @@ export async function generateWeeklyDigest(
     prevTotals,
     movers,
     observedQueryOverlap,
+    currentQueries,
     currentPages,
     action,
   });
@@ -599,10 +600,11 @@ function renderMarkdown(data: {
   prevTotals: SiteTotals;
   movers: Movers;
   observedQueryOverlap: ObservedQueryOverlap;
+  currentQueries: QueryRow[];
   currentPages: PageRow[];
   action: { key: ActionKey; item: ActionItem };
 }): string {
-  const { siteUrl, searchTypeNotice, pageScopeNotice, deviceScopeNotice, queryScopeNotice, countryScopeNotice, dates, currentTotals, prevTotals, movers, observedQueryOverlap, currentPages, action } = data;
+  const { siteUrl, searchTypeNotice, pageScopeNotice, deviceScopeNotice, queryScopeNotice, countryScopeNotice, dates, currentTotals, prevTotals, movers, observedQueryOverlap, currentQueries, currentPages, action } = data;
   const siteName = siteDisplayName(siteUrl);
   const lines: string[] = [];
 
@@ -758,6 +760,23 @@ function renderMarkdown(data: {
     lines.push('');
     for (const page of noClickPages) {
       lines.push(`- ${topPageMarkdown(page.page, page.page)} — ${formatNumber(page.impressions)} impressions, 0 observed clicks.`);
+    }
+    lines.push('');
+  }
+
+  // The existing bounded query response can highlight search terms worth
+  // reviewing without a further Search Analytics request or inferred zeros.
+  const noClickQueries = currentQueries
+    .filter((query) => query.query.trim() !== '' && query.clicks === 0 && query.impressions > 0)
+    .sort((a, b) => b.impressions - a.impressions)
+    .slice(0, 3);
+  if (noClickQueries.length > 0) {
+    lines.push('### Returned search queries with impressions but no clicks');
+    lines.push('');
+    lines.push('> These candidates come only from the up-to-25 returned query rows (not exhaustive); anonymized queries may be omitted. Missing queries are not zero. Check search intent, ranking context and SERP features before changing content.');
+    lines.push('');
+    for (const query of noClickQueries) {
+      lines.push(`- **${escapeMarkdownInline(query.query)}** — ${formatNumber(query.impressions)} impressions, 0 observed clicks.`);
     }
     lines.push('');
   }
