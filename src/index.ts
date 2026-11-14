@@ -2410,6 +2410,19 @@ class GscMcpRuntime {
         const recentPages = observedPages(recentSource.rows);
         const previousPages = observedPages(previousSource.rows);
         const comparableCount = [...recentPages].filter((page) => previousPages.has(page)).length;
+        const recentClicksByPage = new Map(recentSource.rows
+          .filter((row) => row.keys?.[0] && row.position !== undefined)
+          .map((row) => [row.keys![0], row.clicks] as const));
+        const observedGains = previousSource.rows.reduce((summary, row) => {
+          if (!row.keys?.[0] || row.position === undefined) return summary;
+          if (pageFilter && !row.keys[0].toLowerCase().includes(pageFilter)) return summary;
+          const recentClicks = recentClicksByPage.get(row.keys[0]);
+          if (recentClicks !== undefined && recentClicks > row.clicks) {
+            summary.clicks += recentClicks - row.clicks;
+            summary.pages += 1;
+          }
+          return summary;
+        }, { clicks: 0, pages: 0 });
         const filteredResults = decayResults.filter((result) =>
           (classification_filter === 'all' || result.classification === classification_filter)
           && (min_click_loss === undefined || -result.click_difference >= min_click_loss)
@@ -2452,6 +2465,11 @@ class GscMcpRuntime {
             likely_decay_pages: decayResults.reduce((total, result) =>
               total + (result.classification === 'likely_decay' ? -result.click_difference : 0), 0),
             note: 'Sum of observed click declines for comparable returned page rows before local result filters or pagination; not property-wide traffic lost. Missing Google rows are not measured zeros, and declines do not establish a cause.',
+          },
+          observed_click_gain: {
+            all_gaining_pages: observedGains.clicks,
+            gaining_page_count: observedGains.pages,
+            note: 'Positive click changes among pages returned with position data in both periods, before local result filters or pagination; not property-wide growth or a net-traffic estimate. Missing Google rows are not measured zeros, and gains do not explain losses.',
           },
           decay_results: bounded.items,
           pagination: {

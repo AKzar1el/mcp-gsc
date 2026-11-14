@@ -3889,6 +3889,9 @@ describe('Worker orchestration', () => {
       expect(prioritized.observed_click_loss.all_declining_pages).toBe(52);
       expect(prioritized.observed_click_loss.likely_decay_pages).toBe(50);
       expect(prioritized.observed_click_loss.note).toContain('not property-wide');
+      expect((prioritized as unknown as { observed_click_gain: { all_gaining_pages: number; gaining_page_count: number } }).observed_click_gain).toMatchObject({
+        all_gaining_pages: 0, gaining_page_count: 0,
+      });
       expect(prioritized.observed_page_overlap.comparable_count).toBe(2);
       const zero = await analyze(0);
       expect(zero.min_click_loss).toBe(0);
@@ -3900,6 +3903,59 @@ describe('Worker orchestration', () => {
       expect(combined.result_page.total_count).toBe(0);
       expect(combined.observed_click_loss).toEqual(prioritized.observed_click_loss);
       expect(requests).toBe(6);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('reports observed gains only for comparable page rows without netting away declines', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'decay-gains-user', email: 'decay-gains@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    let requests = 0;
+    try {
+      globalThis.fetch = async () => {
+        requests += 1;
+        const recent = requests % 2 === 1;
+        const amounts = recent
+          ? [['/gaining', 18], ['/declining', 8], ['/stable', 7], ['/recent-only', 90], ['/no-position', 100]] as const
+          : [['/gaining', 5], ['/declining', 20], ['/stable', 7], ['/previous-only', 80], ['/no-position', 1]] as const;
+        return response({ rows: amounts.map(([path, clicks]) => ({
+          keys: [`https://example.com${path}`], clicks, impressions: 200,
+          ctr: clicks / 200, position: path === '/no-position' ? undefined : 7,
+        })) });
+      };
+      const analyze = async (min_click_loss?: number) => {
+        const result = await registered['insights.content_decay'].handler({
+          site_url: 'sc-domain:example.com', compare_days: 14,
+          ...(min_click_loss === undefined ? {} : { min_click_loss }),
+        });
+        return (result as { structuredContent: {
+          observed_click_gain: { all_gaining_pages: number; gaining_page_count: number; note: string };
+          observed_click_loss: { all_declining_pages: number };
+          observed_page_overlap: { comparable_count: number };
+          assessment_count: number;
+          decay_results: Array<{ page: string }>;
+        } }).structuredContent;
+      };
+      const all = await analyze();
+      expect(all.observed_click_gain.all_gaining_pages).toBe(13);
+      expect(all.observed_click_gain.gaining_page_count).toBe(1);
+      expect(all.observed_click_gain.note).toContain('not property-wide');
+      expect(all.observed_click_loss.all_declining_pages).toBe(12);
+      expect(all.observed_page_overlap.comparable_count).toBe(3);
+      expect(all.assessment_count).toBe(1);
+      const filtered = await analyze(100);
+      expect(filtered.decay_results).toEqual([]);
+      expect(filtered.observed_click_gain).toEqual(all.observed_click_gain);
+      expect(filtered.observed_click_loss).toEqual(all.observed_click_loss);
+      expect(requests).toBe(4);
     } finally {
       globalThis.fetch = originalFetch;
     }
