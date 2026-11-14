@@ -641,7 +641,10 @@ test('weekly digest honors explicit recent dates as preliminary snapshots withou
     const rows = request.dimensions?.[0] === 'query'
       ? [{ keys: ['example query'], clicks: 3, impressions: 30, ctr: 0.1, position: 7 }]
       : request.dimensions?.[0] === 'page'
-        ? [{ keys: ['https://example.com/page'], clicks: 3, impressions: 30, ctr: 0.1, position: 7 }]
+        ? [
+            { keys: ['https://example.com/page'], clicks: 3, impressions: 30, ctr: 0.1, position: 7 },
+            { keys: ['javascript:alert(1)'], clicks: 1, impressions: 10, ctr: 0.1, position: 7 },
+          ]
         : [{ clicks: 12, impressions: 80, ctr: 0.15, position: 8 }];
     return new Response(JSON.stringify({ rows }), { headers: { 'content-type': 'application/json' } });
   };
@@ -654,6 +657,10 @@ test('weekly digest honors explicit recent dates as preliminary snapshots withou
     assert.match(digest, /preliminary Search Console data/i);
     assert.match(digest, /12 clicks/i);
     assert.match(digest, /80 impressions/i);
+    assert.ok(digest.includes('[**https://example\\.com/page**](https://example.com/page): 3 clicks, 30 impressions'));
+    assert.match(digest, /example query: 3 clicks, 30 impressions/i);
+    assert.match(digest, /javascript:alert/);
+    assert.doesNotMatch(digest, /\]\(javascript:/i);
     assert.doesNotMatch(digest, /## What changed this week|## What to do this week|% vs last week/i);
   } finally {
     globalThis.fetch = originalFetch;
