@@ -378,6 +378,39 @@ test('weekly digest headings distinguish URL-prefix properties with different pa
   }
 });
 
+test('weekly digest links to its exact Search Console property without implying filters carry over', async () => {
+  const propertyLink = (siteUrl: string) =>
+    `[Open this property in Search Console Performance](https://search.google.com/search-console/performance/search-analytics?resource_id=${encodeURIComponent(siteUrl)})`;
+  const restoreFetch = installDigestAnalyticsMock([]);
+  try {
+    const prefix = await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'https://example.com/de/', '2026-08-10');
+    const domain = await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'sc-domain:example.com', '2026-08-10');
+    const preliminary = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/fr/', '2026-08-10', undefined, '2026-08-12',
+    );
+    assert.ok(prefix.includes(propertyLink('https://example.com/de/')));
+    assert.ok(domain.includes(propertyLink('sc-domain:example.com')));
+    assert.ok(preliminary.includes(propertyLink('https://example.com/fr/')));
+    for (const report of [prefix, domain, preliminary]) {
+      assert.match(report, /choose the same dates and filters in Search Console/i);
+    }
+  } finally {
+    restoreFetch();
+  }
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ rows: [] }), {
+    headers: { 'content-type': 'application/json' },
+  });
+  try {
+    const unavailable = await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'https://example.com/de/', '2026-08-10');
+    assert.ok(unavailable.includes(propertyLink('https://example.com/de/')));
+    assert.match(unavailable, /choose the same dates and filters in Search Console/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('weekly digest queries only finalized Search Console data for all five report sections', async () => {
   const restoreFetch = installDigestAnalyticsMock([]);
   const originalMockFetch = globalThis.fetch;
