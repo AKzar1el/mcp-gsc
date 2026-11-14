@@ -170,6 +170,8 @@ Large analytics responses are bounded at the MCP boundary instead of being gener
 
 Weekly digest output includes an exact-property link to the Google Search Console Performance report for quick human investigation. It preserves URL-prefix paths and `sc-domain:` property identifiers. The viewer must have access to that property and manually choose the same date range, search type, and filters as the digest; the link does not set those parameters, grant permissions, or make an additional Google API request.
 
+The finalized digest also links each returned top page directly to its page URL for manual review, retaining short, disambiguated display labels. Only ordinary HTTP(S) URLs become clickable links; malformed or unsafe URL schemes remain escaped plain text. Following a link is the reader's choice and does not make any extra Search Console API request.
+
 ## What you can ask
 
 **Agency reporting workflow:** [Read-only weekly Search Console reporting for SEO agencies](docs/agency-weekly-reporting.md) walks through exact-property verification, one bounded weekly digest, matched-period comparisons, evidence checks, and a reusable human-reviewed client report. It contains no fabricated client metrics or automated outreach.
