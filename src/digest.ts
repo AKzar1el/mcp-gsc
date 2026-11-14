@@ -791,12 +791,13 @@ function formatPositionChange(current: number, prev: number): string {
 
 function siteDisplayName(siteUrl: string): string {
   if (siteUrl.startsWith('sc-domain:')) {
-    return siteUrl.slice('sc-domain:'.length);
+    return `${siteUrl.slice('sc-domain:'.length)} (Domain property)`;
   }
   try {
     const url = new URL(siteUrl);
-    // URL-prefix properties can share a host but represent different site sections.
-    return url.host + (url.pathname === '/' ? '' : url.pathname);
+    // URL-prefix properties can differ by protocol or path even on the same host.
+    const protocolLabel = url.protocol === 'http:' ? 'http://' : '';
+    return protocolLabel + url.host + (url.pathname === '/' ? '' : url.pathname);
   } catch {
     return siteUrl;
   }

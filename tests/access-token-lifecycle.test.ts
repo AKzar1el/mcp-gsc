@@ -345,19 +345,23 @@ test('weekly digest escapes the site name when aggregate rows are unavailable', 
   }
 });
 
-test('weekly digest headings distinguish URL-prefix properties with different paths', async () => {
+test('weekly digest headings distinguish URL-prefix paths, protocols, and Domain properties', async () => {
   const heading = (report: string) => report.split('\n').find((line) => line.startsWith('# Your weekly site report'));
   const restoreFetch = installDigestAnalyticsMock([]);
   try {
     const de = await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'https://example.com/de/', '2026-08-10');
     const fr = await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'https://example.com/fr/', '2026-08-10');
     const root = await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10');
+    const httpRoot = await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'http://example.com/', '2026-08-10');
     const domain = await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'sc-domain:example.com', '2026-08-10');
     assert.ok(heading(de)?.includes('example\\.com/de/'));
     assert.ok(heading(fr)?.includes('example\\.com/fr/'));
     assert.notEqual(heading(de), heading(fr));
     assert.ok(heading(root)?.endsWith('example\\.com'));
-    assert.ok(heading(domain)?.endsWith('example\\.com'));
+    assert.ok(heading(httpRoot)?.includes('http://example\\.com'));
+    assert.ok(heading(domain)?.includes('Domain property'));
+    assert.notEqual(heading(httpRoot), heading(root));
+    assert.notEqual(heading(root), heading(domain));
   } finally {
     restoreFetch();
   }
