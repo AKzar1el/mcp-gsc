@@ -168,6 +168,8 @@ Large analytics responses are bounded at the MCP boundary instead of being gener
 
 ## What you can ask
 
+For a multilingual site, call `indexing.list_pages` with `page_contains: "/de/"` to find Search-visible pages within the German URL section. The filter is applied at Google before pagination and adds no API requests. The response echoes `page_contains`, and its metrics describe only the matching pages returned by Search Analytics. This is not a complete index-coverage inventory: use URL Inspection to check an individual page's indexed state.
+
 **Agency reporting workflow:** [Read-only weekly Search Console reporting for SEO agencies](docs/agency-weekly-reporting.md) walks through exact-property verification, one bounded weekly digest, matched-period comparisons, evidence checks, and a reusable human-reviewed client report. It contains no fabricated client metrics or automated outreach.
 
 Once connected, ask your assistant things like:

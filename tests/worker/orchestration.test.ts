@@ -3854,6 +3854,83 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('scopes search-visible pages to a URL section at Google before pagination', async () => {
+    await saveUser(workerEnv, 'section-pages-user', 'section@example.test', 'section-refresh-token');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'section-pages-user', email: 'section@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'section-pages-access', expires_in: 3600 });
+        }
+        if (url.endsWith('/searchAnalytics/query')) {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          return response({
+            rows: [{
+              keys: ['https://example.com/de/guide/'],
+              clicks: 4,
+              impressions: 40,
+              ctr: 0.1,
+              position: 8,
+            }],
+          });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const filtered = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        page_contains: '/de/',
+        row_limit: 25,
+        start_row: 12,
+      })) as {
+        structuredContent: {
+          page_contains: string | null;
+          pages: Array<{ page: string }>;
+          result_page: { start_row: number; has_more: boolean };
+        };
+      };
+      expect(requests[0]).toMatchObject({
+        dimensions: ['page'],
+        rowLimit: 25,
+        startRow: 12,
+        dimensionFilterGroups: [{
+          groupType: 'and',
+          filters: [{ dimension: 'page', operator: 'contains', expression: '/de/' }],
+        }],
+      });
+      expect(filtered.structuredContent.page_contains).toBe('/de/');
+      expect(filtered.structuredContent.pages[0]?.page).toBe('https://example.com/de/guide/');
+      expect(filtered.structuredContent.result_page).toMatchObject({ start_row: 12, has_more: false });
+
+      const unfiltered = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        row_limit: 25,
+      })) as { structuredContent: { page_contains: string | null } };
+      expect(requests).toHaveLength(2);
+      expect(requests[1]).not.toHaveProperty('dimensionFilterGroups');
+      expect(unfiltered.structuredContent.page_contains).toBeNull();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('applies the same Search Analytics segment to both comparison periods', async () => {
     await saveUser(
       workerEnv,

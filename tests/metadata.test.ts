@@ -772,6 +772,11 @@ test('Search Analytics page discovery is not presented as index coverage', () =>
       /not an index-coverage inventory/i,
       `${label} must reject index-inventory semantics`,
     );
+    assert.match(
+      tool.description,
+      /page_contains.*before pagination/i,
+      `${label} must expose the URL-section filter before pagination`,
+    );
     assert.doesNotMatch(
       tool.description,
       /proxy for indexed pages/i,

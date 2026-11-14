@@ -742,6 +742,7 @@ const INDEXING_STATUS_OUTPUT_SCHEMA = {
 
 const INDEXED_PAGES_OUTPUT_SCHEMA = {
   pages: z.array(z.object({ page: z.string(), ...METRIC_OUTPUT_SCHEMA })),
+  page_contains: z.string().nullable(),
   note: z.string(),
   result_page: RESULT_PAGE_OUTPUT_SCHEMA,
 };
@@ -2547,9 +2548,12 @@ class GscMcpRuntime {
       'indexing.list_pages',
       {
         title: 'List Search-Visible Pages',
-        description: `${SEARCH_VISIBLE_PAGES_DESCRIPTION} When one date boundary is omitted, the server derives the other to target an inclusive 30-day range; generated end dates are capped at the latest complete date. Responses are bounded and pageable with row_limit/start_row.`,
+        description: `${SEARCH_VISIBLE_PAGES_DESCRIPTION} Optional page_contains filters page URLs at Google before pagination, for example /de/ to inspect one locale section; scoped results are not property-wide. When one date boundary is omitted, the server derives the other to target an inclusive 30-day range; generated end dates are capped at the latest complete date. Responses are bounded and pageable with row_limit/start_row.`,
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
+          page_contains: z.string().trim().min(1).max(120).optional().describe(
+            'Optional case-insensitive page URL substring such as /de/. Applied by Google before pagination; results are limited to matching URLs.',
+          ),
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(
             searchConsoleDateDescription(
               'Start date (inclusive) in YYYY-MM-DD format. If end_date is omitted, the generated end date is 29 days later, capped at the latest complete date.',
@@ -2566,7 +2570,7 @@ class GscMcpRuntime {
         outputSchema: INDEXED_PAGES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, start_date, end_date, row_limit, start_row = 0 }) => {
+      async ({ site_url, page_contains, start_date, end_date, row_limit, start_row = 0 }) => {
         const { startDate, endDate } = resolveIndexedPagesDateRange(
           start_date,
           end_date,
@@ -2584,6 +2588,12 @@ class GscMcpRuntime {
           dimensions: ['page'],
           rowLimit: sourceRowLimit,
           startRow: start_row,
+          ...(page_contains ? {
+            dimensionFilterGroups: [{
+              groupType: 'and' as const,
+              filters: [{ dimension: 'page' as const, operator: 'contains' as const, expression: page_contains }],
+            }],
+          } : {}),
         }, () => this.reserveSearchAnalyticsRetry(googleId));
 
         const pages = mapSourceRows(response.rows, (row) =>
@@ -2605,8 +2615,11 @@ class GscMcpRuntime {
 
         const payload = {
           pages: bounded.items,
+          page_contains: page_contains ?? null,
           result_page: bounded.resultPage,
-          note: SEARCH_VISIBLE_PAGES_NOTE,
+          note: page_contains
+            ? `${SEARCH_VISIBLE_PAGES_NOTE} Results are scoped to URLs containing ${JSON.stringify(page_contains)} and are not property-wide.`
+            : SEARCH_VISIBLE_PAGES_NOTE,
         };
         return toolResponse(JSON.stringify(payload), payload);
       },
