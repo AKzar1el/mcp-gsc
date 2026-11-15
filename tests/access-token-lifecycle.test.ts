@@ -54,13 +54,13 @@ function installDigestAnalyticsMock(
       clicks: number;
       impressions: number;
       ctr: number;
-      position: number;
+      position?: number;
     };
     previousTotals?: {
       clicks: number;
       impressions: number;
       ctr: number;
-      position: number;
+      position?: number;
     };
     previousQueryRows?: Array<{
       keys: string[];
@@ -921,6 +921,27 @@ test('weekly digest does not assign a cause from sitewide average-position movem
     assert.doesNotMatch(digest, /Something you did is working/i);
   } finally {
     restoreFetch();
+  }
+});
+
+test('weekly digest does not claim an average-position change when either aggregate omits position', async () => {
+  const stableMetrics = { clicks: 10, impressions: 100, ctr: 0.1 };
+  for (const missingPeriod of ['current', 'previous'] as const) {
+    const restoreFetch = installDigestAnalyticsMock([], {
+      currentTotals: { ...stableMetrics, position: missingPeriod === 'current' ? undefined : 8 },
+      previousTotals: { ...stableMetrics, position: missingPeriod === 'previous' ? undefined : 8 },
+    });
+    try {
+      const digest = await generateWeeklyDigest(
+        createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+      );
+      assert.match(digest, /Average Search Console position:.*\(no comparison available\)/);
+      assert.doesNotMatch(digest, /### Site-level changes/);
+      assert.doesNotMatch(digest, /average Search Console position (?:improved|worsened) by/i);
+      assert.match(digest, /Query trends not comparable/);
+    } finally {
+      restoreFetch();
+    }
   }
 });
 

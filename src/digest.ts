@@ -17,7 +17,7 @@ interface SiteTotals {
   clicks: number;
   impressions: number;
   ctr: number;
-  position: number;
+  position: number | null;
 }
 
 interface QueryRow {
@@ -366,12 +366,12 @@ function computeDateRanges(endDate: string): DateRanges {
 }
 
 function totalsFromRow(row: SearchAnalyticsRow | undefined): SiteTotals {
-  if (!row) return { clicks: 0, impressions: 0, ctr: 0, position: 0 };
+  if (!row) return { clicks: 0, impressions: 0, ctr: 0, position: null };
   return {
     clicks: row.clicks ?? 0,
     impressions: row.impressions ?? 0,
     ctr: row.ctr ?? 0,
-    position: row.position ?? 0,
+    position: row.position ?? null,
   };
 }
 
@@ -547,8 +547,11 @@ function pickActionAndBuild(
     };
   }
 
-  const positionImprovement = prevTotals.position - currentTotals.position;
-  if (prevTotals.position > 0 && currentTotals.position > 0 && positionImprovement > 2) {
+  const positionImprovement = prevTotals.position !== null && currentTotals.position !== null
+    && prevTotals.position > 0 && currentTotals.position > 0
+    ? prevTotals.position - currentTotals.position
+    : null;
+  if (positionImprovement !== null && positionImprovement > 2) {
     return {
       key: 'celebrate_and_double_down',
       item: {
@@ -695,14 +698,17 @@ function renderMarkdown(data: {
       currentTotals.clicks,
       prevTotals.clicks,
     );
-    const sitePositionDelta = currentTotals.position - prevTotals.position;
+    const sitePositionDelta = currentTotals.position !== null && prevTotals.position !== null
+      && currentTotals.position > 0 && prevTotals.position > 0
+      ? currentTotals.position - prevTotals.position
+      : null;
 
     const siteHadBigMove =
       siteImpressionsChangePct === null ||
       siteClicksChangePct === null ||
       Math.abs(siteImpressionsChangePct) >= 25 ||
       Math.abs(siteClicksChangePct) >= 25 ||
-      Math.abs(sitePositionDelta) >= 3;
+      (sitePositionDelta !== null && Math.abs(sitePositionDelta) >= 3);
 
     if (siteHadBigMove) {
       lines.push('### Site-level changes');
@@ -833,8 +839,8 @@ function formatCtrChange(current: SiteTotals, previous: SiteTotals): string {
   return `${Math.abs(difference).toFixed(1)} percentage points ${difference > 0 ? 'higher' : 'lower'} vs last week`;
 }
 
-function formatPosition(n: number): string {
-  if (n === 0) return '—';
+function formatPosition(n: number | null): string {
+  if (n === null || n === 0) return '—';
   return n.toFixed(1);
 }
 
@@ -853,8 +859,8 @@ function percentageChangeOrNull(current: number, baseline: number): number | nul
   return ((current - baseline) / baseline) * 100;
 }
 
-function formatPositionChange(current: number, prev: number): string {
-  if (prev === 0 || current === 0) return 'no comparison available';
+function formatPositionChange(current: number | null, prev: number | null): string {
+  if (prev === null || current === null || prev === 0 || current === 0) return 'no comparison available';
   const diff = current - prev;
   if (Math.abs(diff) < 0.05) return 'same as last week';
   if (diff < 0) {
@@ -921,7 +927,7 @@ function isWithinLast3Days(endDate: string): boolean {
 function describeSiteLevelMove(
   impressionsChangePct: number | null,
   clicksChangePct: number | null,
-  positionDelta: number,
+  positionDelta: number | null,
 ): string {
   const candidates: Array<{
     metric: 'impressions' | 'position' | 'clicks';
@@ -938,7 +944,7 @@ function describeSiteLevelMove(
       ratio: Math.abs(impressionsChangePct) / 25,
     });
   }
-  if (Math.abs(positionDelta) >= 3) {
+  if (positionDelta !== null && Math.abs(positionDelta) >= 3) {
     candidates.push({ metric: 'position', ratio: Math.abs(positionDelta) / 3 });
   }
   if (
@@ -974,7 +980,7 @@ function describeSiteLevelMove(
     return `Your site recorded fewer search impressions this week (${impressionsChangePct.toFixed(0)}%). The aggregate does not identify which queries drove this change; inspect Query and Page rows in Search Console.`;
   }
 
-  if (winner.metric === 'position') {
+  if (winner.metric === 'position' && positionDelta !== null) {
     if (positionDelta >= 3) {
       return `Your average Search Console position worsened by ${positionDelta.toFixed(1)} this week. This aggregate can move because of changes in the mix of queries, pages, devices, countries, or result types, so inspect those dimensions before assigning a cause.`;
     }
