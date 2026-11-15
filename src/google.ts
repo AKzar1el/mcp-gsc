@@ -1417,7 +1417,7 @@ export interface CannibalizationPage {
   clicks: number;
   impressions: number;
   ctr: number;
-  position: number;
+  position: number | null;
   impression_share: number;
 }
 
@@ -1434,9 +1434,9 @@ export function processCannibalization(
   minImpressions: number,
   minPagePercentage: number,
 ): CannibalizationResult[] {
-  const queryGroups = new Map<string, Array<{ page: string; clicks: number; impressions: number; ctr: number; position: number }>>();
+  const queryGroups = new Map<string, Array<{ page: string; clicks: number; impressions: number; ctr: number; position: number | null }>>();
   for (const row of rows) {
-    if ((row.keys?.length ?? 0) < 2 || row.position === undefined) continue;
+    if ((row.keys?.length ?? 0) < 2) continue;
     const query = row.keys![0];
     const page = row.keys![1];
     if (!queryGroups.has(query)) {
@@ -1447,7 +1447,7 @@ export function processCannibalization(
       clicks: row.clicks,
       impressions: row.impressions,
       ctr: row.ctr,
-      position: row.position,
+      position: row.position ?? null,
     });
   }
 

@@ -2563,6 +2563,23 @@ test('processCannibalization: eligibility uses exact observed impression shares 
   assert.equal(processCannibalization(rows, 50, 9.9).length, 3);
 });
 
+test('processCannibalization: retains measured competing-page traffic without optional average position', () => {
+  const rows = [
+    { keys: ['shared intent', 'https://example.com/a'], clicks: 20, impressions: 100, ctr: 0.2, position: 8 },
+    { keys: ['shared intent', 'https://example.com/b'], clicks: 4, impressions: 80, ctr: 0.05 },
+  ];
+
+  const [candidate] = processCannibalization(rows, 50, 10);
+  assert.ok(candidate, 'both returned pages should be considered for observed overlap');
+  assert.equal(candidate.total_clicks, 24);
+  assert.equal(candidate.total_impressions, 180);
+  assert.deepEqual(candidate.pages.map(({ page, position }) => ({ page, position })), [
+    { page: 'https://example.com/a', position: 8 },
+    { page: 'https://example.com/b', position: null },
+  ]);
+  assert.equal(candidate.pages[1].impression_share, 44.4);
+});
+
 test('processContentDecay: identifies page traffic drop and calculates click drop metrics', () => {
   const recentRows = [
     { keys: ['page1'], clicks: 50, impressions: 1000, ctr: 0.05, position: 5 }, // decay (from 100 to 50)

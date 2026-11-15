@@ -663,6 +663,7 @@ const CANNIBALIZATION_OUTPUT_SCHEMA = {
         z.object({
           page: z.string(),
           ...METRIC_OUTPUT_SCHEMA,
+          position: z.number().nullable().describe('Average position when Google supplies it; null preserves measured clicks and impressions when this optional metric is absent.'),
           impression_share: z.number().describe(
             'Percentage of the observed query/page impression sum represented by this page; not a share of unique searches or the true query-level property aggregate.',
           ),
@@ -2218,7 +2219,7 @@ class GscMcpRuntime {
       'insights.cannibalization',
       {
         title: 'Detect Keyword Cannibalization',
-        description: 'Analyze query/page Search Analytics to find queries split across multiple pages on Web (default), Image, Video or Search News-tab results via optional search_type. Optional data_state all includes fresh preliminary rows whose observed impression shares may change; omission retains finalized-only results. Discover and the separate Google News service are excluded because query data is unavailable. Optional page_contains, query_contains, country and device filter matching URL sections, query topics, ISO alpha-3 searcher geography and desktop/mobile/tablet searches at Google before pagination and aggregation, combined in one AND group. Query filtering retains returned competing pages for matching queries; page/country/device filtering restricts observed page shares to those scopes, not property-wide or all-search totals or page language. Candidates are ranked by observed impressions and bounded with limit/start_row. Google may omit rows; sums can exceed true query-level aggregates. Multiple URLs can reflect legitimate locale or intent differences, not harmful cannibalization.',
+        description: 'Analyze query/page Search Analytics to find queries split across multiple pages on Web (default), Image, Video or Search News-tab results via optional search_type. Optional data_state all includes fresh preliminary rows whose observed impression shares may change; omission retains finalized-only results. Discover and the separate Google News service are excluded because query data is unavailable. Optional page_contains, query_contains, country and device filter matching URL sections, query topics, ISO alpha-3 searcher geography and desktop/mobile/tablet searches at Google before pagination and aggregation, combined in one AND group. Query filtering retains returned competing pages for matching queries; page/country/device filtering restricts observed page shares to those scopes, not property-wide or all-search totals or page language. Candidates are ranked by observed impressions and bounded with limit/start_row. Missing optional average position is reported as null without discarding observed clicks or impressions. Google may omit rows; sums can exceed true query-level aggregates. Multiple URLs can reflect legitimate locale or intent differences, not harmful cannibalization.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           search_type: CANNIBALIZATION_SEARCH_TYPE_SCHEMA,
