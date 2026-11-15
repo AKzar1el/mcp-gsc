@@ -458,6 +458,46 @@ test('weekly digest reports only the distinct queries actually seen in both boun
   }
 });
 
+test('weekly digest surfaces only observed current-only query examples without inventing new demand', async () => {
+  const row = (query: string, impressions: number) => ({
+    keys: [query], clicks: 1, impressions, ctr: 1 / impressions, position: 9,
+  });
+  const totals = { clicks: 15, impressions: 400, ctr: 0.0375, position: 9 };
+  const restoreFetch = installDigestAnalyticsMock([
+    row('site:example.com', 120), row('shared query', 100),
+    row('low priority', 8), row('middle opportunity', 45),
+    row('high opportunity', 80), row('third opportunity', 25),
+  ], {
+    previousQueryRows: [row('shared query', 100), row('previous only', 20)],
+    currentTotals: totals,
+    previousTotals: totals,
+  });
+  const mockedFetch = globalThis.fetch;
+  let requestCount = 0;
+  globalThis.fetch = async (input, init) => {
+    requestCount++;
+    return mockedFetch(input, init);
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const sample = digest.match(/### Queries returned this week but not in last week's sample([\s\S]*?)(?=\n## |\n### |$)/)?.[1];
+    assert.ok(sample, 'show a bounded sample of current-only observed query rows');
+    assert.match(sample, /high opportunity.*80 impressions/);
+    assert.match(sample, /middle opportunity.*45 impressions/);
+    assert.match(sample, /third opportunity.*25 impressions/);
+    assert.ok(sample.indexOf('high opportunity') < sample.indexOf('middle opportunity'));
+    assert.ok(sample.indexOf('middle opportunity') < sample.indexOf('third opportunity'));
+    assert.doesNotMatch(sample, /site:example\.com|shared query|low priority/);
+    assert.match(sample, /not proof of new demand/i);
+    assert.match(sample, /missing.*not.*zero/i);
+    assert.equal(requestCount, 5, 'reuse the existing five Search Analytics calls');
+  } finally {
+    restoreFetch();
+  }
+});
+
 test('weekly digest queries only finalized Search Console data for all five report sections', async () => {
   const restoreFetch = installDigestAnalyticsMock([]);
   const originalMockFetch = globalThis.fetch;

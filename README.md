@@ -208,6 +208,8 @@ Weekly digest headings retain the URL path for a URL-prefix property (for exampl
 
 Finalized weekly digests now report the distinct query rows observed in each bounded week and how many appeared in both. When neither week supplies a matching returned query, stable site-level totals are **not** presented as evidence of stable query-level performance. These counts use the same up-to-25 query rows already fetched per period, without extra Google requests, and do not establish exhaustive query coverage.
 
+The digest also lists up to three non-operator queries returned this week but absent from the previous week's bounded query sample, ranked by their **observed impressions**. These are inspection examples, not verified new searches or rankings: an unreturned query is not a measured zero, and anonymized queries may be missing. This reuses the existing five finalized Search Analytics requests without consuming more Google quota.
+
 Once connected, ask your assistant things like:
 
 - *"What are my top 20 queries by clicks in the last 28 days?"*
