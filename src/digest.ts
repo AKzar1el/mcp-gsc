@@ -323,6 +323,11 @@ export async function generateWeeklyDigest(
       && !previousQueryKeys.has(row.query) && row.impressions > 0)
     .sort((a, b) => b.impressions - a.impressions || a.query.localeCompare(b.query))
     .slice(0, 3);
+  const previousOnlyQueries = prevQueries
+    .filter((row) => row.query.trim() !== '' && !isOperatorQuery(row.query)
+      && !currentQueryKeys.has(row.query) && row.impressions > 0)
+    .sort((a, b) => b.impressions - a.impressions || a.query.localeCompare(b.query))
+    .slice(0, 3);
 
   const movers = computeMovers(currentQueries, prevQueries);
   const action = searchType === 'web'
@@ -349,6 +354,7 @@ export async function generateWeeklyDigest(
     movers,
     observedQueryOverlap,
     currentOnlyQueries,
+    previousOnlyQueries,
     currentQueries,
     currentPages,
     action,
@@ -608,11 +614,12 @@ function renderMarkdown(data: {
   movers: Movers;
   observedQueryOverlap: ObservedQueryOverlap;
   currentOnlyQueries: QueryRow[];
+  previousOnlyQueries: QueryRow[];
   currentQueries: QueryRow[];
   currentPages: PageRow[];
   action: { key: ActionKey; item: ActionItem };
 }): string {
-  const { siteUrl, searchTypeNotice, pageScopeNotice, deviceScopeNotice, queryScopeNotice, countryScopeNotice, dates, currentTotals, prevTotals, movers, observedQueryOverlap, currentOnlyQueries, currentQueries, currentPages, action } = data;
+  const { siteUrl, searchTypeNotice, pageScopeNotice, deviceScopeNotice, queryScopeNotice, countryScopeNotice, dates, currentTotals, prevTotals, movers, observedQueryOverlap, currentOnlyQueries, previousOnlyQueries, currentQueries, currentPages, action } = data;
   const siteName = siteDisplayName(siteUrl);
   const lines: string[] = [];
 
@@ -743,6 +750,17 @@ function renderMarkdown(data: {
     lines.push('');
     for (const query of currentOnlyQueries) {
       lines.push(`- **${escapeMarkdownInline(query.query)}** — ${formatNumber(query.impressions)} impressions, ${formatNumber(query.clicks)} clicks this week.`);
+    }
+    lines.push('');
+  }
+
+  if (previousOnlyQueries.length > 0) {
+    lines.push('### Queries returned last week but not in this week\'s sample');
+    lines.push('');
+    lines.push('> These queries were observed only in the previous up-to-25 returned query rows, not in the current up-to-25 sample. This is not proof of lost traffic or declining rankings: missing current rows are not measured zero. Anonymized queries may be omitted, and diagnostic search-operator queries are excluded.');
+    lines.push('');
+    for (const query of previousOnlyQueries) {
+      lines.push(`- **${escapeMarkdownInline(query.query)}** — ${formatNumber(query.impressions)} impressions, ${formatNumber(query.clicks)} clicks last week.`);
     }
     lines.push('');
   }
