@@ -47,7 +47,7 @@ function installDigestAnalyticsMock(
     clicks: number;
     impressions: number;
     ctr: number;
-    position: number;
+    position?: number;
   }>,
   options: {
     currentTotals?: {
@@ -67,7 +67,7 @@ function installDigestAnalyticsMock(
       clicks: number;
       impressions: number;
       ctr: number;
-      position: number;
+      position?: number;
     }>;
     currentPageUrl?: string;
     currentPageRows?: Array<{
@@ -93,7 +93,7 @@ function installDigestAnalyticsMock(
       clicks: number;
       impressions: number;
       ctr: number;
-      position: number;
+      position?: number;
     }> = [];
     if (!dimension) {
       rows = [
@@ -1184,6 +1184,53 @@ test('weekly zero-click query context reports observed average position without 
     assert.match(missingPositionLine, /80 impressions, 0 observed clicks/);
     assert.doesNotMatch(missingPositionLine, /average position|position 0/);
     assert.match(section, /average position.*not a live rank/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest keeps observed query clicks and impressions when average position is omitted', async () => {
+  const restoreFetch = installDigestAnalyticsMock([
+    { keys: ['positionless opportunity'], clicks: 0, impressions: 120, ctr: 0 },
+    { keys: ['ranked opportunity'], clicks: 0, impressions: 70, ctr: 0, position: 13 },
+  ], {
+    currentTotals: { clicks: 0, impressions: 190, ctr: 0, position: 0 },
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const section = digest.split('### Returned search queries with impressions but no clicks')[1]
+      ?.split('## What to do this week')[0] ?? '';
+    const positionlessLine = section.split('\n').find((line) => line.includes('positionless opportunity')) ?? '';
+    assert.match(positionlessLine, /120 impressions, 0 observed clicks/);
+    assert.doesNotMatch(positionlessLine, /average position|position 0|NaN/);
+    assert.match(section, /ranked opportunity.*70 impressions, 0 observed clicks, average position 13\.0/);
+    assert.match(digest, /Returned query-row overlap:\*\* 2 distinct current-week queries/);
+    assert.doesNotMatch(digest, /visible query rows are search-operator checks|without visible query rows/);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest keeps comparable query click gains when position is unavailable', async () => {
+  const restoreFetch = installDigestAnalyticsMock([
+    { keys: ['positionless mover'], clicks: 9, impressions: 130, ctr: 9 / 130 },
+  ], {
+    currentTotals: { clicks: 9, impressions: 130, ctr: 9 / 130, position: 0 },
+    previousTotals: { clicks: 1, impressions: 30, ctr: 1 / 30, position: 0 },
+    previousQueryRows: [
+      { keys: ['positionless mover'], clicks: 1, impressions: 30, ctr: 1 / 30 },
+    ],
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const section = digest.split('### Searches gaining traction')[1]
+      ?.split('## Your top pages this week')[0] ?? '';
+    assert.match(section, /positionless mover.*9 clicks this week \(was 1 last week\)/);
+    assert.doesNotMatch(section, /Average position|undefined|NaN/);
   } finally {
     restoreFetch();
   }
