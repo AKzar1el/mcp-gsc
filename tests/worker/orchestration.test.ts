@@ -4552,6 +4552,74 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('filters observed impression gainers and decliners before pagination on raw or daily basis', async () => {
+    await saveUser(workerEnv, 'impression-direction-user', 'impression-direction@example.test', 'impression-direction-refresh');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'impression-direction-user', email: 'impression-direction@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'impression-direction-access', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          const recent = body.startDate === '2026-09-01';
+          const values = recent ? [120, 350, 20, 80] : [100, 50, 80, 80];
+          return response({ rows: ['raw up daily down', 'both up', 'both down', 'raw flat'].map((key, i) => ({
+            keys: [key], clicks: 0, impressions: values[i], ctr: 0, position: 5,
+          })) });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01', end_date_a: '2026-09-14',
+        start_date_b: '2026-08-25', end_date_b: '2026-08-31',
+        dimension: 'query', search_type: 'web', data_state: 'final',
+      };
+      type ComparisonResult = { structuredContent: {
+        comparisons: Array<{ key: string }>;
+        impression_change_direction: string;
+        comparison_note: string;
+        result_page: { total_count: number; has_more: boolean };
+      } };
+      const rawGains = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_impression_change', impression_change_direction: 'gain',
+      }) as ComparisonResult;
+      expect(rawGains.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['both up', 'raw up daily down']);
+      expect(rawGains.structuredContent.impression_change_direction).toBe('gain');
+      expect(rawGains.structuredContent.result_page.total_count).toBe(2);
+      const dailyLosses = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_daily_impression_change', impression_change_direction: 'loss',
+        limit: 1,
+      }) as ComparisonResult;
+      expect(dailyLosses.structuredContent.comparisons.map((row) => row.key)).toEqual(['both down']);
+      expect(dailyLosses.structuredContent.result_page).toMatchObject({ total_count: 3, has_more: true });
+      expect(dailyLosses.structuredContent.comparison_note)
+        .toContain('impression_change_direction=loss');
+      const nextPage = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_daily_impression_change', impression_change_direction: 'loss',
+        limit: 1, start_row: 1,
+      }) as ComparisonResult;
+      expect(nextPage.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['raw up daily down']);
+      expect(requests).toHaveLength(6);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('filters comparison click gains and losses before pagination using the selected time basis', async () => {
     await saveUser(workerEnv, 'direction-user', 'direction@example.test', 'direction-refresh');
     const server = await createGscMcpServer(
