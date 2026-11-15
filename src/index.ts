@@ -794,7 +794,7 @@ const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
     period_a_only_count: z.number().int().nonnegative(),
     period_b_only_count: z.number().int().nonnegative(),
     note: z.string(),
-  }).describe('Distinct dimension keys observed in each Google response with position data; missing keys are not zero traffic.'),
+  }).describe('Distinct dimension keys observed in each Google response; missing keys are not zero traffic, and average position may be unavailable.'),
   data_state: z.enum(['all', 'final']).describe(
     'The Search Analytics dataState applied identically to both comparison periods.',
   ),
@@ -804,8 +804,8 @@ const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
   comparisons: z.array(
     z.object({
       key: z.string(),
-      period_a: z.object(METRIC_OUTPUT_SCHEMA),
-      period_b: z.object(METRIC_OUTPUT_SCHEMA),
+      period_a: z.object({ ...METRIC_OUTPUT_SCHEMA, position: z.number().nullable() }),
+      period_b: z.object({ ...METRIC_OUTPUT_SCHEMA, position: z.number().nullable() }),
       diff: z.object({
         clicks: z.number(),
         clicks_percentage: z
@@ -818,7 +818,7 @@ const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
           .nullable()
           .describe('Percentage change from period_b impressions. Null when period_b is zero and period_a differs; zero when both are zero.'),
         ctr: z.number(),
-        position: z.number(),
+        position: z.number().nullable(),
       }),
     }),
   ),
@@ -2707,7 +2707,7 @@ class GscMcpRuntime {
       'analytics.compare',
       {
         title: 'Compare Performance Between Periods',
-        description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device). Only dimension keys returned in both Search Analytics period responses are compared; a key missing from one response is not treated as zero because Google does not guarantee every data row. Apply the same search type, data state, and optional dimension filters to both periods. data_state defaults to final, preserving Google\'s finalized-only behavior when dataState is omitted; use all explicitly when recent preliminary-capable rows are desired. Results are ranked by largest absolute click change, then impression change, and safely paged with limit/start_row. Percentage change is null when an explicitly returned baseline row has zero and the comparison value differs. Discover and Google News are intentionally unavailable because this comparison contract includes average position, which those reports do not support.',
+        description: 'Compare Search Console clicks, impressions, CTR, and available average position between two date ranges for a selected dimension. Only keys observed in both periods are compared; missing rows are not zero. Web, Image, Video, and Search News-tab support query/page/country/device; Discover and Google News support only page/country/device, without average position (null, never an invented rank). Apply the same search type, data state and filters to both periods. Finalized data is the default; all may include preliminary data. Results rank by observed click changes then impression changes and support bounded pagination.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe(
@@ -2724,9 +2724,9 @@ class GscMcpRuntime {
           ),
           dimension: z.enum(['query', 'page', 'country', 'device']).default('query').describe('The dimension to compare performance for. Defaults to query.'),
           search_type: z
-            .enum(['web', 'image', 'video', 'news'])
+            .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
             .default('web')
-            .describe('Which Search Console search index to compare. The same search type is used for both periods. Discover and Google News are excluded because this tool returns average-position comparisons.'),
+            .describe('Which Search Console surface to compare for both periods. Discover/Google News accept page, country or device only; their average position is unavailable and returned as null.'),
           data_state: z
             .enum(['all', 'final'])
             .default('final')
@@ -2763,6 +2763,16 @@ class GscMcpRuntime {
         const today = getSearchConsoleCalendarDate();
         assertDateNotInFuture(end_date_a, today, 'end_date_a');
         assertDateNotInFuture(end_date_b, today, 'end_date_b');
+        assertSearchAnalyticsQueryCompatible({
+          startDate: start_date_a,
+          endDate: end_date_a,
+          dimensions: [dimension],
+          rowLimit: 1,
+          type: search_type,
+          ...(dimension_filter_groups !== undefined
+            ? { dimensionFilterGroups: dimension_filter_groups }
+            : {}),
+        });
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'analytics.compare');
         if (rateLimitError) return rateLimitError;
@@ -2792,7 +2802,7 @@ class GscMcpRuntime {
 
         const comparison = processPerformanceComparison(sourceA.rows, sourceB.rows);
         const observedKeys = (rows: typeof sourceA.rows) => new Set(
-          rows.filter((row) => (row.keys?.length ?? 0) > 0 && row.position !== undefined)
+          rows.filter((row) => (row.keys?.length ?? 0) > 0)
             .map((row) => row.keys![0]),
         );
         const keysA = observedKeys(sourceA.rows);
@@ -2811,14 +2821,14 @@ class GscMcpRuntime {
         const payload = {
           site_url,
           comparison_scope: 'common_returned_rows_only' as const,
-          comparison_note: `${COMMON_RETURNED_ROWS_COMPARISON_NOTE} Scope: ${comparisonScopeNote}. Filter groups, if present, are applied equally to both periods.`,
+          comparison_note: `${COMMON_RETURNED_ROWS_COMPARISON_NOTE} Scope: ${comparisonScopeNote}. Filter groups, if present, are applied equally to both periods.${search_type === 'discover' || search_type === 'googleNews' ? ' Average position is not supported for this surface and is null, not zero or a live ranking.' : ''}`,
           observed_dimension_overlap: {
             period_a_count: keysA.size,
             period_b_count: keysB.size,
             comparable_count: commonCount,
             period_a_only_count: keysA.size - commonCount,
             period_b_only_count: keysB.size - commonCount,
-            note: 'Counts reflect distinct dimension keys with position data in the two Google responses. Missing rows are not zero traffic; one-period-only keys are not compared.',
+            note: 'Counts reflect distinct dimension keys in the two Google responses, including rows without average position. Missing rows are not zero traffic; one-period-only keys are not compared.',
           },
           data_state,
           preliminary_data_possible: data_state !== 'final',
