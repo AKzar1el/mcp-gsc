@@ -210,6 +210,8 @@ Finalized weekly digests now report the distinct query rows observed in each bou
 
 The digest also lists up to three non-operator queries returned this week but absent from the previous week's bounded query sample, ranked by their **observed impressions**. These are inspection examples, not verified new searches or rankings: an unreturned query is not a measured zero, and anonymized queries may be missing. This reuses the existing five finalized Search Analytics requests without consuming more Google quota.
 
+Finalized digests also show up to three non-operator queries observed only in the **previous** week's returned sample, ranked by previous impressions. These are follow-up investigation prompts, not proof of lost traffic or ranking declines: missing current rows are not measured zero. The same five bounded requests are reused.
+
 Once connected, ask your assistant things like:
 
 - *"What are my top 20 queries by clicks in the last 28 days?"*

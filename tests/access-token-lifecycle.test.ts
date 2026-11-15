@@ -498,6 +498,45 @@ test('weekly digest surfaces only observed current-only query examples without i
   }
 });
 
+test('weekly digest surfaces observed prior-only queries without claiming lost traffic', async () => {
+  const row = (query: string, impressions: number) => ({
+    keys: [query], clicks: 1, impressions, ctr: 1 / impressions, position: 9,
+  });
+  const totals = { clicks: 15, impressions: 400, ctr: 0.0375, position: 9 };
+  const restoreFetch = installDigestAnalyticsMock([row('shared query', 100)], {
+    previousQueryRows: [
+      row('site:example.com', 500), row('shared query', 100), row('lower priority', 5),
+      row('high previous', 90), row('middle previous', 60), row('third previous', 30),
+    ],
+    currentTotals: totals,
+    previousTotals: totals,
+  });
+  const mockedFetch = globalThis.fetch;
+  let requestCount = 0;
+  globalThis.fetch = async (input, init) => {
+    requestCount++;
+    return mockedFetch(input, init);
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const sample = digest.match(/### Queries returned last week but not in this week's sample([\s\S]*?)(?=\n## |\n### |$)/)?.[1];
+    assert.ok(sample, 'show observed prior-only query examples');
+    assert.match(sample, /high previous.*90 impressions/);
+    assert.match(sample, /middle previous.*60 impressions/);
+    assert.match(sample, /third previous.*30 impressions/);
+    assert.ok(sample.indexOf('high previous') < sample.indexOf('middle previous'));
+    assert.ok(sample.indexOf('middle previous') < sample.indexOf('third previous'));
+    assert.doesNotMatch(sample, /site:example\.com|shared query|lower priority/);
+    assert.match(sample, /not proof of lost traffic/i);
+    assert.match(sample, /missing.*not.*zero/i);
+    assert.equal(requestCount, 5);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test('weekly digest queries only finalized Search Console data for all five report sections', async () => {
   const restoreFetch = installDigestAnalyticsMock([]);
   const originalMockFetch = globalThis.fetch;
