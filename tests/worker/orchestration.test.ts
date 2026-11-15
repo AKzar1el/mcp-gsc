@@ -4552,6 +4552,70 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('ranks unrounded CTR movement after requiring observed impressions in both periods', async () => {
+    await saveUser(workerEnv, 'ctr-movement-user', 'ctr-movement@example.test', 'ctr-movement-refresh');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'ctr-movement-user', email: 'ctr-movement@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'ctr-movement-access', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          const current = body.startDate === '2026-09-01';
+          return response({ rows: [
+            { keys: ['precise CTR mover'], clicks: current ? 19 : 10, impressions: 10000, ctr: current ? 0.0019 : 0.001 },
+            { keys: ['large click mover'], clicks: current ? 16000 : 10000, impressions: 10000000, ctr: current ? 0.0016 : 0.001 },
+            { keys: ['low sample'], clicks: current ? 1 : 0, impressions: 25, ctr: current ? 0.04 : 0 },
+            { keys: ['no baseline'], clicks: current ? 2 : 0, impressions: current ? 200 : 0, ctr: current ? 0.01 : 0 },
+          ] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01', end_date_a: '2026-09-07',
+        start_date_b: '2026-08-25', end_date_b: '2026-08-31',
+        dimension: 'query', search_type: 'web', data_state: 'final',
+      };
+      type ComparisonResult = { structuredContent: {
+        comparisons: Array<{ key: string; diff: { ctr: number } }>;
+        min_impressions_per_period: number;
+        comparison_note: string;
+      } };
+      const defaultResult = await tools['analytics.compare'].handler({ ...args, limit: 1 }) as ComparisonResult;
+      expect(defaultResult.structuredContent.comparisons[0].key).toBe('large click mover');
+      const unfiltered = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_ctr_change', limit: 10,
+      }) as ComparisonResult;
+      expect(unfiltered.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['low sample', 'precise CTR mover', 'large click mover']);
+      expect(unfiltered.structuredContent.min_impressions_per_period).toBe(0);
+      expect(unfiltered.structuredContent.comparisons[1].diff.ctr).toBe(0.001);
+      const nextPage = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_ctr_change', min_impressions_per_period: 100,
+        start_row: 1, limit: 1,
+      }) as ComparisonResult;
+      expect(nextPage.structuredContent.comparisons.map((row) => row.key)).toEqual(['large click mover']);
+      expect(nextPage.structuredContent.min_impressions_per_period).toBe(100);
+      expect(nextPage.structuredContent.comparison_note).toContain('both periods');
+      expect(requests).toHaveLength(6);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('filters observed impression gainers and decliners before pagination on raw or daily basis', async () => {
     await saveUser(workerEnv, 'impression-direction-user', 'impression-direction@example.test', 'impression-direction-refresh');
     const server = await createGscMcpServer(
