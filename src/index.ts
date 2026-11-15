@@ -835,6 +835,12 @@ const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
       }),
     }),
   ),
+  observed_common_rows_daily_average: z.object({
+    period_a: z.object({ clicks: z.number(), impressions: z.number() }),
+    period_b: z.object({ clicks: z.number(), impressions: z.number() }),
+    diff: z.object({ clicks: z.number(), impressions: z.number() }),
+    note: z.string(),
+  }).describe('Per-day averages of measured clicks and impressions summed only across distinct common returned dimension keys; these are not whole-property totals or a daily series.'),
   pagination: z.object({
     period_a: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
     period_b: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
@@ -2848,6 +2854,16 @@ class GscMcpRuntime {
             }));
         };
         const bounded = windowKnownResults(comparison, start_row, limit);
+        const commonTotals = comparison.reduce((totals, item) => ({
+          aClicks: totals.aClicks + item.period_a.clicks,
+          bClicks: totals.bClicks + item.period_b.clicks,
+          aImpressions: totals.aImpressions + item.period_a.impressions,
+          bImpressions: totals.bImpressions + item.period_b.impressions,
+        }), { aClicks: 0, bClicks: 0, aImpressions: 0, bImpressions: 0 });
+        const aDailyClicks = commonTotals.aClicks / periodADays;
+        const bDailyClicks = commonTotals.bClicks / periodBDays;
+        const aDailyImpressions = commonTotals.aImpressions / periodADays;
+        const bDailyImpressions = commonTotals.bImpressions / periodBDays;
         const comparisonScopeNote = [
           `site_url=${site_url}`,
           `dimension=${dimension ?? 'query'}`,
@@ -2885,6 +2901,12 @@ class GscMcpRuntime {
           data_state,
           preliminary_data_possible: data_state !== 'final',
           comparisons: bounded.items,
+          observed_common_rows_daily_average: {
+            period_a: { clicks: aDailyClicks, impressions: aDailyImpressions },
+            period_b: { clicks: bDailyClicks, impressions: bDailyImpressions },
+            diff: { clicks: aDailyClicks - bDailyClicks, impressions: aDailyImpressions - bDailyImpressions },
+            note: 'Per-calendar-day averages sum only dimension keys returned in both periods across the fetched comparison sample, not property-wide traffic or a daily time series. Missing rows are not treated as zero. Rates do not make overlapping windows independent.',
+          },
           pagination: {
             period_a: paginationMetadata(sourceA),
             period_b: paginationMetadata(sourceB),
