@@ -192,7 +192,7 @@ Finalized digests separately highlight up to three **returned search queries wit
 
 For explicitly recent preliminary digests, a missing aggregate totals row is not treated as zero traffic. Any separately returned page/query samples are still shown as non-exhaustive observations, without fabricated site totals or week-over-week conclusions.
 
-`analytics.compare` also returns `period_comparability`: the inclusive calendar-day counts for each requested period, whether their lengths match, and whether the date ranges overlap. Raw click and impression differences are **not normalized per day**. Unequal-length periods are not like-for-like totals, and overlapping dates do not represent independent periods. These notices require no additional Google API requests.
+`analytics.compare` also returns `period_comparability`: inclusive calendar-day counts, equal-length status and date overlap. Raw click and impression differences are **not normalized per day**. A separate compact `observed_common_rows_daily_average` summarizes clicks and impressions across only the dimension keys returned in *both* periods, divided by each period's inclusive day count, with an A-minus-B daily-rate difference. These are bounded, matched-row observations, **not property-wide daily totals or a daily time series**; missing keys are never assumed to have zero traffic. Unequal raw window totals are not like-for-like and overlapping dates do not represent independent periods. No additional Google API requests are made.
 
 ## What you can ask
 

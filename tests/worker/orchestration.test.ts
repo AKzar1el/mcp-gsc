@@ -4246,6 +4246,12 @@ describe('Worker orchestration', () => {
           preliminary_data_possible: boolean;
           comparison_note: string;
           comparisons: Array<{ key: string }>;
+          observed_common_rows_daily_average: {
+            period_a: { clicks: number; impressions: number };
+            period_b: { clicks: number; impressions: number };
+            diff: { clicks: number; impressions: number };
+            note: string;
+          };
           period_comparability: {
             period_a_days: number;
             period_b_days: number;
@@ -4342,6 +4348,15 @@ describe('Worker orchestration', () => {
         periods_overlap: false,
       });
       expect(unequal.structuredContent.period_comparability.note).toContain('not normalized per day');
+      const normalized = unequal.structuredContent.observed_common_rows_daily_average;
+      // Identical returned common-key totals across unequal windows have different daily rates.
+      expect(normalized.period_a.clicks).toBeCloseTo(10 / 7);
+      expect(normalized.period_b.clicks).toBeCloseTo(10 / 14);
+      expect(normalized.diff.clicks).toBeCloseTo(10 / 7 - 10 / 14);
+      expect(normalized.period_a.impressions).toBeCloseTo(100 / 7);
+      expect(normalized.period_b.impressions).toBeCloseTo(100 / 14);
+      expect(normalized.diff.impressions).toBeCloseTo(100 / 7 - 100 / 14);
+      expect(normalized.note).toContain('not property-wide');
 
       const overlapping = (await tools['analytics.compare'].handler({
         site_url: 'sc-domain:example.com',
