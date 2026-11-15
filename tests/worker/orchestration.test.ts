@@ -2082,7 +2082,7 @@ describe('Worker orchestration', () => {
               clicks: 5,
               impressions: 100,
               ctr: 0.05,
-              position: 9,
+              ...(scoped ? {} : { position: 9 }),
             }],
           });
         }
@@ -2115,11 +2115,12 @@ describe('Worker orchestration', () => {
       expect(unfiltered.structuredContent.page_contains).toBeNull();
       expect(unfiltered.structuredContent.device).toBeNull();
       expect(unfiltered.structuredContent.pages[0]?.page).toBe('https://example.com/en/pricing/');
+      expect(unfiltered.structuredContent.pages[0]).toMatchObject({ position: 9 });
       expect(scoped.structuredContent).toMatchObject({
         page_contains: '/de/',
         country: 'DEU',
         device: 'mobile',
-        pages: [{ page: 'https://example.com/de/preise/' }],
+        pages: [{ page: 'https://example.com/de/preise/', clicks: 5, impressions: 100, ctr: 0.05, position: null }],
       });
       expect(scoped.structuredContent.scope_note).toContain('not property-wide');
       expect(scoped.structuredContent.scope_note).toContain('searcher country');
