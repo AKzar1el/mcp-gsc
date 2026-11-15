@@ -318,6 +318,11 @@ export async function generateWeeklyDigest(
     previous: previousQueryKeys.size,
     common: [...currentQueryKeys].filter((query) => previousQueryKeys.has(query)).length,
   };
+  const currentOnlyQueries = currentQueries
+    .filter((row) => row.query.trim() !== '' && !isOperatorQuery(row.query)
+      && !previousQueryKeys.has(row.query) && row.impressions > 0)
+    .sort((a, b) => b.impressions - a.impressions || a.query.localeCompare(b.query))
+    .slice(0, 3);
 
   const movers = computeMovers(currentQueries, prevQueries);
   const action = searchType === 'web'
@@ -343,6 +348,7 @@ export async function generateWeeklyDigest(
     prevTotals,
     movers,
     observedQueryOverlap,
+    currentOnlyQueries,
     currentQueries,
     currentPages,
     action,
@@ -601,11 +607,12 @@ function renderMarkdown(data: {
   prevTotals: SiteTotals;
   movers: Movers;
   observedQueryOverlap: ObservedQueryOverlap;
+  currentOnlyQueries: QueryRow[];
   currentQueries: QueryRow[];
   currentPages: PageRow[];
   action: { key: ActionKey; item: ActionItem };
 }): string {
-  const { siteUrl, searchTypeNotice, pageScopeNotice, deviceScopeNotice, queryScopeNotice, countryScopeNotice, dates, currentTotals, prevTotals, movers, observedQueryOverlap, currentQueries, currentPages, action } = data;
+  const { siteUrl, searchTypeNotice, pageScopeNotice, deviceScopeNotice, queryScopeNotice, countryScopeNotice, dates, currentTotals, prevTotals, movers, observedQueryOverlap, currentOnlyQueries, currentQueries, currentPages, action } = data;
   const siteName = siteDisplayName(siteUrl);
   const lines: string[] = [];
 
@@ -727,6 +734,17 @@ function renderMarkdown(data: {
       lines.push('Nothing major changed this week. Numbers are stable.');
       lines.push('');
     }
+  }
+
+  if (currentOnlyQueries.length > 0) {
+    lines.push('### Queries returned this week but not in last week\'s sample');
+    lines.push('');
+    lines.push('> These queries were observed only in the current up-to-25 returned query rows, not in the previous up-to-25 sample. This is not proof of new demand or new rankings: missing previous rows are not measured zero. Anonymized queries may be omitted, and diagnostic search-operator queries are excluded.');
+    lines.push('');
+    for (const query of currentOnlyQueries) {
+      lines.push(`- **${escapeMarkdownInline(query.query)}** — ${formatNumber(query.impressions)} impressions, ${formatNumber(query.clicks)} clicks this week.`);
+    }
+    lines.push('');
   }
 
   lines.push('## Your top pages this week');
