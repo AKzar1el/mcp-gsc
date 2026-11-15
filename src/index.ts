@@ -626,6 +626,7 @@ const QUERY_PAGES_OUTPUT_SCHEMA = {
     z.object({
       page: z.string(),
       ...METRIC_OUTPUT_SCHEMA,
+      position: z.number().nullable().describe('Observed average position, or null if Google did not return this optional metric.'),
     }),
   ),
   pagination: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
@@ -1893,7 +1894,7 @@ class GscMcpRuntime {
       'insights.query_pages',
       {
         title: 'Find pages for a query',
-        description: 'For one exact search query, return the site pages that received impressions for it over a date range. This wraps an exact query dimension filter so agents do not need to construct analytics.query filter groups manually. Optional page_contains, ISO alpha-3 searcher country and device (desktop/mobile/tablet) scope matching page URLs, searcher geography and devices at Google before source pagination; filtered rows are not property-wide, and country is not page language. Exact query matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results and verify which URL Google is surfacing before diagnosing cannibalization or content targeting. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
+        description: 'For one exact search query, return the site pages that received impressions for it over a date range. This wraps an exact query dimension filter so agents do not need to construct analytics.query filter groups manually. Optional page_contains, ISO alpha-3 searcher country and device (desktop/mobile/tablet) scope matching page URLs, searcher geography and devices at Google before source pagination; filtered rows are not property-wide, and country is not page language. Rows with clicks/impressions but no reported average position remain visible with position=null, never an invented ranking. Exact query matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results and verify which URL Google is surfacing before diagnosing cannibalization or content targeting. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           query: z.string().min(1).describe('Exact Search Console query text to filter on. Exact query filters are case-sensitive.'),
@@ -1962,12 +1963,12 @@ class GscMcpRuntime {
           beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId),
         });
         const rows = mapSourceRows(source.rows, (row) =>
-          (row.keys?.length ?? 0) > 0 && hasRecordedPosition(row) ? ({
+          (row.keys?.length ?? 0) > 0 ? ({
             page: row.keys![0],
             clicks: row.clicks,
             impressions: row.impressions,
             ctr: row.ctr,
-            position: row.position,
+            position: hasRecordedPosition(row) ? row.position : null,
           }) : undefined);
         const bounded = windowSourceRows(
           rows.items,
@@ -1989,10 +1990,10 @@ class GscMcpRuntime {
           country: country?.toUpperCase() ?? null,
           device: device ?? null,
           scope_note: country || device
-            ? `Pages are filtered to the requested ${country ? 'searcher country' : ''}${country && device ? ' and ' : ''}${device ? 'device' : ''} and optional URL substring at Google before pagination; observed rows are not property-wide${device ? ' or all-device totals' : ''}, and absent rows are not evidence of zero impressions.${country ? ' Searcher country is not page language.' : ''}`
+            ? `Pages are filtered to the requested ${country ? 'searcher country' : ''}${country && device ? ' and ' : ''}${device ? 'device' : ''} and optional URL substring at Google before pagination; observed rows are not property-wide${device ? ' or all-device totals' : ''}, and absent rows are not evidence of zero impressions.${country ? ' Searcher country is not page language.' : ''} Missing average position is null, not zero; observed clicks and impressions are retained.`
             : page_contains
-              ? 'Pages are filtered to the requested URL substring at Google before pagination; observed rows are not property-wide, and absent rows are not evidence of zero impressions.'
-            : 'Observed query/page rows may be incomplete because Search Console can omit or truncate data; absent rows are not evidence of zero impressions.',
+              ? 'Pages are filtered to the requested URL substring at Google before pagination; observed rows are not property-wide, and absent rows are not evidence of zero impressions. Missing average position is null, not zero; observed clicks and impressions are retained.'
+            : 'Observed query/page rows may be incomplete because Search Console can omit or truncate data; absent rows are not evidence of zero impressions. Missing average position is null, not zero; observed clicks and impressions are retained.',
           pages: bounded.items,
           pagination: paginationMetadata(source),
           result_page: bounded.resultPage,
