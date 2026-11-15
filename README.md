@@ -198,6 +198,8 @@ For explicitly recent preliminary digests, a missing aggregate totals row is not
 
 To prioritize comparable queries or pages from different-length windows, pass `sort_by: "absolute_daily_click_change"` to `analytics.compare`. This ranks returned common keys by the magnitude of the difference between observed clicks per inclusive calendar day, **before** result pagination, without adding per-row payload fields or Google requests. Omit it (or use `"absolute_click_change"`) to preserve the original absolute raw-click-change ranking. This is a sample-scoped ranking, not proof of a property-wide trend; overlapping date ranges remain non-independent.
 
+For focused triage, pass `click_change_direction: "loss"` or `"gain"` to keep only returned common queries/pages whose clicks decreased or increased **in the selected sorting basis**. The default `"all"` keeps every comparable key. With the default raw sorting, direction uses raw click differences; with `"absolute_daily_click_change"`, it uses per-day click differences, which may have a different sign for unequal windows. Direction filtering happens before result pagination and excludes unchanged keys, while the aggregate daily averages still describe all common returned keys before this local filter. It does not request additional Google data or imply that missing keys have zero traffic.
+
 ## What you can ask
 
 **Agency reporting workflow:** [Read-only weekly Search Console reporting for SEO agencies](docs/agency-weekly-reporting.md) walks through exact-property verification, one bounded weekly digest, matched-period comparisons, evidence checks, and a reusable human-reviewed client report. It contains no fabricated client metrics or automated outreach.
