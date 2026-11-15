@@ -1,5 +1,4 @@
 import {
-  hasRecordedPosition,
   querySearchAnalytics,
   type DimensionFilterGroup,
   type SearchAnalyticsRow,
@@ -26,7 +25,7 @@ interface QueryRow {
   clicks: number;
   impressions: number;
   ctr: number;
-  position: number;
+  position?: number;
 }
 
 interface PageRow {
@@ -44,8 +43,8 @@ interface Mover {
   prevClicks: number;
   currentImpressions: number;
   prevImpressions: number;
-  currentPosition: number;
-  prevPosition: number;
+  currentPosition?: number;
+  prevPosition?: number;
   change: number;
 }
 
@@ -377,15 +376,13 @@ function totalsFromRow(row: SearchAnalyticsRow | undefined): SiteTotals {
 }
 
 function rowsToQueries(rows: SearchAnalyticsRow[]): QueryRow[] {
-  return rows
-    .filter(hasRecordedPosition)
-    .map((r) => ({
-      query: r.keys?.[0] ?? '',
-      clicks: r.clicks,
-      impressions: r.impressions,
-      ctr: r.ctr,
-      position: r.position,
-    }));
+  return rows.map((r) => ({
+    query: r.keys?.[0] ?? '',
+    clicks: r.clicks,
+    impressions: r.impressions,
+    ctr: r.ctr,
+    position: r.position,
+  }));
 }
 
 function rowsToPages(rows: SearchAnalyticsRow[]): PageRow[] {
@@ -536,7 +533,8 @@ function pickActionAndBuild(
   }
 
   const risingWithWeakerAveragePosition = movers.rising.find(
-    (m) => m.currentPosition > 10,
+    (m): m is Mover & { currentPosition: number } =>
+      m.currentPosition !== undefined && m.currentPosition > 10,
   );
   if (risingWithWeakerAveragePosition) {
     return {
@@ -660,7 +658,7 @@ function renderMarkdown(data: {
     lines.push('');
     for (const m of movers.rising) {
       lines.push(
-        `- **"${escapeMarkdownInline(m.query)}"** — ${m.currentClicks} clicks this week (was ${m.prevClicks} last week). Average position ${m.currentPosition.toFixed(1)}.`,
+        `- **"${escapeMarkdownInline(m.query)}"** — ${m.currentClicks} clicks this week (was ${m.prevClicks} last week).${m.currentPosition !== undefined ? ` Average position ${m.currentPosition.toFixed(1)}.` : ''}`,
       );
     }
     lines.push('');
@@ -671,7 +669,7 @@ function renderMarkdown(data: {
     lines.push('');
     for (const m of movers.falling) {
       lines.push(
-        `- **"${escapeMarkdownInline(m.query)}"** — ${m.currentClicks} clicks this week (was ${m.prevClicks} last week). Average position ${m.currentPosition.toFixed(1)}.`,
+        `- **"${escapeMarkdownInline(m.query)}"** — ${m.currentClicks} clicks this week (was ${m.prevClicks} last week).${m.currentPosition !== undefined ? ` Average position ${m.currentPosition.toFixed(1)}.` : ''}`,
       );
     }
     lines.push('');
@@ -777,7 +775,7 @@ function renderMarkdown(data: {
     lines.push('> These candidates come only from the up-to-25 returned query rows (not exhaustive); anonymized queries may be omitted and diagnostic search-operator queries are excluded. Missing queries are not zero. Average position is an observed Search Console metric, not a live rank, and is omitted when unavailable. Check search intent, ranking context and SERP features before changing content.');
     lines.push('');
     for (const query of noClickQueries) {
-      const positionContext = Number.isFinite(query.position) && query.position >= 1
+      const positionContext = query.position !== undefined && Number.isFinite(query.position) && query.position >= 1
         ? `, average position ${query.position.toFixed(1)}`
         : '';
       lines.push(`- **${escapeMarkdownInline(query.query)}** — ${formatNumber(query.impressions)} impressions, 0 observed clicks${positionContext}.`);
