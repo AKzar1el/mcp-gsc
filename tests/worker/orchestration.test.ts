@@ -1976,7 +1976,7 @@ describe('Worker orchestration', () => {
               clicks: 4,
               impressions: 80,
               ctr: 0.05,
-              position: 8,
+              ...(topicScoped ? {} : { position: 8 }),
             }],
           });
         }
@@ -2004,13 +2004,13 @@ describe('Worker orchestration', () => {
       expect(unfiltered.structuredContent).toMatchObject({
         query_contains: null,
         device: null,
-        queries: [{ query: 'brand name' }],
+        queries: [{ query: 'brand name', position: 8 }],
       });
       expect(scoped.structuredContent).toMatchObject({
         query_contains: 'seo',
         country: 'DEU',
         device: 'mobile',
-        queries: [{ query: 'seo audit' }],
+        queries: [{ query: 'seo audit', clicks: 4, impressions: 80, ctr: 0.05, position: null }],
       });
       expect(scoped.structuredContent.scope_note).toContain('not all queries');
       expect(scoped.structuredContent.scope_note).toContain('searcher country');

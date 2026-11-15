@@ -604,6 +604,7 @@ const PAGE_QUERIES_OUTPUT_SCHEMA = {
     z.object({
       query: z.string(),
       ...METRIC_OUTPUT_SCHEMA,
+      position: z.number().nullable().describe('Observed average position, or null when Google omitted this optional metric.'),
     }),
   ),
   pagination: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
@@ -1780,7 +1781,7 @@ class GscMcpRuntime {
       'insights.page_queries',
       {
         title: 'Find queries for a page',
-        description: 'For one exact page URL within the supplied Search Console property, return the queries that produced impressions for it over a date range. This wraps an exact page dimension filter so agents do not need to construct analytics.query filter groups manually. Optional query_contains, ISO alpha-3 searcher country and device (desktop/mobile/tablet) narrow the Google-side population before pagination; these observed rows may not represent all queries for the page or all devices. Country is searcher location, not page language. Exact page matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results; Search Console can still omit anonymized queries. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
+        description: 'For one exact page URL within the supplied Search Console property, return the queries that produced impressions for it over a date range. This wraps an exact page dimension filter so agents do not need to construct analytics.query filter groups manually. Optional query_contains, ISO alpha-3 searcher country and device (desktop/mobile/tablet) narrow the Google-side population before pagination; these observed rows may not represent all queries for the page or all devices. Rows without average position retain observed clicks and impressions and return position=null, never an invented rank. Country is searcher location, not page language. Exact page matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results; Search Console can still omit anonymized queries. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           page_url: z.string().url().describe('Exact fully-qualified page URL to filter on, e.g. https://example.com/guides/seo/. The URL must belong to site_url; Search Console exact page filters are case-sensitive.'),
@@ -1850,12 +1851,12 @@ class GscMcpRuntime {
           beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId),
         });
         const rows = mapSourceRows(source.rows, (row) =>
-          (row.keys?.length ?? 0) > 0 && hasRecordedPosition(row) ? ({
+          (row.keys?.length ?? 0) > 0 ? ({
             query: row.keys![0],
             clicks: row.clicks,
             impressions: row.impressions,
             ctr: row.ctr,
-            position: row.position,
+            position: hasRecordedPosition(row) ? row.position : null,
           }) : undefined);
         const bounded = windowSourceRows(
           rows.items,
@@ -1877,10 +1878,10 @@ class GscMcpRuntime {
           country: country?.toUpperCase() ?? null,
           device: device ?? null,
           scope_note: country || device
-            ? `Queries are filtered to the requested ${country ? 'searcher country' : ''}${country && device ? ' and ' : ''}${device ? 'device' : ''} and optional query topic at Google before pagination; these are not all queries for this page${device ? ' or all-device results' : ''}, and missing rows do not mean zero impressions.${country ? ' Searcher country is not page language.' : ''}`
+            ? `Queries are filtered to the requested ${country ? 'searcher country' : ''}${country && device ? ' and ' : ''}${device ? 'device' : ''} and optional query topic at Google before pagination; these are not all queries for this page${device ? ' or all-device results' : ''}, and missing rows do not mean zero impressions.${country ? ' Searcher country is not page language.' : ''} Missing average position is null, not zero; observed clicks and impressions are retained.`
             : query_contains
-              ? 'Queries are filtered to the requested case-insensitive topic substring at Google before pagination; these are not all queries for this page, and missing rows do not mean zero impressions.'
-            : 'Observed page/query rows may be incomplete because Search Console can omit or truncate data; missing rows do not mean zero impressions.',
+              ? 'Queries are filtered to the requested case-insensitive topic substring at Google before pagination; these are not all queries for this page, and missing rows do not mean zero impressions. Missing average position is null, not zero; observed clicks and impressions are retained.'
+            : 'Observed page/query rows may be incomplete because Search Console can omit or truncate data; missing rows do not mean zero impressions. Missing average position is null, not zero; observed clicks and impressions are retained.',
           queries: bounded.items,
           pagination: paginationMetadata(source),
           result_page: bounded.resultPage,
