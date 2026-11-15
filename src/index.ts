@@ -790,6 +790,9 @@ const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
   ),
   comparison_scope: z.literal('common_returned_rows_only'),
   comparison_note: z.string(),
+  click_change_direction: z.enum(['all', 'gain', 'loss']).describe(
+    'Direction filter on observed common returned keys, using raw clicks or daily clicks according to sort_by.',
+  ),
   period_comparability: z.object({
     period_a_days: z.number().int().positive(),
     period_b_days: z.number().int().positive(),
@@ -2729,7 +2732,7 @@ class GscMcpRuntime {
       'analytics.compare',
       {
         title: 'Compare Performance Between Periods',
-        description: 'Compare Search Console clicks, impressions, CTR, and available average position between two date ranges for a selected dimension. Only keys observed in both periods are compared; up to three observed-only examples per period help identify follow-up checks, not new/lost traffic (missing rows are not zero). Web, Image, Video, and Search News-tab support query/page/country/device; Discover and Google News support only page/country/device, without average position (null, never an invented rank). Apply the same search type, data state and filters to both periods. Finalized data is the default; all may include preliminary data. Results default to absolute raw click-change ranking; opt-in per-day click-change ranking compares unequal-length windows and supports bounded pagination.',
+        description: 'Compare Search Console clicks, impressions, CTR, and available average position between two date ranges for a selected dimension. Only keys observed in both periods are compared; up to three observed-only examples per period help identify follow-up checks, not new/lost traffic (missing rows are not zero). Web, Image, Video, and Search News-tab support query/page/country/device; Discover and Google News support only page/country/device, without average position (null, never an invented rank). Apply the same search type, data state and filters to both periods. Finalized data is the default; all may include preliminary data. Results default to absolute raw click-change ranking; opt-in per-day click-change ranking compares unequal-length windows. Optional click_change_direction isolates observed gainers or decliners in the selected raw/daily basis before bounded pagination.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe(
@@ -2764,6 +2767,9 @@ class GscMcpRuntime {
           sort_by: z.enum(['absolute_click_change', 'absolute_daily_click_change'])
             .default('absolute_click_change')
             .describe('Rank common returned keys by absolute raw click difference (default) or absolute difference between observed clicks per inclusive calendar day; missing keys are never treated as zero.'),
+          click_change_direction: z.enum(['all', 'gain', 'loss'])
+            .default('all')
+            .describe('Keep all common returned keys (default), or only keys gaining/losing clicks in the selected sort_by basis. Applied before result pagination, not as a Google-side filter; ties are excluded from gain/loss.'),
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,
         },
@@ -2781,6 +2787,7 @@ class GscMcpRuntime {
         data_state,
         dimension_filter_groups,
         sort_by = 'absolute_click_change',
+        click_change_direction = 'all',
         limit = DEFAULT_ANALYSIS_RESULT_LIMIT,
         start_row = 0,
       }) => {
@@ -2833,7 +2840,14 @@ class GscMcpRuntime {
             : {}),
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
-        const comparison = processPerformanceComparison(sourceA.rows, sourceB.rows);
+        const allComparisons = processPerformanceComparison(sourceA.rows, sourceB.rows);
+        const comparison = click_change_direction === 'all' ? allComparisons
+          : allComparisons.filter((row) => {
+            const clickChange = sort_by === 'absolute_daily_click_change'
+              ? row.period_a.clicks / periodADays - row.period_b.clicks / periodBDays
+              : row.diff.clicks;
+            return click_change_direction === 'gain' ? clickChange > 0 : clickChange < 0;
+          });
         if (sort_by === 'absolute_daily_click_change') {
           comparison.sort((a, b) =>
             Math.abs(b.period_a.clicks / periodADays - b.period_b.clicks / periodBDays)
@@ -2869,7 +2883,7 @@ class GscMcpRuntime {
             }));
         };
         const bounded = windowKnownResults(comparison, start_row, limit);
-        const commonTotals = comparison.reduce((totals, item) => ({
+        const commonTotals = allComparisons.reduce((totals, item) => ({
           aClicks: totals.aClicks + item.period_a.clicks,
           bClicks: totals.bClicks + item.period_b.clicks,
           aImpressions: totals.aImpressions + item.period_a.impressions,
@@ -2885,6 +2899,7 @@ class GscMcpRuntime {
           `search_type=${search_type ?? 'web'}`,
           `data_state=${data_state ?? 'final'}`,
           `sort_by=${sort_by}`,
+          `click_change_direction=${click_change_direction}`,
           `period_a=${start_date_a}..${end_date_a}`,
           `period_b=${start_date_b}..${end_date_b}`,
           `dimension_filter_groups=${dimension_filter_groups?.length ?? 0}`,
@@ -2892,7 +2907,8 @@ class GscMcpRuntime {
         const payload = {
           site_url,
           comparison_scope: 'common_returned_rows_only' as const,
-          comparison_note: `${COMMON_RETURNED_ROWS_COMPARISON_NOTE} Scope: ${comparisonScopeNote}. Filter groups, if present, are applied equally to both periods.${search_type === 'discover' || search_type === 'googleNews' ? ' Average position is not supported for this surface and is null, not zero or a live ranking.' : ''}`,
+          comparison_note: `${COMMON_RETURNED_ROWS_COMPARISON_NOTE} Scope: ${comparisonScopeNote}. Filter groups, if present, are applied equally to both periods. Click direction applies to raw click differences or daily-average click differences based on sort_by, before result pagination; ties are excluded from gain/loss.${search_type === 'discover' || search_type === 'googleNews' ? ' Average position is not supported for this surface and is null, not zero or a live ranking.' : ''}`,
+          click_change_direction,
           period_comparability: {
             period_a_days: periodADays,
             period_b_days: periodBDays,
@@ -2921,7 +2937,7 @@ class GscMcpRuntime {
             period_a: { clicks: aDailyClicks, impressions: aDailyImpressions },
             period_b: { clicks: bDailyClicks, impressions: bDailyImpressions },
             diff: { clicks: aDailyClicks - bDailyClicks, impressions: aDailyImpressions - bDailyImpressions },
-            note: 'Per-calendar-day averages sum only dimension keys returned in both periods across the fetched comparison sample, not property-wide traffic or a daily time series. Missing rows are not treated as zero. Rates do not make overlapping windows independent.',
+            note: 'Per-calendar-day averages sum all dimension keys returned in both periods across the fetched comparison sample, before any click_change_direction result filter; not property-wide traffic or a daily time series. Missing rows are not treated as zero. Rates do not make overlapping windows independent.',
           },
           pagination: {
             period_a: paginationMetadata(sourceA),

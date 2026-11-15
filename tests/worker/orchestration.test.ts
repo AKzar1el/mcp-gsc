@@ -4480,6 +4480,72 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('filters comparison click gains and losses before pagination using the selected time basis', async () => {
+    await saveUser(workerEnv, 'direction-user', 'direction@example.test', 'direction-refresh');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'direction-user', email: 'direction@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'direction-access', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          const recent = body.startDate === '2026-09-01';
+          const values = recent ? [20, 4, 50] : [14, 10, 10];
+          return response({ rows: ['raw up daily down', 'both down', 'both up'].map((key, i) => ({
+            keys: [key], clicks: values[i], impressions: values[i] * 10, ctr: 0.1, position: 5,
+          })) });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01', end_date_a: '2026-09-14',
+        start_date_b: '2026-08-25', end_date_b: '2026-08-31',
+        dimension: 'query', search_type: 'web', data_state: 'final',
+      };
+      type ComparisonResult = {
+        structuredContent: {
+          comparisons: Array<{ key: string }>;
+          comparison_note: string;
+          result_page: { total_count: number; has_more: boolean };
+        };
+      };
+      const rawLosses = await tools['analytics.compare'].handler({
+        ...args, click_change_direction: 'loss',
+      }) as ComparisonResult;
+      expect(rawLosses.structuredContent.comparisons.map((row) => row.key)).toEqual(['both down']);
+      expect(rawLosses.structuredContent.result_page.total_count).toBe(1);
+      const dailyLosses = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_daily_click_change', click_change_direction: 'loss',
+        limit: 1,
+      }) as ComparisonResult;
+      expect(dailyLosses.structuredContent.comparisons.map((row) => row.key)).toEqual(['both down']);
+      expect(dailyLosses.structuredContent.result_page).toMatchObject({ total_count: 2, has_more: true });
+      expect(dailyLosses.structuredContent.comparison_note).toContain('click_change_direction=loss');
+      const nextPage = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_daily_click_change', click_change_direction: 'loss',
+        limit: 1, start_row: 1,
+      }) as ComparisonResult;
+      expect(nextPage.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['raw up daily down']);
+      expect(requests).toHaveLength(6);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('compares Discover page evidence without manufacturing average positions or permitting query grouping', async () => {
     await saveUser(workerEnv, 'discover-compare-user', 'discover@example.test', 'discover-refresh');
     const server = await createGscMcpServer(
