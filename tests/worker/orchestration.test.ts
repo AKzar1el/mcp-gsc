@@ -4217,7 +4217,11 @@ describe('Worker orchestration', () => {
                 position: 9,
               },
               ...(body.startDate === '2026-09-01'
-                ? [{ keys: ['not-comparable'], clicks: 2, impressions: 30, ctr: 0.067 }]
+                ? [
+                    { keys: ['not-comparable'], clicks: 2, impressions: 30, ctr: 0.067 },
+                    { keys: ['highest only'], clicks: 7, impressions: 80, ctr: 0.0875 },
+                    { keys: ['small only'], clicks: 0, impressions: 1, ctr: 0 },
+                  ]
                 : []),
             ],
           });
@@ -4248,6 +4252,8 @@ describe('Worker orchestration', () => {
             comparable_count: number;
             period_a_only_count: number;
             period_b_only_count: number;
+            period_a_only_samples: Array<{ key: string; clicks: number; impressions: number; ctr: number; position: number | null }>;
+            period_b_only_samples: Array<{ key: string; clicks: number; impressions: number; ctr: number; position: number | null }>;
             note: string;
           };
         };
@@ -4285,13 +4291,21 @@ describe('Worker orchestration', () => {
       expect(result.structuredContent.comparisons.map((item) => item.key)).toEqual(['example query']);
       expect(result.structuredContent.observed_dimension_overlap).toMatchObject({
         // Positionless rows are still observed keys, even if absent in the other period.
-        period_a_count: 3,
+        period_a_count: 5,
         period_b_count: 2,
         comparable_count: 1,
-        period_a_only_count: 2,
+        period_a_only_count: 4,
         period_b_only_count: 1,
       });
       expect(result.structuredContent.observed_dimension_overlap.note).toContain('not zero');
+      expect(result.structuredContent.observed_dimension_overlap.period_a_only_samples).toEqual([
+        { key: 'highest only', clicks: 7, impressions: 80, ctr: 0.0875, position: null },
+        { key: 'not-comparable', clicks: 2, impressions: 30, ctr: 0.067, position: null },
+        { key: 'recent only', clicks: 2, impressions: 30, ctr: 0.067, position: 9 },
+      ]);
+      expect(result.structuredContent.observed_dimension_overlap.period_b_only_samples).toEqual([
+        { key: 'previous only', clicks: 2, impressions: 30, ctr: 0.067, position: 9 },
+      ]);
       const scopeNote = result.structuredContent.comparison_note;
       expect(scopeNote).toContain('site_url=sc-domain:example.com');
       expect(scopeNote).toContain('data_state=final');

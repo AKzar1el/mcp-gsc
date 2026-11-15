@@ -793,8 +793,14 @@ const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
     comparable_count: z.number().int().nonnegative(),
     period_a_only_count: z.number().int().nonnegative(),
     period_b_only_count: z.number().int().nonnegative(),
+    period_a_only_samples: z.array(z.object({
+      key: z.string(), ...METRIC_OUTPUT_SCHEMA, position: z.number().nullable(),
+    })).max(3),
+    period_b_only_samples: z.array(z.object({
+      key: z.string(), ...METRIC_OUTPUT_SCHEMA, position: z.number().nullable(),
+    })).max(3),
     note: z.string(),
-  }).describe('Distinct dimension keys observed in each Google response; missing keys are not zero traffic, and average position may be unavailable.'),
+  }).describe('Distinct returned dimension keys and up to three observed-only examples from each period; absent keys are not zero traffic or proof of new/lost visibility.'),
   data_state: z.enum(['all', 'final']).describe(
     'The Search Analytics dataState applied identically to both comparison periods.',
   ),
@@ -2707,7 +2713,7 @@ class GscMcpRuntime {
       'analytics.compare',
       {
         title: 'Compare Performance Between Periods',
-        description: 'Compare Search Console clicks, impressions, CTR, and available average position between two date ranges for a selected dimension. Only keys observed in both periods are compared; missing rows are not zero. Web, Image, Video, and Search News-tab support query/page/country/device; Discover and Google News support only page/country/device, without average position (null, never an invented rank). Apply the same search type, data state and filters to both periods. Finalized data is the default; all may include preliminary data. Results rank by observed click changes then impression changes and support bounded pagination.',
+        description: 'Compare Search Console clicks, impressions, CTR, and available average position between two date ranges for a selected dimension. Only keys observed in both periods are compared; up to three observed-only examples per period help identify follow-up checks, not new/lost traffic (missing rows are not zero). Web, Image, Video, and Search News-tab support query/page/country/device; Discover and Google News support only page/country/device, without average position (null, never an invented rank). Apply the same search type, data state and filters to both periods. Finalized data is the default; all may include preliminary data. Results rank by observed click changes then impression changes and support bounded pagination.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe(
@@ -2808,6 +2814,25 @@ class GscMcpRuntime {
         const keysA = observedKeys(sourceA.rows);
         const keysB = observedKeys(sourceB.rows);
         const commonCount = [...keysA].filter((key) => keysB.has(key)).length;
+        const sampleObservedOnly = (rows: typeof sourceA.rows, otherKeys: ReadonlySet<string>) => {
+          const seen = new Set<string>();
+          return rows
+            .filter((row) => row.keys !== undefined && row.keys.length > 0
+              && !otherKeys.has(row.keys[0]))
+            .sort((a, b) => b.impressions - a.impressions || b.clicks - a.clicks
+              || a.keys![0].localeCompare(b.keys![0]))
+            .filter((row) => {
+              const key = row.keys![0];
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            })
+            .slice(0, 3)
+            .map((row) => ({
+              key: row.keys![0], clicks: row.clicks, impressions: row.impressions,
+              ctr: row.ctr, position: row.position ?? null,
+            }));
+        };
         const bounded = windowKnownResults(comparison, start_row, limit);
         const comparisonScopeNote = [
           `site_url=${site_url}`,
@@ -2828,7 +2853,9 @@ class GscMcpRuntime {
             comparable_count: commonCount,
             period_a_only_count: keysA.size - commonCount,
             period_b_only_count: keysB.size - commonCount,
-            note: 'Counts reflect distinct dimension keys in the two Google responses, including rows without average position. Missing rows are not zero traffic; one-period-only keys are not compared.',
+            period_a_only_samples: sampleObservedOnly(sourceA.rows, keysB),
+            period_b_only_samples: sampleObservedOnly(sourceB.rows, keysA),
+            note: 'Counts reflect distinct returned dimension keys, including rows without average position. Each sample lists up to three one-period-only keys ranked by observed impressions, not an exhaustive list. Missing rows are not zero traffic or proof that a key appeared/disappeared; one-period-only keys are not compared.',
           },
           data_state,
           preliminary_data_possible: data_state !== 'final',
