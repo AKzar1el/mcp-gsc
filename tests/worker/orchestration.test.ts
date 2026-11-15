@@ -3395,6 +3395,44 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves positionless competing-page evidence in cannibalization tool responses', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'cannibal-positionless-user', email: 'cannibal-positionless@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    let requests = 0;
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL) => {
+        expect(requestUrl(input)).toBe('https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query');
+        requests += 1;
+        return response({ rows: [
+          { keys: ['shared intent', 'https://example.com/a'], clicks: 20, impressions: 100, ctr: 0.2, position: 8 },
+          { keys: ['shared intent', 'https://example.com/b'], clicks: 4, impressions: 80, ctr: 0.05 },
+        ] });
+      };
+      const result = (await registered['insights.cannibalization'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-07-01',
+        end_date: '2026-07-31',
+        min_impressions: 50,
+        min_page_percentage: 10,
+      })) as { structuredContent: {
+        candidates: Array<{ total_clicks: number; total_impressions: number; pages: Array<{ position: number | null }> }>;
+      } };
+      expect(result.structuredContent.candidates).toHaveLength(1);
+      expect(result.structuredContent.candidates[0]).toMatchObject({ total_clicks: 24, total_impressions: 180 });
+      expect(result.structuredContent.candidates[0].pages.map((page) => page.position)).toEqual([8, null]);
+      expect(requests).toBe(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('filters cannibalization query topics at Google before pagination and combines URL scope', async () => {
     const server = await createGscMcpServer(
       workerEnv,
