@@ -724,8 +724,8 @@ const CONTENT_DECAY_OUTPUT_SCHEMA = {
       recent_impressions: z.number(),
       impression_difference: z.number(),
       impression_change_percentage: z.number().nullable(),
-      previous_position: z.number(),
-      recent_position: z.number(),
+      previous_position: z.number().nullable(),
+      recent_position: z.number().nullable(),
       position_change: z.number().nullable(),
     }),
   ),
@@ -2429,17 +2429,17 @@ class GscMcpRuntime {
           !pageFilter || result.page.toLowerCase().includes(pageFilter)
         );
         const observedPages = (rows: typeof recentSource.rows) => new Set(
-          rows.filter((row) => row.keys?.[0] && row.position !== undefined)
+          rows.filter((row) => row.keys?.[0])
             .map((row) => row.keys![0]),
         );
         const recentPages = observedPages(recentSource.rows);
         const previousPages = observedPages(previousSource.rows);
         const comparableCount = [...recentPages].filter((page) => previousPages.has(page)).length;
         const recentClicksByPage = new Map(recentSource.rows
-          .filter((row) => row.keys?.[0] && row.position !== undefined)
+          .filter((row) => row.keys?.[0])
           .map((row) => [row.keys![0], row.clicks] as const));
         const observedGains = previousSource.rows.reduce((summary, row) => {
-          if (!row.keys?.[0] || row.position === undefined) return summary;
+          if (!row.keys?.[0]) return summary;
           if (pageFilter && !row.keys[0].toLowerCase().includes(pageFilter)) return summary;
           const recentClicks = recentClicksByPage.get(row.keys[0]);
           if (recentClicks !== undefined && recentClicks > row.clicks) {
@@ -2479,7 +2479,7 @@ class GscMcpRuntime {
             comparable_count: comparableCount,
             recent_only_count: recentPages.size - comparableCount,
             previous_only_count: previousPages.size - comparableCount,
-            note: 'Counts refer only to distinct page URLs returned with position data in each Google response. An absent page row is not evidence of zero traffic, and no unmatched page is classified as decay.',
+            note: 'Counts refer to distinct page URLs returned in each Google response, even when optional average position is absent. An absent page row is not evidence of zero traffic, and no unmatched page is classified as decay.',
           },
           decay_count: decayResults.filter(
             (result) => result.classification === 'likely_decay',
@@ -2494,7 +2494,7 @@ class GscMcpRuntime {
           observed_click_gain: {
             all_gaining_pages: observedGains.clicks,
             gaining_page_count: observedGains.pages,
-            note: 'Positive click changes among pages returned with position data in both periods, before local result filters or pagination; not property-wide growth or a net-traffic estimate. Missing Google rows are not measured zeros, and gains do not explain losses.',
+            note: 'Positive click changes among pages returned in both periods, including rows without optional average position, before local result filters or pagination; not property-wide growth or a net-traffic estimate. Missing Google rows are not measured zeros, and gains do not explain losses.',
           },
           decay_results: bounded.items,
           pagination: {
