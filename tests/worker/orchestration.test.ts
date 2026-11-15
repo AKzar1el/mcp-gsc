@@ -1857,7 +1857,7 @@ describe('Worker orchestration', () => {
           const dimensions = body.dimensions as string[];
           return response({
             rows: dimensions[0] === 'query'
-              ? [{ keys: ['seo audit'], clicks: 7, impressions: 90, ctr: 0.077, position: 8.2 }]
+              ? [{ keys: ['seo audit'], clicks: 7, impressions: 90, ctr: 0.077 }]
               : [{ keys: ['https://example.com/seo-audit/'], clicks: 7, impressions: 90, ctr: 0.077, position: 8.2 }],
           });
         }
@@ -1894,7 +1894,7 @@ describe('Worker orchestration', () => {
         start_date: '2026-08-01',
         end_date: '2026-08-31',
         search_type: 'web',
-        queries: [{ query: 'seo audit' }],
+        queries: [{ query: 'seo audit', clicks: 7, impressions: 90, position: null }],
         data_state: 'all',
         preliminary_data_possible: true,
       });
