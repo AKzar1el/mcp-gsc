@@ -2726,7 +2726,7 @@ class GscMcpRuntime {
       'analytics.compare',
       {
         title: 'Compare Performance Between Periods',
-        description: 'Compare Search Console clicks, impressions, CTR, and available average position between two date ranges for a selected dimension. Only keys observed in both periods are compared; up to three observed-only examples per period help identify follow-up checks, not new/lost traffic (missing rows are not zero). Web, Image, Video, and Search News-tab support query/page/country/device; Discover and Google News support only page/country/device, without average position (null, never an invented rank). Apply the same search type, data state and filters to both periods. Finalized data is the default; all may include preliminary data. Results rank by observed click changes then impression changes and support bounded pagination.',
+        description: 'Compare Search Console clicks, impressions, CTR, and available average position between two date ranges for a selected dimension. Only keys observed in both periods are compared; up to three observed-only examples per period help identify follow-up checks, not new/lost traffic (missing rows are not zero). Web, Image, Video, and Search News-tab support query/page/country/device; Discover and Google News support only page/country/device, without average position (null, never an invented rank). Apply the same search type, data state and filters to both periods. Finalized data is the default; all may include preliminary data. Results default to absolute raw click-change ranking; opt-in per-day click-change ranking compares unequal-length windows and supports bounded pagination.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe(
@@ -2758,6 +2758,9 @@ class GscMcpRuntime {
             .describe(
               "Optional Search Console filters applied identically to both periods. Filter operator defaults to 'equals' when omitted, and expressions are limited to 4096 characters. A caller-supplied query regex can approximate a manual brand/non-brand split, but it is not equivalent to Search Console's AI-assisted native Branded/Non-branded filter, which the Search Analytics API does not expose. Countries use ISO 3166-1 alpha-3 codes.",
             ),
+          sort_by: z.enum(['absolute_click_change', 'absolute_daily_click_change'])
+            .default('absolute_click_change')
+            .describe('Rank common returned keys by absolute raw click difference (default) or absolute difference between observed clicks per inclusive calendar day; missing keys are never treated as zero.'),
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,
         },
@@ -2774,6 +2777,7 @@ class GscMcpRuntime {
         search_type,
         data_state,
         dimension_filter_groups,
+        sort_by = 'absolute_click_change',
         limit = DEFAULT_ANALYSIS_RESULT_LIMIT,
         start_row = 0,
       }) => {
@@ -2827,6 +2831,14 @@ class GscMcpRuntime {
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
         const comparison = processPerformanceComparison(sourceA.rows, sourceB.rows);
+        if (sort_by === 'absolute_daily_click_change') {
+          comparison.sort((a, b) =>
+            Math.abs(b.period_a.clicks / periodADays - b.period_b.clicks / periodBDays)
+              - Math.abs(a.period_a.clicks / periodADays - a.period_b.clicks / periodBDays)
+            || Math.abs(b.diff.clicks) - Math.abs(a.diff.clicks)
+            || Math.abs(b.diff.impressions) - Math.abs(a.diff.impressions)
+            || a.key.localeCompare(b.key));
+        }
         const observedKeys = (rows: typeof sourceA.rows) => new Set(
           rows.filter((row) => (row.keys?.length ?? 0) > 0)
             .map((row) => row.keys![0]),
@@ -2869,6 +2881,7 @@ class GscMcpRuntime {
           `dimension=${dimension ?? 'query'}`,
           `search_type=${search_type ?? 'web'}`,
           `data_state=${data_state ?? 'final'}`,
+          `sort_by=${sort_by}`,
           `period_a=${start_date_a}..${end_date_a}`,
           `period_b=${start_date_b}..${end_date_b}`,
           `dimension_filter_groups=${dimension_filter_groups?.length ?? 0}`,

@@ -194,6 +194,8 @@ For explicitly recent preliminary digests, a missing aggregate totals row is not
 
 `analytics.compare` also returns `period_comparability`: inclusive calendar-day counts, equal-length status and date overlap. Raw click and impression differences are **not normalized per day**. A separate compact `observed_common_rows_daily_average` summarizes clicks and impressions across only the dimension keys returned in *both* periods, divided by each period's inclusive day count, with an A-minus-B daily-rate difference. These are bounded, matched-row observations, **not property-wide daily totals or a daily time series**; missing keys are never assumed to have zero traffic. Unequal raw window totals are not like-for-like and overlapping dates do not represent independent periods. No additional Google API requests are made.
 
+To prioritize comparable queries or pages from different-length windows, pass `sort_by: "absolute_daily_click_change"` to `analytics.compare`. This ranks returned common keys by the magnitude of the difference between observed clicks per inclusive calendar day, **before** result pagination, without adding per-row payload fields or Google requests. Omit it (or use `"absolute_click_change"`) to preserve the original absolute raw-click-change ranking. This is a sample-scoped ranking, not proof of a property-wide trend; overlapping date ranges remain non-independent.
+
 ## What you can ask
 
 **Agency reporting workflow:** [Read-only weekly Search Console reporting for SEO agencies](docs/agency-weekly-reporting.md) walks through exact-property verification, one bounded weekly digest, matched-period comparisons, evidence checks, and a reusable human-reviewed client report. It contains no fabricated client metrics or automated outreach.
