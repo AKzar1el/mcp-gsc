@@ -796,6 +796,9 @@ const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
   impression_change_direction: z.enum(['all', 'gain', 'loss']).describe(
     'Direction filter on observed common returned keys, using daily impressions for either daily sort mode and raw impressions otherwise.',
   ),
+  min_impressions_per_period: z.number().int().nonnegative().describe(
+    'Local minimum observed impressions for each period before ranking and pagination; zero by default.',
+  ),
   period_comparability: z.object({
     period_a_days: z.number().int().positive(),
     period_b_days: z.number().int().positive(),
@@ -2767,15 +2770,17 @@ class GscMcpRuntime {
             .describe(
               "Optional Search Console filters applied identically to both periods. Filter operator defaults to 'equals' when omitted, and expressions are limited to 4096 characters. A caller-supplied query regex can approximate a manual brand/non-brand split, but it is not equivalent to Search Console's AI-assisted native Branded/Non-branded filter, which the Search Analytics API does not expose. Countries use ISO 3166-1 alpha-3 codes.",
             ),
-          sort_by: z.enum(['absolute_click_change', 'absolute_daily_click_change', 'absolute_impression_change', 'absolute_daily_impression_change'])
+          sort_by: z.enum(['absolute_click_change', 'absolute_daily_click_change', 'absolute_impression_change', 'absolute_daily_impression_change', 'absolute_ctr_change'])
             .default('absolute_click_change')
-            .describe('Rank common returned keys by absolute raw click change (default), daily click change, raw impression change, or daily impression change. Daily rates use inclusive calendar days. Missing keys are never treated as zero.'),
+            .describe('Rank common returned keys by absolute raw click change (default), daily click change, raw impression change, daily impression change, or absolute CTR percentage-point movement. CTR ranking uses unrounded period fractions and requires nonzero observed impressions in both periods. Missing keys are never treated as zero.'),
           click_change_direction: z.enum(['all', 'gain', 'loss'])
             .default('all')
             .describe('Keep all common returned keys (default), or only keys gaining/losing clicks: daily clicks with either daily sort mode, raw clicks otherwise. Applied before result pagination, not as a Google-side filter; ties are excluded.'),
           impression_change_direction: z.enum(['all', 'gain', 'loss'])
             .default('all')
             .describe('Keep all common returned keys (default), or only keys gaining/losing impressions: daily impressions with either daily sort mode, raw impressions otherwise. Applied before result pagination, not as a Google-side filter; ties are excluded. Can be combined with click_change_direction.'),
+          min_impressions_per_period: z.number().int().nonnegative().default(0)
+            .describe('Optional minimum observed impressions in each of both periods before local ranking and pagination; default 0. CTR ranking always requires positive impressions in both periods. This does not change the Google API query or response coverage.'),
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,
         },
@@ -2795,6 +2800,7 @@ class GscMcpRuntime {
         sort_by = 'absolute_click_change',
         click_change_direction = 'all',
         impression_change_direction = 'all',
+        min_impressions_per_period = 0,
         limit = DEFAULT_ANALYSIS_RESULT_LIMIT,
         start_row = 0,
       }) => {
@@ -2850,8 +2856,13 @@ class GscMcpRuntime {
         const allComparisons = processPerformanceComparison(sourceA.rows, sourceB.rows);
         const dailyBasis = sort_by === 'absolute_daily_click_change'
           || sort_by === 'absolute_daily_impression_change';
-        const comparison = click_change_direction === 'all' && impression_change_direction === 'all' ? allComparisons
+        const comparison = click_change_direction === 'all' && impression_change_direction === 'all'
+          && min_impressions_per_period === 0 && sort_by !== 'absolute_ctr_change' ? allComparisons
           : allComparisons.filter((row) => {
+            if (row.period_a.impressions < min_impressions_per_period
+              || row.period_b.impressions < min_impressions_per_period) return false;
+            if (sort_by === 'absolute_ctr_change'
+              && (row.period_a.impressions === 0 || row.period_b.impressions === 0)) return false;
             const clickChange = dailyBasis
               ? row.period_a.clicks / periodADays - row.period_b.clicks / periodBDays
               : row.diff.clicks;
@@ -2881,6 +2892,12 @@ class GscMcpRuntime {
             Math.abs(b.period_a.impressions / periodADays - b.period_b.impressions / periodBDays)
               - Math.abs(a.period_a.impressions / periodADays - a.period_b.impressions / periodBDays)
             || Math.abs(b.diff.impressions) - Math.abs(a.diff.impressions)
+            || Math.abs(b.diff.clicks) - Math.abs(a.diff.clicks)
+            || a.key.localeCompare(b.key));
+        } else if (sort_by === 'absolute_ctr_change') {
+          comparison.sort((a, b) =>
+            Math.abs(b.period_a.ctr - b.period_b.ctr)
+              - Math.abs(a.period_a.ctr - a.period_b.ctr)
             || Math.abs(b.diff.clicks) - Math.abs(a.diff.clicks)
             || a.key.localeCompare(b.key));
         }
@@ -2929,6 +2946,7 @@ class GscMcpRuntime {
           `sort_by=${sort_by}`,
           `click_change_direction=${click_change_direction}`,
           `impression_change_direction=${impression_change_direction}`,
+          `min_impressions_per_period=${min_impressions_per_period}`,
           `period_a=${start_date_a}..${end_date_a}`,
           `period_b=${start_date_b}..${end_date_b}`,
           `dimension_filter_groups=${dimension_filter_groups?.length ?? 0}`,
@@ -2936,9 +2954,10 @@ class GscMcpRuntime {
         const payload = {
           site_url,
           comparison_scope: 'common_returned_rows_only' as const,
-          comparison_note: `${COMMON_RETURNED_ROWS_COMPARISON_NOTE} Scope: ${comparisonScopeNote}. Filter groups, if present, are applied equally to both periods. Click and impression direction filters independently use ${dailyBasis ? 'daily-average' : 'raw'} differences before pagination, regardless of the ranking metric; both must match if set, and ties are excluded from gain/loss.${sort_by.includes('impression_change') ? ' Impression-based ranking reveals observed visibility movement even when clicks do not move; impressions do not establish live ranking changes.' : ''}${search_type === 'discover' || search_type === 'googleNews' ? ' Average position is not supported for this surface and is null, not zero or a live ranking.' : ''}`,
+          comparison_note: `${COMMON_RETURNED_ROWS_COMPARISON_NOTE} Scope: ${comparisonScopeNote}. Filter groups, if present, are applied equally to both periods. Click and impression direction filters independently use ${dailyBasis ? 'daily-average' : 'raw'} differences before pagination, regardless of the ranking metric; both must match if set, and ties are excluded from gain/loss. The optional impression floor requires observations in both periods before pagination.${sort_by === 'absolute_ctr_change' ? ' CTR movement ranks by unrounded period CTR fractions (percentage-point difference), excluding rows with zero observed impressions in either period; displayed CTR differences remain rounded.' : ''}${sort_by.includes('impression_change') ? ' Impression-based ranking reveals observed visibility movement even when clicks do not move; impressions do not establish live ranking changes.' : ''}${search_type === 'discover' || search_type === 'googleNews' ? ' Average position is not supported for this surface and is null, not zero or a live ranking.' : ''}`,
           click_change_direction,
           impression_change_direction,
+          min_impressions_per_period,
           period_comparability: {
             period_a_days: periodADays,
             period_b_days: periodBDays,
