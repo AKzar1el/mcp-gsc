@@ -787,6 +787,13 @@ const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
   ),
   comparison_scope: z.literal('common_returned_rows_only'),
   comparison_note: z.string(),
+  period_comparability: z.object({
+    period_a_days: z.number().int().positive(),
+    period_b_days: z.number().int().positive(),
+    equal_length: z.boolean(),
+    periods_overlap: z.boolean(),
+    note: z.string(),
+  }).describe('Inclusive calendar-day lengths and overlap disclosure for interpreting raw period differences; no normalization is applied.'),
   observed_dimension_overlap: z.object({
     period_a_count: z.number().int().nonnegative(),
     period_b_count: z.number().int().nonnegative(),
@@ -2769,6 +2776,13 @@ class GscMcpRuntime {
         const today = getSearchConsoleCalendarDate();
         assertDateNotInFuture(end_date_a, today, 'end_date_a');
         assertDateNotInFuture(end_date_b, today, 'end_date_b');
+        // UTC-midnight anchors count calendar days, independent of Pacific DST changes.
+        const inclusiveDays = (start: string, end: string) =>
+          Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000) + 1;
+        const periodADays = inclusiveDays(start_date_a, end_date_a);
+        const periodBDays = inclusiveDays(start_date_b, end_date_b);
+        const equalLength = periodADays === periodBDays;
+        const periodsOverlap = start_date_a <= end_date_b && start_date_b <= end_date_a;
         assertSearchAnalyticsQueryCompatible({
           startDate: start_date_a,
           endDate: end_date_a,
@@ -2847,6 +2861,17 @@ class GscMcpRuntime {
           site_url,
           comparison_scope: 'common_returned_rows_only' as const,
           comparison_note: `${COMMON_RETURNED_ROWS_COMPARISON_NOTE} Scope: ${comparisonScopeNote}. Filter groups, if present, are applied equally to both periods.${search_type === 'discover' || search_type === 'googleNews' ? ' Average position is not supported for this surface and is null, not zero or a live ranking.' : ''}`,
+          period_comparability: {
+            period_a_days: periodADays,
+            period_b_days: periodBDays,
+            equal_length: equalLength,
+            periods_overlap: periodsOverlap,
+            note: [
+              'Raw clicks and impression differences are not normalized per day.',
+              ...(!equalLength ? ['The periods have unequal lengths, so raw totals are not directly like-for-like.'] : []),
+              ...(periodsOverlap ? ['The date ranges overlap, so these are not independent comparison periods.'] : []),
+            ].join(' '),
+          },
           observed_dimension_overlap: {
             period_a_count: keysA.size,
             period_b_count: keysB.size,
