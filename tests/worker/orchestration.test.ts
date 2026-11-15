@@ -628,6 +628,16 @@ describe('Worker orchestration', () => {
     });
     expect(compareDefaults.success).toBe(true);
     expect(compareDefaults.data?.data_state).toBe('final');
+    for (const sort_by of ['absolute_impression_change', 'absolute_daily_impression_change']) {
+      expect(analyticsCompareSchema.safeParse({
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01',
+        end_date_a: '2026-09-07',
+        start_date_b: '2026-08-25',
+        end_date_b: '2026-08-31',
+        sort_by,
+      }).success).toBe(true);
+    }
     expect(
       analyticsCompareSchema.safeParse({
         site_url: 'sc-domain:example.com',
@@ -4475,6 +4485,68 @@ describe('Worker orchestration', () => {
         .toEqual(['raw winner']);
       expect(requests).toHaveLength(6);
       expect(requests.map((request) => request.startRow ?? 0)).toEqual([0, 0, 0, 0, 0, 0]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('ranks impression-only visibility movers using raw or daily impressions without extra requests', async () => {
+    await saveUser(workerEnv, 'impression-sort-user', 'impression-sort@example.test', 'impression-sort-refresh');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'impression-sort-user', email: 'impression-sort@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'impression-sort-access', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          const recent = body.startDate === '2026-09-01';
+          return response({ rows: [
+            { keys: ['click mover'], clicks: recent ? 70 : 20, impressions: 100, ctr: recent ? 0.7 : 0.2, position: 5 },
+            { keys: ['raw impression mover'], clicks: 0, impressions: recent ? 350 : 850, ctr: 0, position: 6 },
+            { keys: ['daily impression mover'], clicks: 0, impressions: 280, ctr: 0, position: 8 },
+          ] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01', end_date_a: '2026-09-07',
+        start_date_b: '2026-08-18', end_date_b: '2026-08-31',
+        dimension: 'query', search_type: 'web', data_state: 'final',
+      };
+      type ComparisonResult = { structuredContent: {
+        comparisons: Array<{ key: string }>;
+        comparison_note: string;
+      } };
+      const defaultOrder = await tools['analytics.compare'].handler(args) as ComparisonResult;
+      expect(defaultOrder.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['click mover', 'raw impression mover', 'daily impression mover']);
+      const rawImpressions = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_impression_change',
+      }) as ComparisonResult;
+      expect(rawImpressions.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['raw impression mover', 'click mover', 'daily impression mover']);
+      const dailyImpressions = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_daily_impression_change',
+      }) as ComparisonResult;
+      expect(dailyImpressions.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['daily impression mover', 'raw impression mover', 'click mover']);
+      expect(dailyImpressions.structuredContent.comparison_note)
+        .toContain('sort_by=absolute_daily_impression_change');
+      expect(requests).toHaveLength(6);
+      expect(requests.every((request) => (request.startRow ?? 0) === 0)).toBe(true);
     } finally {
       globalThis.fetch = originalFetch;
     }
