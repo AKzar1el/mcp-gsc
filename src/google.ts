@@ -2548,15 +2548,15 @@ export async function getIndexingNotificationMetadata(
 
 export interface PerformanceComparisonRow {
   key: string;
-  period_a: { clicks: number; impressions: number; ctr: number; position: number };
-  period_b: { clicks: number; impressions: number; ctr: number; position: number };
+  period_a: { clicks: number; impressions: number; ctr: number; position: number | null };
+  period_b: { clicks: number; impressions: number; ctr: number; position: number | null };
   diff: {
     clicks: number;
     clicks_percentage: number | null;
     impressions: number;
     impressions_percentage: number | null;
     ctr: number;
-    position: number;
+    position: number | null;
   };
 }
 
@@ -2572,26 +2572,26 @@ export function processPerformanceComparison(
   rowsA: SearchAnalyticsRow[],
   rowsB: SearchAnalyticsRow[],
 ): PerformanceComparisonRow[] {
-  const mapB = new Map<string, { clicks: number; impressions: number; ctr: number; position: number }>();
+  const mapB = new Map<string, { clicks: number; impressions: number; ctr: number; position: number | null }>();
   for (const row of rowsB) {
-    if ((row.keys?.length ?? 0) < 1 || row.position === undefined) continue;
+    if ((row.keys?.length ?? 0) < 1) continue;
     mapB.set(row.keys![0], {
       clicks: row.clicks,
       impressions: row.impressions,
       ctr: row.ctr,
-      position: row.position,
+      position: row.position ?? null,
     });
   }
 
   const comparison: PerformanceComparisonRow[] = [];
 
   for (const row of rowsA) {
-    if ((row.keys?.length ?? 0) < 1 || row.position === undefined) continue;
+    if ((row.keys?.length ?? 0) < 1) continue;
     const key = row.keys![0];
     const clicksA = row.clicks;
     const impsA = row.impressions;
     const ctrA = row.ctr;
-    const posA = row.position;
+    const posA = row.position ?? null;
 
     const b = mapB.get(key);
     if (!b) continue;
@@ -2613,7 +2613,9 @@ export function processPerformanceComparison(
         impressions: impsDiff,
         impressions_percentage: calculatePercentageChange(impsA, impsB),
         ctr: Math.round((ctrA - ctrB) * 1000) / 1000,
-        position: Math.round((posA - posB) * 10) / 10,
+        position: posA !== null && posB !== null
+          ? Math.round((posA - posB) * 10) / 10
+          : null,
       },
     });
   }

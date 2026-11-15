@@ -4284,10 +4284,11 @@ describe('Worker orchestration', () => {
       });
       expect(result.structuredContent.comparisons.map((item) => item.key)).toEqual(['example query']);
       expect(result.structuredContent.observed_dimension_overlap).toMatchObject({
-        period_a_count: 2,
+        // Positionless rows are still observed keys, even if absent in the other period.
+        period_a_count: 3,
         period_b_count: 2,
         comparable_count: 1,
-        period_a_only_count: 1,
+        period_a_only_count: 2,
         period_b_only_count: 1,
       });
       expect(result.structuredContent.observed_dimension_overlap.note).toContain('not zero');
@@ -4300,6 +4301,80 @@ describe('Worker orchestration', () => {
       expect(scopeNote).toContain('period_b=2026-08-25..2026-08-31');
       expect(scopeNote).toContain('dimension_filter_groups=1');
       expect(scopeNote).not.toContain('example|brand');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('compares Discover page evidence without manufacturing average positions or permitting query grouping', async () => {
+    await saveUser(workerEnv, 'discover-compare-user', 'discover@example.test', 'discover-refresh');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'discover-compare-user', email: 'discover@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'discover-access', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          if ((body.startRow as number | undefined ?? 0) > 0) return response({ rows: [] });
+          return response({ rows: [{
+            keys: ['https://example.com/story'],
+            clicks: body.startDate === '2026-09-01' ? 30 : 10,
+            impressions: body.startDate === '2026-09-01' ? 400 : 200,
+            ctr: body.startDate === '2026-09-01' ? 0.075 : 0.05,
+          }] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01', end_date_a: '2026-09-07',
+        start_date_b: '2026-08-25', end_date_b: '2026-08-31',
+        search_type: 'discover', dimension: 'page', data_state: 'final',
+      };
+      const result = (await tools['analytics.compare'].handler(args)) as {
+        structuredContent: {
+          comparisons: Array<{ period_a: { position: number | null }; period_b: { position: number | null }; diff: { clicks: number; position: number | null } }>;
+          observed_dimension_overlap: { comparable_count: number };
+          comparison_note: string;
+        };
+      };
+      expect(requests).toHaveLength(2);
+      expect(requests.map((request) => request.type)).toEqual(['discover', 'discover']);
+      expect(requests.map((request) => request.dimensions)).toEqual([['page'], ['page']]);
+      expect(result.structuredContent.comparisons).toHaveLength(1);
+      expect(result.structuredContent.comparisons[0]).toMatchObject({
+        period_a: { position: null }, period_b: { position: null },
+        diff: { clicks: 20, position: null },
+      });
+      expect(result.structuredContent.observed_dimension_overlap.comparable_count).toBe(1);
+      expect(result.structuredContent.comparison_note).toContain('not supported');
+      const newsResult = (await tools['analytics.compare'].handler({
+        ...args, search_type: 'googleNews', dimension: 'country',
+      })) as { structuredContent: { comparisons: Array<{ diff: { position: number | null } }> } };
+      expect(requests.map((request) => request.type)).toEqual([
+        'discover', 'discover', 'googleNews', 'googleNews',
+      ]);
+      expect(newsResult.structuredContent.comparisons[0].diff.position).toBeNull();
+      await expect(tools['analytics.compare'].handler({ ...args, dimension: 'query' }))
+        .rejects.toThrow(/does not support the query dimension/i);
+      await expect(tools['analytics.compare'].handler({
+        ...args, dimension: 'page', dimension_filter_groups: [{
+          groupType: 'and', filters: [{ dimension: 'query', operator: 'equals', expression: 'test' }],
+        }],
+      })).rejects.toThrow(/does not support the query dimension or query filters/i);
+      expect(requests).toHaveLength(4);
     } finally {
       globalThis.fetch = originalFetch;
     }
