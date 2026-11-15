@@ -192,6 +192,8 @@ Finalized digests separately highlight up to three **returned search queries wit
 
 For explicitly recent preliminary digests, a missing aggregate totals row is not treated as zero traffic. Any separately returned page/query samples are still shown as non-exhaustive observations, without fabricated site totals or week-over-week conclusions.
 
+`analytics.compare` also returns `period_comparability`: the inclusive calendar-day counts for each requested period, whether their lengths match, and whether the date ranges overlap. Raw click and impression differences are **not normalized per day**. Unequal-length periods are not like-for-like totals, and overlapping dates do not represent independent periods. These notices require no additional Google API requests.
+
 ## What you can ask
 
 **Agency reporting workflow:** [Read-only weekly Search Console reporting for SEO agencies](docs/agency-weekly-reporting.md) walks through exact-property verification, one bounded weekly digest, matched-period comparisons, evidence checks, and a reusable human-reviewed client report. It contains no fabricated client metrics or automated outreach.

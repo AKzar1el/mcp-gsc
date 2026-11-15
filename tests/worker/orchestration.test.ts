@@ -4246,6 +4246,13 @@ describe('Worker orchestration', () => {
           preliminary_data_possible: boolean;
           comparison_note: string;
           comparisons: Array<{ key: string }>;
+          period_comparability: {
+            period_a_days: number;
+            period_b_days: number;
+            equal_length: boolean;
+            periods_overlap: boolean;
+            note: string;
+          };
           observed_dimension_overlap: {
             period_a_count: number;
             period_b_count: number;
@@ -4315,6 +4322,41 @@ describe('Worker orchestration', () => {
       expect(scopeNote).toContain('period_b=2026-08-25..2026-08-31');
       expect(scopeNote).toContain('dimension_filter_groups=1');
       expect(scopeNote).not.toContain('example|brand');
+      expect(result.structuredContent.period_comparability).toMatchObject({
+        period_a_days: 7,
+        period_b_days: 7,
+        equal_length: true,
+        periods_overlap: false,
+      });
+
+      const unequal = (await tools['analytics.compare'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01', end_date_a: '2026-09-07',
+        start_date_b: '2026-08-18', end_date_b: '2026-08-31',
+        dimension: 'query', search_type: 'image', data_state: 'final',
+      })) as typeof result;
+      expect(unequal.structuredContent.period_comparability).toMatchObject({
+        period_a_days: 7,
+        period_b_days: 14,
+        equal_length: false,
+        periods_overlap: false,
+      });
+      expect(unequal.structuredContent.period_comparability.note).toContain('not normalized per day');
+
+      const overlapping = (await tools['analytics.compare'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01', end_date_a: '2026-09-07',
+        start_date_b: '2026-09-04', end_date_b: '2026-09-10',
+        dimension: 'query', search_type: 'image', data_state: 'final',
+      })) as typeof result;
+      expect(overlapping.structuredContent.period_comparability).toMatchObject({
+        period_a_days: 7,
+        period_b_days: 7,
+        equal_length: true,
+        periods_overlap: true,
+      });
+      expect(overlapping.structuredContent.period_comparability.note).toContain('overlap');
+      expect(analyticsRequests).toHaveLength(6);
     } finally {
       globalThis.fetch = originalFetch;
     }
