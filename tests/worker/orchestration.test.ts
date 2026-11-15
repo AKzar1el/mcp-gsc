@@ -4162,6 +4162,12 @@ describe('Worker orchestration', () => {
                 ctr: 0.1,
                 position: 7,
               },
+              {
+                keys: ['https://example.com/observed-without-position/'],
+                clicks: 5,
+                impressions: 50,
+                ctr: 0.1,
+              },
             ],
           });
         }
@@ -4176,13 +4182,20 @@ describe('Worker orchestration', () => {
         start_row: 0,
       })) as {
         structuredContent: {
-          pages: Array<{ page: string }>;
+          pages: Array<{ page: string; clicks: number; impressions: number; position: number | null }>;
           result_page: { has_more: boolean; next_start_row?: number };
         };
       };
       expect(first.structuredContent.pages[0]?.page).toBe(
         'https://example.com/short-provider-page/',
       );
+      expect(first.structuredContent.pages).toHaveLength(2);
+      expect(first.structuredContent.pages[1]).toMatchObject({
+        page: 'https://example.com/observed-without-position/',
+        clicks: 5,
+        impressions: 50,
+        position: null,
+      });
       expect(first.structuredContent.result_page).toMatchObject({
         has_more: false,
       });
