@@ -329,7 +329,7 @@ export async function exchangeCodeForTokens(
 export interface GoogleUserInfo {
   id: string;
   email: string;
-  verified_email?: boolean;
+  verified_email?: boolean | null;
 }
 
 export async function fetchGoogleUserInfo(
@@ -357,6 +357,10 @@ export async function fetchGoogleUserInfo(
     // The Google ID keys the encrypted refresh-token record and OAuth tenant.
     // An unchecked/undefined ID could collapse distinct sign-ins into one KV key.
     throw new Error('Google userinfo response missing a valid account ID or email.');
+  }
+  if ('verified_email' in profile && profile.verified_email != null &&
+      typeof profile.verified_email !== 'boolean') {
+    throw new Error('Google userinfo response has invalid verified_email data.');
   }
   return profile as GoogleUserInfo;
 }
