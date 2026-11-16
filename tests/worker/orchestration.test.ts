@@ -4575,6 +4575,70 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('ranks observed relative click movement without treating zero baselines as growth', async () => {
+    await saveUser(workerEnv, 'relative-click-sort-user', 'relative-click-sort@example.test', 'relative-click-sort-refresh');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'relative-click-sort-user', email: 'relative-click-sort@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'relative-click-sort-access', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          const recent = body.startDate === '2026-09-01';
+          return response({ rows: [
+            { keys: ['raw leader'], clicks: recent ? 150 : 100, impressions: 500, ctr: recent ? 0.3 : 0.2, position: 6 },
+            { keys: ['relative leader'], clicks: recent ? 15 : 5, impressions: 500, ctr: recent ? 0.03 : 0.01, position: 7 },
+            { keys: ['zero baseline'], clicks: recent ? 100 : 0, impressions: 500, ctr: recent ? 0.2 : 0, position: 8 },
+            { keys: ['zero both'], clicks: 0, impressions: 500, ctr: 0, position: 9 },
+            { keys: ['loss leader'], clicks: recent ? 1 : 5, impressions: 500, ctr: recent ? 0.002 : 0.01, position: 10 },
+            { keys: ['fine winner'], clicks: recent ? 100 : 99, impressions: 500, ctr: recent ? 0.2 : 0.198, position: 9 },
+            { keys: ['fine loser'], clicks: recent ? 102 : 101, impressions: 500, ctr: recent ? 0.204 : 0.202, position: 9 },
+          ] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01', end_date_a: '2026-09-07',
+        start_date_b: '2026-08-25', end_date_b: '2026-08-31',
+        dimension: 'query', search_type: 'web', data_state: 'final',
+        sort_by: 'absolute_click_percentage_change',
+      };
+      type Result = { structuredContent: {
+        comparisons: Array<{ key: string; diff: { clicks_percentage: number | null } }>;
+        comparison_note: string;
+        result_page: { next_start_row?: number };
+      } };
+      const sorted = await tools['analytics.compare'].handler({ ...args, limit: 10 }) as Result;
+      expect(sorted.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['relative leader', 'loss leader', 'raw leader', 'fine winner', 'fine loser']);
+      expect(sorted.structuredContent.comparisons[0].diff.clicks_percentage).toBe(200);
+      expect(sorted.structuredContent.comparisons[3].diff.clicks_percentage)
+        .toBe(sorted.structuredContent.comparisons[4].diff.clicks_percentage);
+      expect(sorted.structuredContent.comparison_note).toContain('sort_by=absolute_click_percentage_change');
+      expect(sorted.structuredContent.comparison_note).toContain('positive baseline clicks');
+      const secondPage = await tools['analytics.compare'].handler({ ...args, limit: 1, start_row: 1 }) as Result;
+      expect(secondPage.structuredContent.comparisons.map((row) => row.key)).toEqual(['loss leader']);
+      expect(secondPage.structuredContent.result_page.next_start_row).toBe(2);
+      expect(requests).toHaveLength(4);
+      expect(requests.every((request) => (request.startRow ?? 0) === 0)).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('ranks impression-only visibility movers using raw or daily impressions without extra requests', async () => {
     await saveUser(workerEnv, 'impression-sort-user', 'impression-sort@example.test', 'impression-sort-refresh');
     const server = await createGscMcpServer(
