@@ -770,16 +770,20 @@ const INDEXING_STATUS_OUTPUT_SCHEMA = {
 };
 
 const INDEXED_PAGES_OUTPUT_SCHEMA = {
-  pages: z.array(z.object({ page: z.string(), ...METRIC_OUTPUT_SCHEMA })),
+  pages: z.array(z.object({
+    page: z.string(),
+    ...METRIC_OUTPUT_SCHEMA,
+    position: z.number().nullable().describe('Average position when supplied by Google; null means this optional metric was not reported.'),
+  })),
   note: z.string(),
   result_page: RESULT_PAGE_OUTPUT_SCHEMA,
 };
 
 const SEARCH_VISIBLE_PAGES_DESCRIPTION =
-  'List pages that produced Search Console impressions in the requested period. This is performance data, not an index-coverage inventory: a URL can be indexed even when it is absent here, and Search Analytics can omit some page-level detail. Use urls.inspect or urls.inspect_many for URL-level index status.';
+  'List pages with observed Search Console impressions in the requested period. Preserve observed clicks and impressions when Google omits optional average position (reported as null, not rank zero). This is performance data, not an index-coverage inventory: a URL can be indexed even when it is absent here, and Search Analytics can omit some page-level detail. Use urls.inspect or urls.inspect_many for URL-level index status.';
 
 const SEARCH_VISIBLE_PAGES_NOTE =
-  'These are Search Analytics performance rows for pages with recorded impressions in the requested period, not a complete list of indexed URLs. Absence does not mean a URL is unindexed. Use urls.inspect or urls.inspect_many for URL-level index status.';
+  'These are observed Search Analytics performance rows, including pages for which Google omits optional average position (position=null). This is not a complete list of indexed URLs. Absence does not mean a URL is unindexed. Use urls.inspect or urls.inspect_many for URL-level index status.';
 
 const COMMON_RETURNED_ROWS_COMPARISON_NOTE =
   'Comparisons use only dimension keys returned in both period responses. A key missing from one Search Analytics response is not treated as zero because Google does not guarantee every data row.';
@@ -2715,12 +2719,12 @@ class GscMcpRuntime {
         }, () => this.reserveSearchAnalyticsRetry(googleId));
 
         const pages = mapSourceRows(response.rows, (row) =>
-          (row.keys?.length ?? 0) > 0 && hasRecordedPosition(row) ? ({
+          (row.keys?.length ?? 0) > 0 ? ({
             page: row.keys![0],
             clicks: row.clicks,
             impressions: row.impressions,
             ctr: row.ctr,
-            position: row.position,
+            position: row.position ?? null,
           }) : undefined);
         const bounded = windowSourceRows(
           pages.items,
