@@ -10,10 +10,10 @@ Use this skill when the user asks what to optimize next, which queries or pages 
 ## Workflow
 
 1. Resolve the property, then start with `analytics.query` for the requested date range and search type.
-2. Use `insights.quick_wins` for high-impression query/page rows in an opportunity average-position range. Treat CTR as context rather than an eligibility rule.
+2. Use `insights.quick_wins` for high-impression query/page rows in an opportunity average-position range. Treat CTR as context rather than an eligibility rule. For localized or topical work, pass supported `page_contains` (URL section such as `/de/`), `query_contains` (query substring such as `technical seo`) and `country` (ISO 3166-1 alpha-3 searcher geography, such as `DEU`) as needed. They combine as Google-side AND filters before pagination, not filters on only the returned rows.
 3. Use `insights.page_queries` and `insights.query_pages` to validate the query-to-page relationship before recommending a page change.
-4. Use `insights.cannibalization` to find observed query/page overlap. Treat candidate totals and impression shares as scoped to returned rows, not as true query-level property totals.
-5. Use `insights.content_decay` for evidence-ranked page declines, and `analytics.compare` when the user wants custom period comparisons.
+4. Use `insights.cannibalization` to find observed query/page overlap. Carry supported `page_contains`, `query_contains` and `country` filters across the investigation. Treat candidate totals and impression shares as scoped to returned rows, not as true query-level property totals.
+5. Use `insights.content_decay` for evidence-ranked page declines, with the same supported URL, query and country filters applied to both periods. Use `analytics.compare` when the user wants custom period comparisons, preserving the same population and search type.
 6. Inspect country, device, date, or search-appearance dimensions when they can explain where a movement is concentrated.
 
 ## Evidence rules
@@ -24,6 +24,7 @@ Use this skill when the user asks what to optimize next, which queries or pages 
 - Caller-supplied query regexes can approximate brand/non-brand segmentation, but they are not Search Console's native AI-assisted branded-query classifier.
 - Discover and Google News do not expose query data or average position. Respect each tool's search-type schema instead of forcing query-centric analysis onto those reports.
 - Do not infer dedicated Generative AI report metrics from ordinary Search Analytics; use the Search Console UI until Google documents API access for that report.
+- `country` filters searcher location, not a page language: a `/de/` URL does not imply German visitors or German-language queries. Scoped opportunity rows are not property-wide totals, and a query substring is not an exhaustive topic classifier.
 
 ## Output shape
 
