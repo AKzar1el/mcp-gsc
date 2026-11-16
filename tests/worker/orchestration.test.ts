@@ -106,6 +106,29 @@ describe('Worker orchestration', () => {
     expect(comparison?.description).toContain('Discover');
   });
 
+  it('advertises historical and high-signal content-decay inspection in capabilities', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+      { google_id: 'catalog-user', email: 'catalog@example.test' },
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, never>) => Promise<{
+          structuredContent: { tools: Array<{ name: string; description: string }> };
+        }>;
+      }>;
+    })._registeredTools;
+    const capabilities = await registered['server.capabilities'].handler({});
+    const decay = capabilities.structuredContent.tools.find(
+      (tool) => tool.name === 'insights.content_decay',
+    );
+    expect(decay?.description).toContain('end_date');
+    expect(decay?.description).toContain('classification_filter');
+    expect(decay?.description).toContain('min_click_loss');
+    expect(decay?.description).toContain('before pagination');
+    expect(decay?.description).toContain('not property-wide');
+  });
+
   it('denies all four property/sitemap metadata reads before requesting Google credentials', async () => {
     const take = vi.fn(async (_bucket: string, _policy: { category: string }, _units: number) => (
       { allowed: false, retry_after_ms: 30_000 }

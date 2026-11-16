@@ -1082,7 +1082,7 @@ const TOOL_CATALOG = [
   {
     name: 'insights.content_decay',
     description:
-      'Assess page-level click declines across two contiguous periods, optionally scoped at Google by query_contains topic, page_contains URL section, country (ISO alpha-3 searcher location, not page language), and device (desktop/mobile/tablet) in both periods and by Web, Image, Video or News-tab search. Compare pages returned in both responses; one-sided row absence is not zero traffic.',
+      'Assess observed page-level click declines across two contiguous periods. Optional end_date anchors the comparison to a historical finalized Search Console day (omit for latest finalized); classification_filter narrows likely_decay versus weaker evidence, and min_click_loss focuses observed absolute click losses. These local filters apply before pagination without changing source coverage counts. Optional query_contains topic, page_contains URL section, country (ISO alpha-3 searcher country, not page language), device (desktop/mobile/tablet) and Web/Image/Video/News-tab search scope both Google requests. Only pages returned in both periods are comparable: absent rows are not zero traffic, and observed losses are not property-wide totals.',
   },
   {
     name: 'indexing.request',
