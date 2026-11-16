@@ -20,5 +20,7 @@ export default defineConfig({
   ],
   test: {
     include: ['tests/worker/**/*.test.ts'],
+    // Avoid competing workerd startup pools on resource-constrained hosts.
+    fileParallelism: false,
   },
 });
