@@ -1106,7 +1106,7 @@ const TOOL_CATALOG = [
   {
     name: 'analytics.compare',
     description:
-      'Compare Search Console performance metrics between two date ranges for dimension keys returned in both Search Analytics responses; one-sided row absence is not treated as zero. The same search type, optional finalized/all data state, and filters are applied to both periods.',
+      'Compare only dimension keys observed in both Search Console date ranges; missing rows are not zero traffic. Optional sort_by ranks observed click, impression, CTR or average-position movement; click_change_direction, impression_change_direction, ctr_change_direction, position_change_direction and min_impressions_per_period narrow common rows before pagination. Discover and Google News lack average position. Both periods use the same search type, finalized/all data state and filters; this adds no Google requests.',
   },
   {
     name: 'reports.weekly_digest',
