@@ -74,6 +74,23 @@ test('ordinary refresh and userinfo retain validated results', async () => {
   assert.deepEqual(profile, { id: 'user-123', email: 'example@example.org' });
 });
 
+test('userinfo rejects malformed optional verified_email data', async () => {
+  for (const verified_email of ['true', 1, []]) {
+    await assert.rejects(
+      withFetch({ id: 'user-123', email: 'example@example.org', verified_email },
+        () => fetchGoogleUserInfo('fake-access')),
+      /invalid verified_email data/,
+    );
+  }
+});
+
+test('userinfo preserves boolean and null verification states and unknown fields', async () => {
+  for (const verified_email of [true, false, null]) {
+    const payload = { id: 'user-123', email: 'example@example.org', verified_email, futureField: 'retained' };
+    assert.deepEqual(await withFetch(payload, () => fetchGoogleUserInfo('fake-access')), payload);
+  }
+});
+
 test('refresh invalid_grant remains a distinct reauthentication error', async () => {
   const original = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 });
