@@ -62,6 +62,50 @@ function createPendingStateBinding() {
 }
 
 describe('Worker orchestration', () => {
+  it('advertises the existing low-CTR quick-wins filter in capabilities', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+      { google_id: 'catalog-user', email: 'catalog@example.test' },
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, never>) => Promise<{
+          structuredContent: { tools: Array<{ name: string; description: string }> };
+        }>;
+      }>;
+    })._registeredTools;
+    const capabilities = await registered['server.capabilities'].handler({});
+    const quickWins = capabilities.structuredContent.tools.find(
+      (tool) => tool.name === 'insights.quick_wins',
+    );
+    expect(quickWins?.description).toContain('max_ctr');
+    expect(quickWins?.description).toContain('after Google pagination');
+  });
+
+  it('advertises observed analytics comparison ranking and direction filters in capabilities', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+      { google_id: 'catalog-user', email: 'catalog@example.test' },
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, never>) => Promise<{
+          structuredContent: { tools: Array<{ name: string; description: string }> };
+        }>;
+      }>;
+    })._registeredTools;
+    const capabilities = await registered['server.capabilities'].handler({});
+    const comparison = capabilities.structuredContent.tools.find(
+      (tool) => tool.name === 'analytics.compare',
+    );
+    expect(comparison?.description).toContain('sort_by');
+    expect(comparison?.description).toContain('ctr_change_direction');
+    expect(comparison?.description).toContain('position_change_direction');
+    expect(comparison?.description).toContain('min_impressions_per_period');
+    expect(comparison?.description).toContain('before pagination');
+    expect(comparison?.description).toContain('Discover');
+  });
+
   it('denies all four property/sitemap metadata reads before requesting Google credentials', async () => {
     const take = vi.fn(async (_bucket: string, _policy: { category: string }, _units: number) => (
       { allowed: false, retry_after_ms: 30_000 }
@@ -628,6 +672,16 @@ describe('Worker orchestration', () => {
     });
     expect(compareDefaults.success).toBe(true);
     expect(compareDefaults.data?.data_state).toBe('final');
+    for (const sort_by of ['absolute_impression_change', 'absolute_daily_impression_change']) {
+      expect(analyticsCompareSchema.safeParse({
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01',
+        end_date_a: '2026-09-07',
+        start_date_b: '2026-08-25',
+        end_date_b: '2026-08-31',
+        sort_by,
+      }).success).toBe(true);
+    }
     expect(
       analyticsCompareSchema.safeParse({
         site_url: 'sc-domain:example.com',
@@ -4480,6 +4534,400 @@ describe('Worker orchestration', () => {
         .toEqual(['raw winner']);
       expect(requests).toHaveLength(6);
       expect(requests.map((request) => request.startRow ?? 0)).toEqual([0, 0, 0, 0, 0, 0]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('ranks impression-only visibility movers using raw or daily impressions without extra requests', async () => {
+    await saveUser(workerEnv, 'impression-sort-user', 'impression-sort@example.test', 'impression-sort-refresh');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'impression-sort-user', email: 'impression-sort@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'impression-sort-access', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          const recent = body.startDate === '2026-09-01';
+          return response({ rows: [
+            { keys: ['click mover'], clicks: recent ? 70 : 20, impressions: 100, ctr: recent ? 0.7 : 0.2, position: 5 },
+            { keys: ['raw impression mover'], clicks: 0, impressions: recent ? 350 : 850, ctr: 0, position: 6 },
+            { keys: ['daily impression mover'], clicks: 0, impressions: 280, ctr: 0, position: 8 },
+          ] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01', end_date_a: '2026-09-07',
+        start_date_b: '2026-08-18', end_date_b: '2026-08-31',
+        dimension: 'query', search_type: 'web', data_state: 'final',
+      };
+      type ComparisonResult = { structuredContent: {
+        comparisons: Array<{ key: string }>;
+        comparison_note: string;
+      } };
+      const defaultOrder = await tools['analytics.compare'].handler(args) as ComparisonResult;
+      expect(defaultOrder.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['click mover', 'raw impression mover', 'daily impression mover']);
+      const rawImpressions = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_impression_change',
+      }) as ComparisonResult;
+      expect(rawImpressions.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['raw impression mover', 'click mover', 'daily impression mover']);
+      const dailyImpressions = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_daily_impression_change',
+      }) as ComparisonResult;
+      expect(dailyImpressions.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['daily impression mover', 'raw impression mover', 'click mover']);
+      expect(dailyImpressions.structuredContent.comparison_note)
+        .toContain('sort_by=absolute_daily_impression_change');
+      expect(requests).toHaveLength(6);
+      expect(requests.every((request) => (request.startRow ?? 0) === 0)).toBe(true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('ranks observed average-position movement without rounding away differences or inventing missing positions', async () => {
+    await saveUser(workerEnv, 'position-sort-user', 'position-sort@example.test', 'position-sort-refresh');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'position-sort-user', email: 'position-sort@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'position-sort-access', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          const recent = body.startDate === '2026-09-01';
+          return response({ rows: [
+            { keys: ['large shift'], clicks: 10, impressions: 200, ctr: 0.05, position: recent ? 5.5 : 9 },
+            { keys: ['precise shift'], clicks: 5, impressions: 1000, ctr: 0.005, position: recent ? 3.14 : 3 },
+            { keys: ['smaller shift'], clicks: 5, impressions: 1000, ctr: 0.005, position: recent ? 4.11 : 4 },
+            { keys: ['missing position'], clicks: 500, impressions: 1000, ctr: 0.5,
+              ...(recent ? {} : { position: 20 }) },
+            { keys: ['zero-impression baseline'], clicks: recent ? 10 : 0, impressions: recent ? 1000 : 0,
+              ctr: recent ? 0.01 : 0, position: recent ? 1 : 30 },
+          ] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01', end_date_a: '2026-09-07',
+        start_date_b: '2026-08-25', end_date_b: '2026-08-31',
+        dimension: 'query', search_type: 'web', data_state: 'final',
+      };
+      type Result = { structuredContent: {
+        comparisons: Array<{ key: string; diff: { position: number | null } }>;
+        comparison_note: string;
+      }; isError?: boolean };
+      const sorted = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_position_change', limit: 10,
+      }) as Result;
+      expect(sorted.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['large shift', 'precise shift', 'smaller shift']);
+      expect(sorted.structuredContent.comparisons.slice(1).map((row) => row.diff.position))
+        .toEqual([0.1, 0.1]);
+      const secondPage = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_position_change', start_row: 1, limit: 1,
+      }) as Result;
+      expect(secondPage.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['precise shift']);
+      expect(sorted.structuredContent.comparison_note).toContain('not a live ranking');
+      const unsupported = await tools['analytics.compare'].handler({
+        ...args, search_type: 'discover', dimension: 'page', sort_by: 'absolute_position_change',
+      }) as Result;
+      expect(unsupported.isError).toBe(true);
+      expect(requests).toHaveLength(4);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('separates observed average-position improvements and declines before pagination', async () => {
+    await saveUser(workerEnv, 'position-direction-user', 'position-direction@example.test', 'position-direction-refresh');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'position-direction-user', email: 'position-direction@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'position-direction-access', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          const current = body.startDate === '2026-09-01';
+          return response({ rows: [
+            { keys: ['strong improvement'], clicks: 6, impressions: 1000, ctr: 0.006, position: current ? 4.2 : 10 },
+            { keys: ['small improvement'], clicks: 6, impressions: 1000, ctr: 0.006, position: current ? 4.004 : 4.2 },
+            { keys: ['decline'], clicks: 6, impressions: 1000, ctr: 0.006, position: current ? 8 : 5 },
+            { keys: ['unchanged'], clicks: 6, impressions: 1000, ctr: 0.006, position: 7 },
+            { keys: ['missing baseline'], clicks: 6, impressions: 1000, ctr: 0.006,
+              ...(current ? { position: 2 } : {}) },
+            { keys: ['zero-impression baseline'], clicks: current ? 6 : 0, impressions: current ? 1000 : 0,
+              ctr: current ? 0.006 : 0, position: current ? 1 : 20 },
+            { keys: ['low-volume improvement'], clicks: 1, impressions: 10, ctr: 0.1, position: current ? 1 : 15 },
+          ] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01', end_date_a: '2026-09-07',
+        start_date_b: '2026-08-25', end_date_b: '2026-08-31',
+        dimension: 'query', search_type: 'web', data_state: 'final',
+        sort_by: 'absolute_position_change', min_impressions_per_period: 100,
+      };
+      type Result = { structuredContent: {
+        comparisons: Array<{ key: string }>;
+        position_change_direction: string;
+        comparison_note: string;
+      }; isError?: boolean };
+      const improvements = await tools['analytics.compare'].handler({
+        ...args, position_change_direction: 'improvement', limit: 10,
+      }) as Result;
+      expect(improvements.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['strong improvement', 'small improvement']);
+      expect(improvements.structuredContent.position_change_direction).toBe('improvement');
+      const declines = await tools['analytics.compare'].handler({
+        ...args, position_change_direction: 'decline', limit: 10,
+      }) as Result;
+      expect(declines.structuredContent.comparisons.map((row) => row.key)).toEqual(['decline']);
+      const secondImprovement = await tools['analytics.compare'].handler({
+        ...args, position_change_direction: 'improvement', start_row: 1, limit: 1,
+      }) as Result;
+      expect(secondImprovement.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['small improvement']);
+      const unsupported = await tools['analytics.compare'].handler({
+        ...args, search_type: 'discover', dimension: 'page',
+        sort_by: 'absolute_click_change', position_change_direction: 'decline',
+      }) as Result;
+      expect(unsupported.isError).toBe(true);
+      expect(improvements.structuredContent.comparison_note).toContain('Lower average position');
+      expect(requests).toHaveLength(6);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('ranks unrounded CTR movement after requiring observed impressions in both periods', async () => {
+    await saveUser(workerEnv, 'ctr-movement-user', 'ctr-movement@example.test', 'ctr-movement-refresh');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'ctr-movement-user', email: 'ctr-movement@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'ctr-movement-access', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          const current = body.startDate === '2026-09-01';
+          return response({ rows: [
+            { keys: ['precise CTR mover'], clicks: current ? 19 : 10, impressions: 10000, ctr: current ? 0.0019 : 0.001 },
+            { keys: ['large click mover'], clicks: current ? 16000 : 10000, impressions: 10000000, ctr: current ? 0.0016 : 0.001 },
+            { keys: ['low sample'], clicks: current ? 1 : 0, impressions: 25, ctr: current ? 0.04 : 0 },
+            { keys: ['no baseline'], clicks: current ? 2 : 0, impressions: current ? 200 : 0, ctr: current ? 0.01 : 0 },
+          ] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01', end_date_a: '2026-09-07',
+        start_date_b: '2026-08-25', end_date_b: '2026-08-31',
+        dimension: 'query', search_type: 'web', data_state: 'final',
+      };
+      type ComparisonResult = { structuredContent: {
+        comparisons: Array<{ key: string; diff: { ctr: number } }>;
+        min_impressions_per_period: number;
+        comparison_note: string;
+      } };
+      const defaultResult = await tools['analytics.compare'].handler({ ...args, limit: 1 }) as ComparisonResult;
+      expect(defaultResult.structuredContent.comparisons[0].key).toBe('large click mover');
+      const unfiltered = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_ctr_change', limit: 10,
+      }) as ComparisonResult;
+      expect(unfiltered.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['low sample', 'precise CTR mover', 'large click mover']);
+      expect(unfiltered.structuredContent.min_impressions_per_period).toBe(0);
+      expect(unfiltered.structuredContent.comparisons[1].diff.ctr).toBe(0.001);
+      const nextPage = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_ctr_change', min_impressions_per_period: 100,
+        start_row: 1, limit: 1,
+      }) as ComparisonResult;
+      expect(nextPage.structuredContent.comparisons.map((row) => row.key)).toEqual(['large click mover']);
+      expect(nextPage.structuredContent.min_impressions_per_period).toBe(100);
+      expect(nextPage.structuredContent.comparison_note).toContain('both periods');
+      expect(requests).toHaveLength(6);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('isolates observed CTR gainers and decliners before pagination without inventing zero-impression baselines', async () => {
+    await saveUser(workerEnv, 'ctr-direction-user', 'ctr-direction@example.test', 'ctr-direction-refresh');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'ctr-direction-user', email: 'ctr-direction@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'ctr-direction-access', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          const current = body.startDate === '2026-09-01';
+          return response({ rows: [
+            { keys: ['ctr decline'], clicks: current ? 1 : 6, impressions: 1000, ctr: current ? 0.001 : 0.006 },
+            { keys: ['ctr rise'], clicks: current ? 8 : 3, impressions: 1000, ctr: current ? 0.008 : 0.003 },
+            { keys: ['low-volume decline'], clicks: current ? 1 : 2, impressions: 10, ctr: current ? 0.1 : 0.2 },
+            { keys: ['no CTR baseline'], clicks: current ? 2 : 0, impressions: current ? 1000 : 0, ctr: current ? 0.002 : 0 },
+            { keys: ['unchanged CTR'], clicks: 4, impressions: 1000, ctr: 0.004 },
+          ] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01', end_date_a: '2026-09-07',
+        start_date_b: '2026-08-25', end_date_b: '2026-08-31',
+        dimension: 'query', search_type: 'web', data_state: 'final',
+        sort_by: 'absolute_ctr_change', min_impressions_per_period: 100,
+      };
+      type Result = { structuredContent: {
+        comparisons: Array<{ key: string }>;
+        ctr_change_direction: string;
+        comparison_note: string;
+      } };
+      const losses = await tools['analytics.compare'].handler({ ...args, ctr_change_direction: 'loss', limit: 1 }) as Result;
+      expect(losses.structuredContent.comparisons.map((row) => row.key)).toEqual(['ctr decline']);
+      expect(losses.structuredContent.ctr_change_direction).toBe('loss');
+      const gains = await tools['analytics.compare'].handler({ ...args, ctr_change_direction: 'gain', limit: 10 }) as Result;
+      expect(gains.structuredContent.comparisons.map((row) => row.key)).toEqual(['ctr rise']);
+      const nextLossPage = await tools['analytics.compare'].handler({ ...args, ctr_change_direction: 'loss', start_row: 1, limit: 1 }) as Result;
+      expect(nextLossPage.structuredContent.comparisons).toEqual([]);
+      expect(nextLossPage.structuredContent.comparison_note).toContain('CTR');
+      expect(requests).toHaveLength(6);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('filters observed impression gainers and decliners before pagination on raw or daily basis', async () => {
+    await saveUser(workerEnv, 'impression-direction-user', 'impression-direction@example.test', 'impression-direction-refresh');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'impression-direction-user', email: 'impression-direction@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'impression-direction-access', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          const recent = body.startDate === '2026-09-01';
+          const values = recent ? [120, 350, 20, 80] : [100, 50, 80, 80];
+          return response({ rows: ['raw up daily down', 'both up', 'both down', 'raw flat'].map((key, i) => ({
+            keys: [key], clicks: 0, impressions: values[i], ctr: 0, position: 5,
+          })) });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01', end_date_a: '2026-09-14',
+        start_date_b: '2026-08-25', end_date_b: '2026-08-31',
+        dimension: 'query', search_type: 'web', data_state: 'final',
+      };
+      type ComparisonResult = { structuredContent: {
+        comparisons: Array<{ key: string }>;
+        impression_change_direction: string;
+        comparison_note: string;
+        result_page: { total_count: number; has_more: boolean };
+      } };
+      const rawGains = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_impression_change', impression_change_direction: 'gain',
+      }) as ComparisonResult;
+      expect(rawGains.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['both up', 'raw up daily down']);
+      expect(rawGains.structuredContent.impression_change_direction).toBe('gain');
+      expect(rawGains.structuredContent.result_page.total_count).toBe(2);
+      const dailyLosses = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_daily_impression_change', impression_change_direction: 'loss',
+        limit: 1,
+      }) as ComparisonResult;
+      expect(dailyLosses.structuredContent.comparisons.map((row) => row.key)).toEqual(['both down']);
+      expect(dailyLosses.structuredContent.result_page).toMatchObject({ total_count: 3, has_more: true });
+      expect(dailyLosses.structuredContent.comparison_note)
+        .toContain('impression_change_direction=loss');
+      const nextPage = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_daily_impression_change', impression_change_direction: 'loss',
+        limit: 1, start_row: 1,
+      }) as ComparisonResult;
+      expect(nextPage.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['raw up daily down']);
+      expect(requests).toHaveLength(6);
     } finally {
       globalThis.fetch = originalFetch;
     }
