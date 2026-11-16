@@ -796,6 +796,9 @@ const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
   impression_change_direction: z.enum(['all', 'gain', 'loss']).describe(
     'Direction filter on observed common returned keys, using daily impressions for either daily sort mode and raw impressions otherwise.',
   ),
+  ctr_change_direction: z.enum(['all', 'gain', 'loss']).describe(
+    'Direction filter on unrounded CTR fractions for common returned keys with positive impressions in both periods; independent of the selected sort mode.',
+  ),
   min_impressions_per_period: z.number().int().nonnegative().describe(
     'Local minimum observed impressions for each period before ranking and pagination; zero by default.',
   ),
@@ -2738,7 +2741,7 @@ class GscMcpRuntime {
       'analytics.compare',
       {
         title: 'Compare Performance Between Periods',
-        description: 'Compare Search Console clicks, impressions, CTR, and available average position between two date ranges for a selected dimension. Only keys observed in both periods are compared; up to three observed-only examples per period help identify follow-up checks, not new/lost traffic (missing rows are not zero). Web, Image, Video, and Search News-tab support query/page/country/device; Discover and Google News support only page/country/device, without average position (null, never an invented rank). Apply the same search type, data state and filters to both periods. Finalized data is the default; all may include preliminary data. Results default to absolute raw click-change ranking; opt-in raw or per-day impression-change ranking surfaces visibility shifts even with no click movement, without implying rankings. Optional click_change_direction and impression_change_direction independently isolate observed gainers or decliners on the raw/daily basis before bounded pagination.',
+        description: 'Compare Search Console clicks, impressions, CTR, and available average position between two date ranges for a selected dimension. Only keys observed in both periods are compared; up to three observed-only examples per period help identify follow-up checks, not new/lost traffic (missing rows are not zero). Web, Image, Video, and Search News-tab support query/page/country/device; Discover and Google News support only page/country/device, without average position (null, never an invented rank). Apply the same search type, data state and filters to both periods. Finalized data is the default; all may include preliminary data. Results default to absolute raw click-change ranking; opt-in raw or per-day impression-change ranking surfaces visibility shifts even with no click movement, without implying rankings. Optional click_change_direction and impression_change_direction isolate observed raw/daily movement; ctr_change_direction isolates unrounded CTR gains or losses only where both periods have positive impressions, before bounded pagination.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe(
@@ -2779,6 +2782,9 @@ class GscMcpRuntime {
           impression_change_direction: z.enum(['all', 'gain', 'loss'])
             .default('all')
             .describe('Keep all common returned keys (default), or only keys gaining/losing impressions: daily impressions with either daily sort mode, raw impressions otherwise. Applied before result pagination, not as a Google-side filter; ties are excluded. Can be combined with click_change_direction.'),
+          ctr_change_direction: z.enum(['all', 'gain', 'loss'])
+            .default('all')
+            .describe('Keep all common returned keys (default), or only keys gaining/losing CTR by unrounded period fractions. Positive impressions in both periods are required; ties are excluded. Applied before pagination, independently of click/impression filters and sort_by, without additional Google requests.'),
           min_impressions_per_period: z.number().int().nonnegative().default(0)
             .describe('Optional minimum observed impressions in each of both periods before local ranking and pagination; default 0. CTR ranking always requires positive impressions in both periods. This does not change the Google API query or response coverage.'),
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
@@ -2800,6 +2806,7 @@ class GscMcpRuntime {
         sort_by = 'absolute_click_change',
         click_change_direction = 'all',
         impression_change_direction = 'all',
+        ctr_change_direction = 'all',
         min_impressions_per_period = 0,
         limit = DEFAULT_ANALYSIS_RESULT_LIMIT,
         start_row = 0,
@@ -2856,12 +2863,12 @@ class GscMcpRuntime {
         const allComparisons = processPerformanceComparison(sourceA.rows, sourceB.rows);
         const dailyBasis = sort_by === 'absolute_daily_click_change'
           || sort_by === 'absolute_daily_impression_change';
-        const comparison = click_change_direction === 'all' && impression_change_direction === 'all'
+        const comparison = click_change_direction === 'all' && impression_change_direction === 'all' && ctr_change_direction === 'all'
           && min_impressions_per_period === 0 && sort_by !== 'absolute_ctr_change' ? allComparisons
           : allComparisons.filter((row) => {
             if (row.period_a.impressions < min_impressions_per_period
               || row.period_b.impressions < min_impressions_per_period) return false;
-            if (sort_by === 'absolute_ctr_change'
+            if ((sort_by === 'absolute_ctr_change' || ctr_change_direction !== 'all')
               && (row.period_a.impressions === 0 || row.period_b.impressions === 0)) return false;
             const clickChange = dailyBasis
               ? row.period_a.clicks / periodADays - row.period_b.clicks / periodBDays
@@ -2873,7 +2880,10 @@ class GscMcpRuntime {
               || (click_change_direction === 'gain' ? clickChange > 0 : clickChange < 0);
             const impressionMatches = impression_change_direction === 'all'
               || (impression_change_direction === 'gain' ? impressionChange > 0 : impressionChange < 0);
-            return clickMatches && impressionMatches;
+            const ctrChange = row.period_a.ctr - row.period_b.ctr;
+            const ctrMatches = ctr_change_direction === 'all'
+              || (ctr_change_direction === 'gain' ? ctrChange > 0 : ctrChange < 0);
+            return clickMatches && impressionMatches && ctrMatches;
           });
         if (sort_by === 'absolute_daily_click_change') {
           comparison.sort((a, b) =>
@@ -2946,6 +2956,7 @@ class GscMcpRuntime {
           `sort_by=${sort_by}`,
           `click_change_direction=${click_change_direction}`,
           `impression_change_direction=${impression_change_direction}`,
+          `ctr_change_direction=${ctr_change_direction}`,
           `min_impressions_per_period=${min_impressions_per_period}`,
           `period_a=${start_date_a}..${end_date_a}`,
           `period_b=${start_date_b}..${end_date_b}`,
@@ -2954,9 +2965,10 @@ class GscMcpRuntime {
         const payload = {
           site_url,
           comparison_scope: 'common_returned_rows_only' as const,
-          comparison_note: `${COMMON_RETURNED_ROWS_COMPARISON_NOTE} Scope: ${comparisonScopeNote}. Filter groups, if present, are applied equally to both periods. Click and impression direction filters independently use ${dailyBasis ? 'daily-average' : 'raw'} differences before pagination, regardless of the ranking metric; both must match if set, and ties are excluded from gain/loss. The optional impression floor requires observations in both periods before pagination.${sort_by === 'absolute_ctr_change' ? ' CTR movement ranks by unrounded period CTR fractions (percentage-point difference), excluding rows with zero observed impressions in either period; displayed CTR differences remain rounded.' : ''}${sort_by.includes('impression_change') ? ' Impression-based ranking reveals observed visibility movement even when clicks do not move; impressions do not establish live ranking changes.' : ''}${search_type === 'discover' || search_type === 'googleNews' ? ' Average position is not supported for this surface and is null, not zero or a live ranking.' : ''}`,
+          comparison_note: `${COMMON_RETURNED_ROWS_COMPARISON_NOTE} Scope: ${comparisonScopeNote}. Filter groups, if present, are applied equally to both periods. Click and impression direction filters independently use ${dailyBasis ? 'daily-average' : 'raw'} differences before pagination, regardless of the ranking metric; both must match if set, and ties are excluded from gain/loss. The optional impression floor requires observations in both periods before pagination.${sort_by === 'absolute_ctr_change' ? ' CTR movement ranks by unrounded period CTR fractions (percentage-point difference), excluding rows with zero observed impressions in either period; displayed CTR differences remain rounded.' : ''}${ctr_change_direction !== 'all' ? ' CTR direction uses unrounded period fractions and requires positive observed impressions in both periods, independent of the selected ranking and raw/daily time basis; CTR ties are excluded.' : ''}${sort_by.includes('impression_change') ? ' Impression-based ranking reveals observed visibility movement even when clicks do not move; impressions do not establish live ranking changes.' : ''}${search_type === 'discover' || search_type === 'googleNews' ? ' Average position is not supported for this surface and is null, not zero or a live ranking.' : ''}`,
           click_change_direction,
           impression_change_direction,
+          ctr_change_direction,
           min_impressions_per_period,
           period_comparability: {
             period_a_days: periodADays,

@@ -4616,6 +4616,64 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('isolates observed CTR gainers and decliners before pagination without inventing zero-impression baselines', async () => {
+    await saveUser(workerEnv, 'ctr-direction-user', 'ctr-direction@example.test', 'ctr-direction-refresh');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'ctr-direction-user', email: 'ctr-direction@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'ctr-direction-access', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          const current = body.startDate === '2026-09-01';
+          return response({ rows: [
+            { keys: ['ctr decline'], clicks: current ? 1 : 6, impressions: 1000, ctr: current ? 0.001 : 0.006 },
+            { keys: ['ctr rise'], clicks: current ? 8 : 3, impressions: 1000, ctr: current ? 0.008 : 0.003 },
+            { keys: ['low-volume decline'], clicks: current ? 1 : 2, impressions: 10, ctr: current ? 0.1 : 0.2 },
+            { keys: ['no CTR baseline'], clicks: current ? 2 : 0, impressions: current ? 1000 : 0, ctr: current ? 0.002 : 0 },
+            { keys: ['unchanged CTR'], clicks: 4, impressions: 1000, ctr: 0.004 },
+          ] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01', end_date_a: '2026-09-07',
+        start_date_b: '2026-08-25', end_date_b: '2026-08-31',
+        dimension: 'query', search_type: 'web', data_state: 'final',
+        sort_by: 'absolute_ctr_change', min_impressions_per_period: 100,
+      };
+      type Result = { structuredContent: {
+        comparisons: Array<{ key: string }>;
+        ctr_change_direction: string;
+        comparison_note: string;
+      } };
+      const losses = await tools['analytics.compare'].handler({ ...args, ctr_change_direction: 'loss', limit: 1 }) as Result;
+      expect(losses.structuredContent.comparisons.map((row) => row.key)).toEqual(['ctr decline']);
+      expect(losses.structuredContent.ctr_change_direction).toBe('loss');
+      const gains = await tools['analytics.compare'].handler({ ...args, ctr_change_direction: 'gain', limit: 10 }) as Result;
+      expect(gains.structuredContent.comparisons.map((row) => row.key)).toEqual(['ctr rise']);
+      const nextLossPage = await tools['analytics.compare'].handler({ ...args, ctr_change_direction: 'loss', start_row: 1, limit: 1 }) as Result;
+      expect(nextLossPage.structuredContent.comparisons).toEqual([]);
+      expect(nextLossPage.structuredContent.comparison_note).toContain('CTR');
+      expect(requests).toHaveLength(6);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('filters observed impression gainers and decliners before pagination on raw or daily basis', async () => {
     await saveUser(workerEnv, 'impression-direction-user', 'impression-direction@example.test', 'impression-direction-refresh');
     const server = await createGscMcpServer(
