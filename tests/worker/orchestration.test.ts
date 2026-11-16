@@ -3796,7 +3796,7 @@ describe('Worker orchestration', () => {
             clicks: recent ? 12 : 100,
             impressions: recent ? 400 : 1000,
             ctr: recent ? 0.03 : 0.1,
-            position: recent ? 12 : 4,
+            position: expectedSearchType === 'image' && recent ? undefined : recent ? 12 : 4,
           })),
         });
       };
@@ -3820,8 +3820,9 @@ describe('Worker orchestration', () => {
           country: string | null;
           device: string | null;
           scope_note: string;
-          decay_results: Array<{ page: string; previous_clicks: number; recent_clicks: number }>;
+          decay_results: Array<{ page: string; previous_clicks: number; recent_clicks: number; previous_position: number | null; recent_position: number | null; position_change: number | null }>;
           assessment_count: number;
+          observed_page_overlap: { comparable_count: number };
           result_page: { total_count: number; has_more: boolean };
         };
       };
@@ -3840,8 +3841,12 @@ describe('Worker orchestration', () => {
         page: 'https://example.com/de/pricing',
         previous_clicks: 100,
         recent_clicks: 12,
+        previous_position: 4,
+        recent_position: null,
+        position_change: null,
       });
       expect(result.structuredContent.assessment_count).toBe(1);
+      expect(result.structuredContent.observed_page_overlap.comparable_count).toBe(1);
       expect(result.structuredContent.result_page.has_more).toBe(false);
       expect(searchRequests).toBe(2);
 
@@ -4001,7 +4006,7 @@ describe('Worker orchestration', () => {
     }
   });
 
-  it('reports observed gains only for comparable page rows without netting away declines', async () => {
+  it('reports observed gains across comparable page rows even without position data', async () => {
     const server = await createGscMcpServer(
       workerEnv,
       { google_id: 'decay-gains-user', email: 'decay-gains@example.test' },
@@ -4038,11 +4043,11 @@ describe('Worker orchestration', () => {
         } }).structuredContent;
       };
       const all = await analyze();
-      expect(all.observed_click_gain.all_gaining_pages).toBe(13);
-      expect(all.observed_click_gain.gaining_page_count).toBe(1);
+      expect(all.observed_click_gain.all_gaining_pages).toBe(112);
+      expect(all.observed_click_gain.gaining_page_count).toBe(2);
       expect(all.observed_click_gain.note).toContain('not property-wide');
       expect(all.observed_click_loss.all_declining_pages).toBe(12);
-      expect(all.observed_page_overlap.comparable_count).toBe(3);
+      expect(all.observed_page_overlap.comparable_count).toBe(4);
       expect(all.assessment_count).toBe(1);
       const filtered = await analyze(100);
       expect(filtered.decay_results).toEqual([]);
