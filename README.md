@@ -212,6 +212,8 @@ To inspect observed changes in **average Search Console position**, use `sort_by
 
 To review **average-position improvements separately from declines**, set `position_change_direction: "improvement"` or `"decline"` (default: `"all"`). Compared with period B, a **lower** period A average position counts as improvement, a **higher** one as decline. Filtering uses unrounded average positions for returned common keys with positive impressions and available positions in both periods, excludes ties, and applies before pagination with any ranking mode and impression floor. Discover and Google News reject a directional position filter before Google requests. Average-position movement is not evidence of a specific live URL ranking change, and no additional provider requests are made.
 
+MCP clients can call read-only `server.capabilities` to discover the existing `analytics.compare` `sort_by`, click/impression/CTR/position direction filters, and `min_impressions_per_period` before selecting a reporting workflow. Its description covers returned common rows only; it does not imply complete Search Console coverage or a live ranking change.
+
 ## What you can ask
 
 **Agency reporting workflow:** [Read-only weekly Search Console reporting for SEO agencies](docs/agency-weekly-reporting.md) walks through exact-property verification, one bounded weekly digest, matched-period comparisons, evidence checks, and a reusable human-reviewed client report. It contains no fabricated client metrics or automated outreach.

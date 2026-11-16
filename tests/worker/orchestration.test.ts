@@ -82,6 +82,30 @@ describe('Worker orchestration', () => {
     expect(quickWins?.description).toContain('after Google pagination');
   });
 
+  it('advertises observed analytics comparison ranking and direction filters in capabilities', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+      { google_id: 'catalog-user', email: 'catalog@example.test' },
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, never>) => Promise<{
+          structuredContent: { tools: Array<{ name: string; description: string }> };
+        }>;
+      }>;
+    })._registeredTools;
+    const capabilities = await registered['server.capabilities'].handler({});
+    const comparison = capabilities.structuredContent.tools.find(
+      (tool) => tool.name === 'analytics.compare',
+    );
+    expect(comparison?.description).toContain('sort_by');
+    expect(comparison?.description).toContain('ctr_change_direction');
+    expect(comparison?.description).toContain('position_change_direction');
+    expect(comparison?.description).toContain('min_impressions_per_period');
+    expect(comparison?.description).toContain('before pagination');
+    expect(comparison?.description).toContain('Discover');
+  });
+
   it('denies all four property/sitemap metadata reads before requesting Google credentials', async () => {
     const take = vi.fn(async (_bucket: string, _policy: { category: string }, _units: number) => (
       { allowed: false, retry_after_ms: 30_000 }
