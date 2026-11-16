@@ -12,7 +12,7 @@ export const CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA = z
   .min(0)
   .max(100)
   .default(10)
-  .describe('Minimum percentage of total query impressions a page must have to count as a cannibalizing page (0-100). Default is 10%.');
+  .describe('Minimum percentage of observed query/page impression sum a page must have to qualify (0-100). Eligibility uses the unrounded share; returned impression_share is rounded for display. Default is 10%.');
 
 export const CANNIBALIZATION_QUERY_CONTAINS_SCHEMA = z
   .string()
@@ -36,3 +36,18 @@ export const CANNIBALIZATION_COUNTRY_SCHEMA = z
   .regex(/^[a-zA-Z]{3}$/, 'Use a three-letter ISO 3166-1 alpha-3 country code such as SVN or DEU.')
   .optional()
   .describe('Optional ISO 3166-1 alpha-3 searcher country, e.g. DEU for Germany, not the page language. Google filters this geography alongside page_contains and query_contains before source pagination.');
+
+export const CANNIBALIZATION_DEVICE_SCHEMA = z
+  .enum(['desktop', 'mobile', 'tablet'])
+  .optional()
+  .describe('Optional searcher device: desktop, mobile, or tablet. Google applies it with page_contains, query_contains, and country before pagination; omitting it preserves all-device behavior.');
+
+export const CANNIBALIZATION_SEARCH_TYPE_SCHEMA = z
+  .enum(['web', 'image', 'video', 'news'])
+  .default('web')
+  .describe('Search surface for overlapping query/page URLs: Web (default), Image, Video, or the Search News tab. Discover and the separate Google News service are excluded because they do not expose query dimensions. Results from different surfaces must not be combined.');
+
+export const CANNIBALIZATION_DATA_STATE_SCHEMA = z
+  .enum(['all', 'final'])
+  .optional()
+  .describe('Optional Search Analytics freshness: all includes preliminary query/page rows that may change; final or omission returns finalized-only data. This does not change the request count.');

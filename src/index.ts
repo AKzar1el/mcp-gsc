@@ -61,6 +61,9 @@ import {
   CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
   CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
   CANNIBALIZATION_COUNTRY_SCHEMA,
+  CANNIBALIZATION_DEVICE_SCHEMA,
+  CANNIBALIZATION_SEARCH_TYPE_SCHEMA,
+  CANNIBALIZATION_DATA_STATE_SCHEMA,
   CANNIBALIZATION_PAGE_CONTAINS_SCHEMA,
   CANNIBALIZATION_QUERY_CONTAINS_SCHEMA,
 } from './cannibalization-schema';
@@ -72,8 +75,11 @@ import {
   searchConsoleDateDescription,
 } from './date-validation';
 import {
+  CONTENT_DECAY_CLASSIFICATION_FILTER_SCHEMA,
+  CONTENT_DECAY_MIN_CLICK_LOSS_SCHEMA,
   CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
   CONTENT_DECAY_COUNTRY_SCHEMA,
+  CONTENT_DECAY_DEVICE_SCHEMA,
   CONTENT_DECAY_PAGE_CONTAINS_SCHEMA,
   CONTENT_DECAY_QUERY_CONTAINS_SCHEMA,
 } from './content-decay-schema';
@@ -388,6 +394,12 @@ const INSPECTION_BATCH_OUTPUT_SCHEMA = {
 };
 
 const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
+  site_url: z.string().describe('Exact Search Console property requested for these rows.'),
+  start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive requested start date.')),
+  end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive requested end date.')),
+  filter_group_count: z.number().int().nonnegative().describe(
+    'Number of requested Google-side filter groups. Filter expressions are intentionally not echoed.',
+  ),
   row_count: z.number().int().nonnegative(),
   start_row: z.number().int().nonnegative(),
   rows: z.array(z.object(SEARCH_ROW_OUTPUT_SCHEMA)),
@@ -541,10 +553,18 @@ const RESULT_START_ROW_SCHEMA = z
   .describe('Zero-based offset into the deterministically ranked result list.');
 
 const QUICK_WIN_OUTPUT_SCHEMA = {
+  site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe('Exact Search Console property used for this opportunity report.'),
+  start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive first date of the Search Analytics opportunity window.')),
+  end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive last date of the Search Analytics opportunity window.')),
+  search_type: z.enum(['web', 'image', 'video', 'news']).describe('The selected Search Console search surface; web by default. Not a cross-surface total.'),
+  data_state: z.enum(['all', 'final']).describe('Effective Search Analytics state. Omitted input uses finalized-only data.'),
+  preliminary_data_possible: z.boolean().describe('True when Google may include fresh preliminary metrics that can change.'),
+  max_ctr: z.number().min(0).max(1).nullable().describe('Optional inclusive CTR ceiling as a fraction (0.02 means 2%), or null when unfiltered. Applied to returned rows, not a Google-side filter.'),
   note: z.string(),
   page_contains: z.string().nullable().describe('Page URL substring filtered at Google, or null when unfiltered.'),
   query_contains: z.string().nullable().describe('Query topic substring filtered at Google, or null when unfiltered.'),
   country: z.string().nullable().describe('ISO alpha-3 searcher country filtered at Google, or null when unfiltered. Not a page language.'),
+  device: z.enum(['desktop', 'mobile', 'tablet']).nullable().describe('Device filtered at Google, or null for all devices.'),
   scope_note: z.string(),
   quick_wins: z.array(
     z.object({
@@ -557,14 +577,34 @@ const QUICK_WIN_OUTPUT_SCHEMA = {
   result_page: RESULT_PAGE_OUTPUT_SCHEMA,
 };
 
+const DIRECT_INSIGHT_COUNTRY_SCHEMA = z.string().trim()
+  .regex(/^[a-zA-Z]{3}$/, 'Use a three-letter ISO 3166-1 alpha-3 country code such as SVN or DEU.')
+  .optional()
+  .describe('Optional searcher country in ISO 3166-1 alpha-3, e.g. DEU, not the page language. Google ANDs this geography with query/page filters before pagination.');
+
+const DIRECT_INSIGHT_DEVICE_SCHEMA = z.enum(['desktop', 'mobile', 'tablet']).optional()
+  .describe('Optional searcher device; ANDed with exact page/query, topic or URL substring, and country at Google before pagination. Omit to include all devices.');
+
+const DIRECT_INSIGHT_DATA_STATE_SCHEMA = z.enum(['all', 'final']).optional()
+  .describe("Omit for Google's finalized-only default; 'all' includes fresh preliminary Search Analytics data that may still change. 'final' requests finalized rows only.");
+
 const PAGE_QUERIES_OUTPUT_SCHEMA = {
+  site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe('Exact Search Console property used for this page-to-query drilldown.'),
+  start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive first date of the page-to-query report.')),
+  end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive last date of the page-to-query report.')),
+  search_type: z.enum(['web', 'image', 'video', 'news']).describe('Google Search surface used for the returned page queries.'),
   page: z.string(),
+  data_state: z.enum(['all', 'final']).describe('Effective Search Analytics data state; omitted input uses final.'),
+  preliminary_data_possible: z.boolean().describe('True for all, when fresh rows can still change.'),
   query_contains: z.string().nullable().describe('Optional query topic substring filtered at Google before Search Analytics pagination, or null for no topic filter.'),
+  country: z.string().nullable().describe('ISO alpha-3 searcher country filtered at Google, or null when unfiltered; not a page language.'),
+  device: z.enum(['desktop', 'mobile', 'tablet']).nullable().describe('Searcher device filtered at Google, or null for all devices.'),
   scope_note: z.string(),
   queries: z.array(
     z.object({
       query: z.string(),
       ...METRIC_OUTPUT_SCHEMA,
+      position: z.number().nullable().describe('Average position when Google supplies it; null preserves measured clicks and impressions without a reported rank.'),
     }),
   ),
   pagination: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
@@ -572,13 +612,22 @@ const PAGE_QUERIES_OUTPUT_SCHEMA = {
 };
 
 const QUERY_PAGES_OUTPUT_SCHEMA = {
+  site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe('Exact Search Console property used for this query-to-pages drilldown.'),
+  start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive first date of the query-to-pages report.')),
+  end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive last date of the query-to-pages report.')),
+  search_type: z.enum(['web', 'image', 'video', 'news']).describe('Google Search surface used for the returned query pages.'),
   query: z.string(),
+  data_state: z.enum(['all', 'final']).describe('Effective Search Analytics data state; omitted input uses final.'),
+  preliminary_data_possible: z.boolean().describe('True for all, when fresh rows can still change.'),
   page_contains: z.string().nullable().describe('Optional URL substring filtered at Google before Search Analytics pagination, or null for no page filter.'),
+  country: z.string().nullable().describe('ISO alpha-3 searcher country filtered at Google, or null when unfiltered; not a page language.'),
+  device: z.enum(['desktop', 'mobile', 'tablet']).nullable().describe('Searcher device filtered at Google, or null for all devices.'),
   scope_note: z.string(),
   pages: z.array(
     z.object({
       page: z.string(),
       ...METRIC_OUTPUT_SCHEMA,
+      position: z.number().nullable().describe('Observed average position, or null if Google did not return this optional metric.'),
     }),
   ),
   pagination: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
@@ -586,9 +635,16 @@ const QUERY_PAGES_OUTPUT_SCHEMA = {
 };
 
 const CANNIBALIZATION_OUTPUT_SCHEMA = {
+  site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe('Exact Search Console property used for the observed query/page overlap report.'),
+  start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive first date of the observed query/page overlap window.')),
+  end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive last date of the observed query/page overlap window.')),
+  search_type: z.enum(['web', 'image', 'video', 'news']).describe('Selected Google Search surface; totals/shares describe only observed query/page rows on this surface.'),
+  data_state: z.enum(['all', 'final']).describe('Effective Search Analytics freshness: all may include preliminary rows, final is finalized-only.'),
+  preliminary_data_possible: z.boolean().describe('True when preliminary query/page metrics and observed impression shares may still change.'),
   page_contains: z.string().nullable().describe('Page URL substring passed to Google for the Search Analytics page filter, or null for no page filter.'),
   query_contains: z.string().nullable().describe('Query substring passed to Google for the Search Analytics query filter, or null for no query filter.'),
   country: z.string().nullable().describe('ISO alpha-3 searcher country filtered at Google, or null when unfiltered. Not a page language.'),
+  device: z.enum(['desktop', 'mobile', 'tablet']).nullable().describe('Searcher device filtered at Google, or null for all devices.'),
   scope_note: z.string(),
   candidates: z.array(
     z.object({
@@ -608,6 +664,7 @@ const CANNIBALIZATION_OUTPUT_SCHEMA = {
         z.object({
           page: z.string(),
           ...METRIC_OUTPUT_SCHEMA,
+          position: z.number().nullable().describe('Average position when Google supplies it; null preserves measured clicks and impressions when this optional metric is absent.'),
           impression_share: z.number().describe(
             'Percentage of the observed query/page impression sum represented by this page; not a share of unique searches or the true query-level property aggregate.',
           ),
@@ -620,10 +677,14 @@ const CANNIBALIZATION_OUTPUT_SCHEMA = {
 };
 
 const CONTENT_DECAY_OUTPUT_SCHEMA = {
+  site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe('The exact Search Console property used for both historical comparison periods.'),
   search_type: z.enum(['web', 'image', 'video', 'news']),
+  classification_filter: CONTENT_DECAY_CLASSIFICATION_FILTER_SCHEMA,
+  min_click_loss: z.number().int().nonnegative().nullable(),
   page_contains: z.string().nullable(),
   query_contains: z.string().nullable(),
   country: z.string().nullable(),
+  device: z.enum(['desktop', 'mobile', 'tablet']).nullable(),
   scope_note: z.string(),
   comparison_periods: z.object({
     recent: z.object({ start: z.string(), end: z.string() }),
@@ -631,8 +692,21 @@ const CONTENT_DECAY_OUTPUT_SCHEMA = {
   }),
   comparison_scope: z.literal('common_returned_rows_only'),
   comparison_note: z.string(),
+  observed_page_overlap: z.object({
+    recent_count: z.number().int().nonnegative(),
+    previous_count: z.number().int().nonnegative(),
+    comparable_count: z.number().int().nonnegative(),
+    recent_only_count: z.number().int().nonnegative(),
+    previous_only_count: z.number().int().nonnegative(),
+    note: z.string(),
+  }),
   decay_count: z.number().int().nonnegative(),
   assessment_count: z.number().int().nonnegative(),
+  observed_click_loss: z.object({
+    all_declining_pages: z.number().nonnegative(),
+    likely_decay_pages: z.number().nonnegative(),
+    note: z.string(),
+  }),
   decay_results: z.array(
     z.object({
       page: z.string(),
@@ -650,8 +724,8 @@ const CONTENT_DECAY_OUTPUT_SCHEMA = {
       recent_impressions: z.number(),
       impression_difference: z.number(),
       impression_change_percentage: z.number().nullable(),
-      previous_position: z.number(),
-      recent_position: z.number(),
+      previous_position: z.number().nullable(),
+      recent_position: z.number().nullable(),
       position_change: z.number().nullable(),
     }),
   ),
@@ -711,8 +785,47 @@ const COMMON_RETURNED_ROWS_COMPARISON_NOTE =
   'Comparisons use only dimension keys returned in both period responses. A key missing from one Search Analytics response is not treated as zero because Google does not guarantee every data row.';
 
 const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
+  site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe(
+    'The exact Search Console property requested for both comparison periods.',
+  ),
   comparison_scope: z.literal('common_returned_rows_only'),
   comparison_note: z.string(),
+  click_change_direction: z.enum(['all', 'gain', 'loss']).describe(
+    'Direction filter on observed common returned keys, using daily clicks for either daily sort mode and raw clicks otherwise.',
+  ),
+  impression_change_direction: z.enum(['all', 'gain', 'loss']).describe(
+    'Direction filter on observed common returned keys, using daily impressions for either daily sort mode and raw impressions otherwise.',
+  ),
+  ctr_change_direction: z.enum(['all', 'gain', 'loss']).describe(
+    'Direction filter on unrounded CTR fractions for common returned keys with positive impressions in both periods; independent of the selected sort mode.',
+  ),
+  position_change_direction: z.enum(['all', 'improvement', 'decline']).describe(
+    'Direction filter on unrounded average-position changes for common returned keys with recorded positions and positive impressions in both periods; a lower period A position is an improvement.',
+  ),
+  min_impressions_per_period: z.number().int().nonnegative().describe(
+    'Local minimum observed impressions for each period before ranking and pagination; zero by default.',
+  ),
+  period_comparability: z.object({
+    period_a_days: z.number().int().positive(),
+    period_b_days: z.number().int().positive(),
+    equal_length: z.boolean(),
+    periods_overlap: z.boolean(),
+    note: z.string(),
+  }).describe('Inclusive calendar-day lengths and overlap disclosure for interpreting raw period differences; no normalization is applied.'),
+  observed_dimension_overlap: z.object({
+    period_a_count: z.number().int().nonnegative(),
+    period_b_count: z.number().int().nonnegative(),
+    comparable_count: z.number().int().nonnegative(),
+    period_a_only_count: z.number().int().nonnegative(),
+    period_b_only_count: z.number().int().nonnegative(),
+    period_a_only_samples: z.array(z.object({
+      key: z.string(), ...METRIC_OUTPUT_SCHEMA, position: z.number().nullable(),
+    })).max(3),
+    period_b_only_samples: z.array(z.object({
+      key: z.string(), ...METRIC_OUTPUT_SCHEMA, position: z.number().nullable(),
+    })).max(3),
+    note: z.string(),
+  }).describe('Distinct returned dimension keys and up to three observed-only examples from each period; absent keys are not zero traffic or proof of new/lost visibility.'),
   data_state: z.enum(['all', 'final']).describe(
     'The Search Analytics dataState applied identically to both comparison periods.',
   ),
@@ -722,8 +835,8 @@ const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
   comparisons: z.array(
     z.object({
       key: z.string(),
-      period_a: z.object(METRIC_OUTPUT_SCHEMA),
-      period_b: z.object(METRIC_OUTPUT_SCHEMA),
+      period_a: z.object({ ...METRIC_OUTPUT_SCHEMA, position: z.number().nullable() }),
+      period_b: z.object({ ...METRIC_OUTPUT_SCHEMA, position: z.number().nullable() }),
       diff: z.object({
         clicks: z.number(),
         clicks_percentage: z
@@ -736,10 +849,16 @@ const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
           .nullable()
           .describe('Percentage change from period_b impressions. Null when period_b is zero and period_a differs; zero when both are zero.'),
         ctr: z.number(),
-        position: z.number(),
+        position: z.number().nullable(),
       }),
     }),
   ),
+  observed_common_rows_daily_average: z.object({
+    period_a: z.object({ clicks: z.number(), impressions: z.number() }),
+    period_b: z.object({ clicks: z.number(), impressions: z.number() }),
+    diff: z.object({ clicks: z.number(), impressions: z.number() }),
+    note: z.string(),
+  }).describe('Per-day averages of measured clicks and impressions summed only across distinct common returned dimension keys; these are not whole-property totals or a daily series.'),
   pagination: z.object({
     period_a: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
     period_b: SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA,
@@ -913,12 +1032,12 @@ const TOOL_CATALOG = [
   {
     name: 'insights.page_queries',
     description:
-      'For one exact page URL, list the Search Console queries that produced impressions for it, with optional Google-side query_contains topic filtering before bounded pagination, clicks, impressions, CTR, average position, and search type.',
+      'For one exact page URL, list the Search Console queries that produced impressions for it, with optional Google-side query_contains, ISO alpha-3 searcher country and desktop/mobile/tablet device filtering before bounded pagination, clicks, impressions, CTR, average position, search type and opt-in data_state=all for fresh preliminary data (final by default).',
   },
   {
     name: 'insights.query_pages',
     description:
-      'For one exact search query, list the site pages that received impressions for it, with optional Google-side page_contains URL-section filtering before bounded pagination, clicks, impressions, CTR, average position, and search type.',
+      'For one exact search query, list the site pages that received impressions for it, with optional Google-side page_contains URL-section, ISO alpha-3 searcher country and desktop/mobile/tablet device filtering before bounded pagination, clicks, impressions, CTR, average position, search type and opt-in data_state=all for fresh preliminary data (final by default).',
   },
   {
     name: 'urls.inspect',
@@ -953,17 +1072,17 @@ const TOOL_CATALOG = [
   {
     name: 'insights.quick_wins',
     description:
-      'Find observed query/page rows meeting an impression threshold and configurable average-position opportunity range (8-20 by default), optionally scoped at Google by page_contains URL section, query_contains topic and country (ISO alpha-3 searcher country) before pagination. Average position is not a literal current rank, CTR is context rather than an eligibility filter, and scoped rows are not property-wide totals.',
+      'Find observed query/page rows meeting an impression threshold and configurable average-position opportunity range (8-20 by default). Optional max_ctr (fraction 0-1, e.g. 0.02 for 2%) selects returned rows with CTR at or below the ceiling after Google pagination, not as a Google-side filter. Optional search_type selects Web (default), Image, Video, or News-tab opportunities, and page_contains, query_contains, country (ISO alpha-3 searcher country) and device (desktop/mobile/tablet) filter at Google before pagination. Average position is not a literal current rank, and low CTR alone does not prove an SEO problem; selected surfaces and scoped rows are not property-wide totals.',
   },
   {
     name: 'insights.cannibalization',
     description:
-      'Analyze query/page Search Analytics for queries surfaced by multiple pages, optionally scoped at Google by query_contains topic, page_contains URL section and country (ISO alpha-3 searcher country, not page language) before pagination. Candidate totals and impression shares concern observed rows, not true property-wide query totals.',
+      'Analyze query/page Search Analytics for queries surfaced by multiple pages on optional search_type Web (default), Image, Video or Search News tab, scoped at Google by query_contains topic, page_contains URL section, country (ISO alpha-3 searcher country, not page language) and device (desktop/mobile/tablet) before pagination. Candidate totals and impression shares concern observed rows on the selected search surface and filters, not true property-wide or all-search query totals.',
   },
   {
     name: 'insights.content_decay',
     description:
-      'Assess page-level click declines across two contiguous periods, optionally scoped at Google by query_contains topic, page_contains URL section and country (ISO alpha-3 searcher location, not page language) in both periods and by Web, Image, Video or News-tab search. Compare pages returned in both responses; one-sided row absence is not zero traffic.',
+      'Assess page-level click declines across two contiguous periods, optionally scoped at Google by query_contains topic, page_contains URL section, country (ISO alpha-3 searcher location, not page language), and device (desktop/mobile/tablet) in both periods and by Web, Image, Video or News-tab search. Compare pages returned in both responses; one-sided row absence is not zero traffic.',
   },
   {
     name: 'indexing.request',
@@ -987,7 +1106,7 @@ const TOOL_CATALOG = [
   {
     name: 'analytics.compare',
     description:
-      'Compare Search Console performance metrics between two date ranges for dimension keys returned in both Search Analytics responses; one-sided row absence is not treated as zero. The same search type, optional finalized/all data state, and filters are applied to both periods.',
+      'Compare only dimension keys observed in both Search Console date ranges; missing rows are not zero traffic. Optional sort_by ranks observed click, impression, CTR or average-position movement; click_change_direction, impression_change_direction, ctr_change_direction, position_change_direction and min_impressions_per_period narrow common rows before pagination. Discover and Google News lack average position. Both periods use the same search type, finalized/all data state and filters; this adds no Google requests.',
   },
   {
     name: 'reports.weekly_digest',
@@ -1631,6 +1750,10 @@ class GscMcpRuntime {
           start_row + sourceRowLimit,
         );
         const payload: Record<string, unknown> = {
+          site_url,
+          start_date,
+          end_date,
+          filter_group_count: dimension_filter_groups?.length ?? 0,
           row_count: bounded.items.length,
           start_row,
           rows: bounded.items,
@@ -1675,11 +1798,13 @@ class GscMcpRuntime {
       'insights.page_queries',
       {
         title: 'Find queries for a page',
-        description: 'For one exact page URL within the supplied Search Console property, return the queries that produced impressions for it over a date range. This wraps an exact page dimension filter so agents do not need to construct analytics.query filter groups manually. Optional query_contains narrows query topics at Google before source pagination; these observed rows are not all queries for the page. Exact page matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results; Search Console can still omit anonymized queries. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
+        description: 'For one exact page URL within the supplied Search Console property, return the queries that produced impressions for it over a date range. This wraps an exact page dimension filter so agents do not need to construct analytics.query filter groups manually. Optional query_contains, ISO alpha-3 searcher country and device (desktop/mobile/tablet) narrow the Google-side population before pagination; these observed rows may not represent all queries for the page or all devices. Country is searcher location, not page language. Rows retain observed clicks and impressions with position=null when Google omits optional average position; do not infer rank zero. Exact page matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results; Search Console can still omit anonymized queries. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           page_url: z.string().url().describe('Exact fully-qualified page URL to filter on, e.g. https://example.com/guides/seo/. The URL must belong to site_url; Search Console exact page filters are case-sensitive.'),
           query_contains: z.string().trim().min(1).max(240).optional().describe('Optional case-insensitive query substring (e.g. seo) to filter at Google before pagination. Omit for all query topics.'),
+          country: DIRECT_INSIGHT_COUNTRY_SCHEMA,
+          device: DIRECT_INSIGHT_DEVICE_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
             searchConsoleDateDescription('Start date (inclusive) in YYYY-MM-DD format.'),
           ),
@@ -1692,6 +1817,7 @@ class GscMcpRuntime {
             .enum(['web', 'image', 'video', 'news'])
             .default('web')
             .describe('Which search index to query. Defaults to web. Discover and Google News are not supported because this tool groups by query.'),
+          data_state: DIRECT_INSIGHT_DATA_STATE_SCHEMA,
           row_limit: z
             .number()
             .int()
@@ -1706,7 +1832,7 @@ class GscMcpRuntime {
         outputSchema: PAGE_QUERIES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, page_url, query_contains, start_date, end_date, search_type, row_limit = 100, start_row = 0 }) => {
+      async ({ site_url, page_url, query_contains, country, device, start_date, end_date, search_type, data_state, row_limit = 100, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -1725,12 +1851,15 @@ class GscMcpRuntime {
           dimensions: ['query'],
           startRow: start_row,
           type: search_type,
+          dataState: data_state,
           dimensionFilterGroups: [
             {
               groupType: 'and',
               filters: [
                 { dimension: 'page', operator: 'equals', expression: page_url },
                 ...(query_contains ? [{ dimension: 'query' as const, operator: 'contains' as const, expression: query_contains }] : []),
+                ...(country ? [{ dimension: 'country' as const, operator: 'equals' as const, expression: country.toUpperCase() }] : []),
+                ...(device ? [{ dimension: 'device' as const, operator: 'equals' as const, expression: device.toUpperCase() }] : []),
               ],
             },
           ],
@@ -1739,12 +1868,12 @@ class GscMcpRuntime {
           beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId),
         });
         const rows = mapSourceRows(source.rows, (row) =>
-          (row.keys?.length ?? 0) > 0 && hasRecordedPosition(row) ? ({
+          (row.keys?.length ?? 0) > 0 ? ({
             query: row.keys![0],
             clicks: row.clicks,
             impressions: row.impressions,
             ctr: row.ctr,
-            position: row.position,
+            position: row.position ?? null,
           }) : undefined);
         const bounded = windowSourceRows(
           rows.items,
@@ -1755,10 +1884,20 @@ class GscMcpRuntime {
           rows.sourceRowOffsets,
         );
         const payload = {
+          site_url,
+          start_date,
+          end_date,
+          search_type,
           page: page_url,
+          data_state: data_state ?? 'final',
+          preliminary_data_possible: data_state === 'all',
           query_contains: query_contains ?? null,
-          scope_note: query_contains
-            ? 'Queries are filtered to the requested case-insensitive topic substring at Google before pagination; these are not all queries for this page, and missing rows do not mean zero impressions.'
+          country: country?.toUpperCase() ?? null,
+          device: device ?? null,
+          scope_note: country || device
+            ? `Queries are filtered to the requested ${country ? 'searcher country' : ''}${country && device ? ' and ' : ''}${device ? 'device' : ''} and optional query topic at Google before pagination; these are not all queries for this page${device ? ' or all-device results' : ''}, and missing rows do not mean zero impressions.${country ? ' Searcher country is not page language.' : ''}`
+            : query_contains
+              ? 'Queries are filtered to the requested case-insensitive topic substring at Google before pagination; these are not all queries for this page, and missing rows do not mean zero impressions.'
             : 'Observed page/query rows may be incomplete because Search Console can omit or truncate data; missing rows do not mean zero impressions.',
           queries: bounded.items,
           pagination: paginationMetadata(source),
@@ -1772,11 +1911,13 @@ class GscMcpRuntime {
       'insights.query_pages',
       {
         title: 'Find pages for a query',
-        description: 'For one exact search query, return the site pages that received impressions for it over a date range. This wraps an exact query dimension filter so agents do not need to construct analytics.query filter groups manually. Optional page_contains scopes matching page URLs at Google before source pagination, for example /de/; filtered rows are not property-wide. Exact query matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results and verify which URL Google is surfacing before diagnosing cannibalization or content targeting. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
+        description: 'For one exact search query, return the site pages that received impressions for it over a date range. This wraps an exact query dimension filter so agents do not need to construct analytics.query filter groups manually. Optional page_contains, ISO alpha-3 searcher country and device (desktop/mobile/tablet) scope matching page URLs, searcher geography and devices at Google before source pagination; filtered rows are not property-wide, and country is not page language. Rows with clicks/impressions but no reported average position remain visible with position=null, never an invented ranking. Exact query matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results and verify which URL Google is surfacing before diagnosing cannibalization or content targeting. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           query: z.string().min(1).describe('Exact Search Console query text to filter on. Exact query filters are case-sensitive.'),
           page_contains: z.string().trim().min(1).max(240).optional().describe('Optional case-insensitive substring of page URLs to filter at Google before pagination, such as /de/. Omit for all pages.'),
+          country: DIRECT_INSIGHT_COUNTRY_SCHEMA,
+          device: DIRECT_INSIGHT_DEVICE_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
             searchConsoleDateDescription('Start date (inclusive) in YYYY-MM-DD format.'),
           ),
@@ -1789,6 +1930,7 @@ class GscMcpRuntime {
             .enum(['web', 'image', 'video', 'news'])
             .default('web')
             .describe('Which search index to query. Defaults to web. Discover and Google News are not supported because this tool filters by query.'),
+          data_state: DIRECT_INSIGHT_DATA_STATE_SCHEMA,
           row_limit: z
             .number()
             .int()
@@ -1803,7 +1945,7 @@ class GscMcpRuntime {
         outputSchema: QUERY_PAGES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, query, page_contains, start_date, end_date, search_type, row_limit = 100, start_row = 0 }) => {
+      async ({ site_url, query, page_contains, country, device, start_date, end_date, search_type, data_state, row_limit = 100, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -1821,12 +1963,15 @@ class GscMcpRuntime {
           dimensions: ['page'],
           startRow: start_row,
           type: search_type,
+          dataState: data_state,
           dimensionFilterGroups: [
             {
               groupType: 'and',
               filters: [
                 { dimension: 'query', operator: 'equals', expression: query },
                 ...(page_contains ? [{ dimension: 'page' as const, operator: 'contains' as const, expression: page_contains }] : []),
+                ...(country ? [{ dimension: 'country' as const, operator: 'equals' as const, expression: country.toUpperCase() }] : []),
+                ...(device ? [{ dimension: 'device' as const, operator: 'equals' as const, expression: device.toUpperCase() }] : []),
               ],
             },
           ],
@@ -1835,12 +1980,12 @@ class GscMcpRuntime {
           beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId),
         });
         const rows = mapSourceRows(source.rows, (row) =>
-          (row.keys?.length ?? 0) > 0 && hasRecordedPosition(row) ? ({
+          (row.keys?.length ?? 0) > 0 ? ({
             page: row.keys![0],
             clicks: row.clicks,
             impressions: row.impressions,
             ctr: row.ctr,
-            position: row.position,
+            position: hasRecordedPosition(row) ? row.position : null,
           }) : undefined);
         const bounded = windowSourceRows(
           rows.items,
@@ -1851,11 +1996,21 @@ class GscMcpRuntime {
           rows.sourceRowOffsets,
         );
         const payload = {
+          site_url,
+          start_date,
+          end_date,
+          search_type,
           query,
+          data_state: data_state ?? 'final',
+          preliminary_data_possible: data_state === 'all',
           page_contains: page_contains ?? null,
-          scope_note: page_contains
-            ? 'Pages are filtered to the requested URL substring at Google before pagination; observed rows are not property-wide, and absent rows are not evidence of zero impressions.'
-            : 'Observed query/page rows may be incomplete because Search Console can omit or truncate data; absent rows are not evidence of zero impressions.',
+          country: country?.toUpperCase() ?? null,
+          device: device ?? null,
+          scope_note: country || device
+            ? `Pages are filtered to the requested ${country ? 'searcher country' : ''}${country && device ? ' and ' : ''}${device ? 'device' : ''} and optional URL substring at Google before pagination; observed rows are not property-wide${device ? ' or all-device totals' : ''}, and absent rows are not evidence of zero impressions.${country ? ' Searcher country is not page language.' : ''} Missing average position is null, not zero; observed clicks and impressions are retained.`
+            : page_contains
+              ? 'Pages are filtered to the requested URL substring at Google before pagination; observed rows are not property-wide, and absent rows are not evidence of zero impressions. Missing average position is null, not zero; observed clicks and impressions are retained.'
+            : 'Observed query/page rows may be incomplete because Search Console can omit or truncate data; absent rows are not evidence of zero impressions. Missing average position is null, not zero; observed clicks and impressions are retained.',
           pages: bounded.items,
           pagination: paginationMetadata(source),
           result_page: bounded.resultPage,
@@ -2013,12 +2168,12 @@ class GscMcpRuntime {
       'insights.quick_wins',
       {
         title: 'Identify SEO Quick Wins',
-        description: 'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Optional page_contains, query_contains and country (searcher ISO alpha-3, not page language) filter URL sections, query topics and searcher geography together at Google before source pagination. Filtered results are not property-wide. Average position is an aggregate Search Console metric, not a literal current rank; CTR is returned for context and is not an eligibility filter. Results are ordered by impressions and bounded with limit/start_row and explicit result_page metadata. Source pagination flags the local 100,000-row ceiling.',
+        description: 'Find observed query/page Search Analytics rows with at least the requested impressions whose average position falls in a configurable opportunity range (8-20 by default). Optional max_ctr filters observed low-CTR candidates with an inclusive fractional ceiling (0.02 = 2%); it is applied locally after Google pagination, not a provider-side filter or proof of an SEO problem. Optional data_state all includes recent preliminary figures that may change; omitted retains finalized-only default. Optional search_type selects Web (default), Image, Video or News-tab performance; Discover/Google News lack average position and are excluded. Optional page_contains, query_contains, country (searcher ISO alpha-3, not page language) and device (desktop/mobile/tablet) filter URL sections, query topics, searcher geography and device together at Google before source pagination. Selected search surfaces and filtered results are not property-wide or cross-surface totals. Average position is an aggregate Search Console metric, not a literal current rank. Results are ordered by impressions and bounded with limit/start_row and explicit result_page metadata. Source pagination flags the local 100,000-row ceiling.',
         inputSchema: createQuickWinsInputSchema(),
         outputSchema: z.object(QUICK_WIN_OUTPUT_SCHEMA),
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, start_date, end_date, min_impressions, min_position, max_position, page_contains, query_contains, country, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+      async ({ site_url, start_date, end_date, search_type = 'web', data_state, min_impressions, min_position, max_position, max_ctr, page_contains, query_contains, country, device, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -2033,11 +2188,14 @@ class GscMcpRuntime {
           ...(page_contains ? [{ dimension: 'page' as const, operator: 'contains' as const, expression: page_contains }] : []),
           ...(query_contains ? [{ dimension: 'query' as const, operator: 'contains' as const, expression: query_contains }] : []),
           ...(country ? [{ dimension: 'country' as const, operator: 'equals' as const, expression: country.toUpperCase() }] : []),
+          ...(device ? [{ dimension: 'device' as const, operator: 'equals' as const, expression: device.toUpperCase() }] : []),
         ];
         const source = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: start_date,
           endDate: end_date,
           dimensions: ['query', 'page'],
+          ...(search_type !== 'web' ? { type: search_type } : {}),
+          ...(data_state ? { dataState: data_state } : {}),
           ...(sourceFilters.length ? {
             dimensionFilterGroups: [{
               groupType: 'and' as const,
@@ -2046,16 +2204,25 @@ class GscMcpRuntime {
           } : {}),
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
-        const quickWins = processQuickWins(source.rows, min_impressions, min_position, max_position);
+        const quickWins = processQuickWins(source.rows, min_impressions, min_position, max_position, max_ctr);
         const bounded = windowKnownResults(quickWins, start_row, limit);
         const payload = {
-          note: 'Candidates are observed query/page rows selected by Search Console average position, not proof of a stable or current rank. CTR is reported for context and does not affect eligibility.',
+          site_url,
+          start_date,
+          end_date,
+          search_type,
+          data_state: data_state ?? 'final',
+          preliminary_data_possible: data_state === 'all',
+          max_ctr: max_ctr ?? null,
+          note: 'Candidates are observed query/page rows from the selected search surface, selected by Search Console average position; not proof of a stable or current rank or cross-surface opportunity.' + (max_ctr !== undefined ? ' CTR at or below the requested fractional ceiling is selected from returned rows only; low CTR does not prove an SEO problem.' : ' CTR is reported for context and does not affect eligibility.') + (data_state === 'all' ? ' Preliminary Search Console metrics may change as Google finalizes data.' : ''),
           page_contains: page_contains ?? null,
           query_contains: query_contains ?? null,
           country: country?.toUpperCase() ?? null,
-          scope_note: page_contains || query_contains || country
-            ? 'Quick-win opportunities are scoped by Google-side URL section, query topic and/or searcher country filters; results are not property-wide. The searcher country does not identify page language. Missing Search Analytics rows do not mean zero traffic.'
-            : 'Quick-win opportunities derive from returned query/page rows, which are not guaranteed exhaustive; missing rows do not mean zero traffic.',
+          device: device ?? null,
+          scope_note: (page_contains || query_contains || country || device
+            ? 'Quick-win opportunities are scoped by Google-side URL section, query topic, searcher country and/or device filters; results are not property-wide. The searcher country does not identify page language. Missing Search Analytics rows do not mean zero traffic.'
+            : 'Quick-win opportunities derive from returned query/page rows, which are not guaranteed exhaustive; missing rows do not mean zero traffic.')
+            + (search_type !== 'web' ? ' Only this selected search surface is represented, not combined Web or all-search traffic.' : ''),
           quick_wins: bounded.items,
           pagination: paginationMetadata(source),
           result_page: bounded.resultPage,
@@ -2068,9 +2235,11 @@ class GscMcpRuntime {
       'insights.cannibalization',
       {
         title: 'Detect Keyword Cannibalization',
-        description: 'Analyze query/page Search Analytics to find queries split across multiple pages. Optional page_contains, query_contains and country filter matching URL sections, query topics and ISO alpha-3 searcher geography at Google before pagination and aggregation, combined in one AND group. Query filtering retains returned competing pages for matching queries; page/country filtering restricts observed page shares to those scopes, not property-wide totals or page language. Candidates are ranked by observed impressions and bounded with limit/start_row. Google may omit rows; sums can exceed true query-level aggregates. Multiple URLs can reflect legitimate locale or intent differences, not harmful cannibalization.',
+        description: 'Analyze query/page Search Analytics to find queries split across multiple pages on Web (default), Image, Video or Search News-tab results via optional search_type. Optional data_state all includes fresh preliminary rows whose observed impression shares may change; omission retains finalized-only results. Discover and the separate Google News service are excluded because query data is unavailable. Optional page_contains, query_contains, country and device filter matching URL sections, query topics, ISO alpha-3 searcher geography and desktop/mobile/tablet searches at Google before pagination and aggregation, combined in one AND group. Query filtering retains returned competing pages for matching queries; page/country/device filtering restricts observed page shares to those scopes, not property-wide or all-search totals or page language. Candidates are ranked by observed impressions and bounded with limit/start_row. Missing optional average position is reported as null without discarding observed clicks or impressions. Google may omit rows; sums can exceed true query-level aggregates. Multiple URLs can reflect legitimate locale or intent differences, not harmful cannibalization.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
+          search_type: CANNIBALIZATION_SEARCH_TYPE_SCHEMA,
+          data_state: CANNIBALIZATION_DATA_STATE_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
             searchConsoleDateDescription('Start date (inclusive) in YYYY-MM-DD format.'),
           ),
@@ -2084,13 +2253,14 @@ class GscMcpRuntime {
           query_contains: CANNIBALIZATION_QUERY_CONTAINS_SCHEMA,
           page_contains: CANNIBALIZATION_PAGE_CONTAINS_SCHEMA,
           country: CANNIBALIZATION_COUNTRY_SCHEMA,
+          device: CANNIBALIZATION_DEVICE_SCHEMA,
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,
         },
         outputSchema: CANNIBALIZATION_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, start_date, end_date, min_impressions, min_page_percentage, query_contains, page_contains, country, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+      async ({ site_url, search_type = 'web', data_state, start_date, end_date, min_impressions, min_page_percentage, query_contains, page_contains, country, device, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -2105,11 +2275,14 @@ class GscMcpRuntime {
           ...(page_contains ? [{ dimension: 'page' as const, operator: 'contains' as const, expression: page_contains }] : []),
           ...(query_contains ? [{ dimension: 'query' as const, operator: 'contains' as const, expression: query_contains }] : []),
           ...(country ? [{ dimension: 'country' as const, operator: 'equals' as const, expression: country.toUpperCase() }] : []),
+          ...(device ? [{ dimension: 'device' as const, operator: 'equals' as const, expression: device.toUpperCase() }] : []),
         ];
         const source = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: start_date,
           endDate: end_date,
           dimensions: ['query', 'page'],
+          ...(search_type !== 'web' ? { type: search_type } : {}),
+          ...(data_state ? { dataState: data_state } : {}),
           ...(sourceFilters.length ? {
             dimensionFilterGroups: [{
               groupType: 'and' as const,
@@ -2144,12 +2317,20 @@ class GscMcpRuntime {
           limit,
         );
         const payload = {
+          site_url,
+          start_date,
+          end_date,
+          search_type,
+          data_state: data_state ?? 'final',
+          preliminary_data_possible: data_state === 'all',
           page_contains: page_contains ?? null,
           query_contains: query_contains ?? null,
           country: country?.toUpperCase() ?? null,
-          scope_note: page_contains || query_contains || country
-            ? 'Candidates and observed impression shares are restricted to Google-filtered query/page rows by URL section, query topic and/or searcher country, not property-wide totals; searcher country is not page language. A page filter restricts which competing URLs are included. Missing Search Analytics rows are not zero.'
-            : 'Candidates and observed impression shares use returned query/page rows, not true query-level property totals; missing rows are not zero.',
+          device: device ?? null,
+          scope_note: `Selected ${search_type === 'news' ? 'News-tab' : search_type === 'web' ? 'Web' : search_type === 'image' ? 'Image' : 'Video'} search surface only; not property-wide or all-search totals. ` + (page_contains || query_contains || country || device
+            ? 'Candidates and observed impression shares are restricted to Google-filtered query/page rows by URL section, query topic, searcher country and/or device, not property-wide or all-device totals; searcher country is not page language. A page filter restricts which competing URLs are included. Missing Search Analytics rows are not zero.'
+            : 'Candidates and observed impression shares use returned query/page rows, not true query-level property totals; missing rows are not zero.')
+            + (data_state === 'all' ? ' Preliminary Search Console query/page metrics and impression shares may change as data finalizes.' : ''),
           candidates: bounded.items,
           pagination: paginationMetadata(source),
           result_page: bounded.resultPage,
@@ -2162,45 +2343,72 @@ class GscMcpRuntime {
       'insights.content_decay',
       {
         title: 'Detect Content Decay',
-        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Optional search_type selects Web (default), Image, Video or News-tab search consistently for both periods; Discover and Google News are excluded from this position-aware heuristic. Compare 1-240 days per period so both periods fit in Search Console\'s 16-month performance history with the three-day finalized-data lag. Optional page_contains, query_contains and country scope both Google Search Analytics requests to a URL section (such as /de/), search topic (such as technical seo), and ISO alpha-3 searcher country (such as DEU for Germany, not page language) using AND before pagination; this changes the comparison population, not property-wide totals. No additional requests are made, and missing rows are never treated as zero. Only pages returned in both Search Analytics period responses are compared; Google does not guarantee every data row. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
+        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Optional end_date anchors a historical comparison to a selected finalized Pacific Search Console date (at least three days before today); omit for the latest finalized date. Compare 1-240 days per period within Search Console\'s rolling 16-month history. Optional search_type selects Web (default), Image, Video or News-tab search consistently for both periods; Discover and Google News are excluded from this position-aware heuristic. Optional page_contains, query_contains, country and device scope both Google Search Analytics requests to a URL section (such as /de/), search topic (such as technical seo), ISO alpha-3 searcher country (such as DEU, not page language) and searcher device (desktop/mobile/tablet) using AND before pagination; this changes the comparison population, not property-wide totals. Optional classification_filter narrows returned assessments locally to likely_decay or either weaker evidence class; optional min_click_loss selects an absolute minimum observed click decline, preserving original unfiltered assessment/decay counts. observed_click_loss summarizes the observed declines over all comparable declining pages and the likely_decay subset, before local filters and output pagination; it is not a property-wide traffic-loss estimate. No additional requests are made, and missing rows are never treated as zero. Only pages returned in both Search Analytics period responses are compared; observed_page_overlap reports how many returned page URLs are common or exclusive to each period. An absent row is not evidence of zero traffic, and Google does not guarantee every data row. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           compare_days: CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
+          end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(
+            searchConsoleDateDescription('Optional historical end date (inclusive) of the recent comparison period. Must be at least three days before the current Search Console date, and both periods must fit within the rolling 16-month data window. Omit to compare the latest finalized periods.'),
+          ),
           search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe('Search Console search type applied identically to both comparison periods: web (default), image, video or news (Google Search News tab). Discover and Google News are excluded because this heuristic relies on average position.'),
+          classification_filter: CONTENT_DECAY_CLASSIFICATION_FILTER_SCHEMA,
+          min_click_loss: CONTENT_DECAY_MIN_CLICK_LOSS_SCHEMA,
           page_contains: CONTENT_DECAY_PAGE_CONTAINS_SCHEMA,
           query_contains: CONTENT_DECAY_QUERY_CONTAINS_SCHEMA,
           country: CONTENT_DECAY_COUNTRY_SCHEMA,
+          device: CONTENT_DECAY_DEVICE_SCHEMA,
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,
         },
         outputSchema: CONTENT_DECAY_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, compare_days, search_type = 'web', page_contains, query_contains, country, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
-        const googleId = this.requireGoogleId();
-        const rateLimitError = await this.rateLimitError(googleId, 'insights.content_decay');
-        if (rateLimitError) return rateLimitError;
-        const accessToken = await this.getAccessToken(googleId);
-
+      async ({ site_url, compare_days, end_date, search_type = 'web', classification_filter = 'all', min_click_loss, page_contains, query_contains, country, device, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         const formatDate = (d: Date) => d.toISOString().split('T')[0];
 
         const today = getSearchConsoleCalendarDate();
-        const endRecentDate = new Date(`${today}T00:00:00Z`);
-        endRecentDate.setUTCDate(endRecentDate.getUTCDate() - 3);
+        const latestFinalizedDate = new Date(`${today}T00:00:00Z`);
+        latestFinalizedDate.setUTCDate(latestFinalizedDate.getUTCDate() - 3);
+        const latestFinalized = formatDate(latestFinalizedDate);
+        if (end_date) {
+          SEARCH_CONSOLE_DATE_SCHEMA.parse(end_date);
+          if (end_date > latestFinalized) {
+            throw new Error(`end_date must be no later than the latest finalized Search Console date (${latestFinalized}).`);
+          }
+        }
+        const endRecentDate = new Date(`${end_date ?? latestFinalized}T00:00:00Z`);
         const startRecentDate = new Date(endRecentDate.getTime() - (compare_days - 1) * 24 * 60 * 60 * 1000);
 
         const endPreviousDate = new Date(startRecentDate.getTime() - 24 * 60 * 60 * 1000);
         const startPreviousDate = new Date(endPreviousDate.getTime() - (compare_days - 1) * 24 * 60 * 60 * 1000);
+
+        const earliestDate = new Date(`${today}T00:00:00Z`);
+        const dayOfMonth = earliestDate.getUTCDate();
+        earliestDate.setUTCDate(1);
+        earliestDate.setUTCMonth(earliestDate.getUTCMonth() - 16);
+        const lastDayOfMonth = new Date(Date.UTC(
+          earliestDate.getUTCFullYear(), earliestDate.getUTCMonth() + 1, 0,
+        )).getUTCDate();
+        earliestDate.setUTCDate(Math.min(dayOfMonth, lastDayOfMonth));
+        if (startPreviousDate < earliestDate) {
+          throw new Error(`Comparison periods must fit within Search Console's rolling 16-month history (earliest date: ${formatDate(earliestDate)}).`);
+        }
 
         const recentStart = formatDate(startRecentDate);
         const recentEnd = formatDate(endRecentDate);
         const previousStart = formatDate(startPreviousDate);
         const previousEnd = formatDate(endPreviousDate);
 
+        const googleId = this.requireGoogleId();
+        const rateLimitError = await this.rateLimitError(googleId, 'insights.content_decay');
+        if (rateLimitError) return rateLimitError;
+        const accessToken = await this.getAccessToken(googleId);
+
         const filters = [
           ...(page_contains ? [{ dimension: 'page' as const, operator: 'contains' as const, expression: page_contains }] : []),
           ...(query_contains ? [{ dimension: 'query' as const, operator: 'contains' as const, expression: query_contains }] : []),
           ...(country ? [{ dimension: 'country' as const, operator: 'equals' as const, expression: country.toUpperCase() }] : []),
+          ...(device ? [{ dimension: 'device' as const, operator: 'equals' as const, expression: device.toUpperCase() }] : []),
         ];
         const scopedDimensionFilters = filters.length ? {
           dimensionFilterGroups: [{
@@ -2232,26 +2440,74 @@ class GscMcpRuntime {
         ).filter((result) =>
           !pageFilter || result.page.toLowerCase().includes(pageFilter)
         );
-        const bounded = windowKnownResults(decayResults, start_row, limit);
+        const observedPages = (rows: typeof recentSource.rows) => new Set(
+          rows.filter((row) => row.keys?.[0])
+            .map((row) => row.keys![0]),
+        );
+        const recentPages = observedPages(recentSource.rows);
+        const previousPages = observedPages(previousSource.rows);
+        const comparableCount = [...recentPages].filter((page) => previousPages.has(page)).length;
+        const recentClicksByPage = new Map(recentSource.rows
+          .filter((row) => row.keys?.[0])
+          .map((row) => [row.keys![0], row.clicks] as const));
+        const observedGains = previousSource.rows.reduce((summary, row) => {
+          if (!row.keys?.[0]) return summary;
+          if (pageFilter && !row.keys[0].toLowerCase().includes(pageFilter)) return summary;
+          const recentClicks = recentClicksByPage.get(row.keys[0]);
+          if (recentClicks !== undefined && recentClicks > row.clicks) {
+            summary.clicks += recentClicks - row.clicks;
+            summary.pages += 1;
+          }
+          return summary;
+        }, { clicks: 0, pages: 0 });
+        const filteredResults = decayResults.filter((result) =>
+          (classification_filter === 'all' || result.classification === classification_filter)
+          && (min_click_loss === undefined || -result.click_difference >= min_click_loss)
+        );
+        const bounded = windowKnownResults(filteredResults, start_row, limit);
 
         const payload = {
+          site_url,
           search_type,
+          classification_filter,
+          min_click_loss: min_click_loss ?? null,
           page_contains: page_contains ?? null,
           query_contains: query_contains ?? null,
           country: country?.toUpperCase() ?? null,
-          scope_note: page_contains || query_contains || country
-            ? 'Both comparison periods contain only Google-filtered matching page URLs, search query topics and/or searcher country (not page language), not property-wide totals. Missing rows are not zero.'
-            : 'Both comparison periods use observed property-page rows; missing rows are not zero.',
+          device: device ?? null,
+          scope_note: (page_contains || query_contains || country || device
+            ? 'Both comparison periods contain only Google-filtered matching page URLs, search query topics, searcher country (not page language) and/or device, not property-wide totals or all-device totals. Missing rows are not zero.'
+            : 'Both comparison periods use observed property-page rows; missing rows are not zero.')
+            + (classification_filter === 'all' && min_click_loss === undefined ? '' : ' Local classification and minimum-click-loss filters narrow returned assessment rows only; assessment_count and decay_count still describe all observed declines before these filters.'),
           comparison_periods: {
             recent: { start: recentStart, end: recentEnd },
             previous: { start: previousStart, end: previousEnd },
           },
           comparison_scope: 'common_returned_rows_only' as const,
           comparison_note: COMMON_RETURNED_ROWS_COMPARISON_NOTE,
+          observed_page_overlap: {
+            recent_count: recentPages.size,
+            previous_count: previousPages.size,
+            comparable_count: comparableCount,
+            recent_only_count: recentPages.size - comparableCount,
+            previous_only_count: previousPages.size - comparableCount,
+            note: 'Counts refer to distinct page URLs returned in each Google response, even when optional average position is absent. An absent page row is not evidence of zero traffic, and no unmatched page is classified as decay.',
+          },
           decay_count: decayResults.filter(
             (result) => result.classification === 'likely_decay',
           ).length,
           assessment_count: decayResults.length,
+          observed_click_loss: {
+            all_declining_pages: decayResults.reduce((total, result) => total - result.click_difference, 0),
+            likely_decay_pages: decayResults.reduce((total, result) =>
+              total + (result.classification === 'likely_decay' ? -result.click_difference : 0), 0),
+            note: 'Sum of observed click declines for comparable returned page rows before local result filters or pagination; not property-wide traffic lost. Missing Google rows are not measured zeros, and declines do not establish a cause.',
+          },
+          observed_click_gain: {
+            all_gaining_pages: observedGains.clicks,
+            gaining_page_count: observedGains.pages,
+            note: 'Positive click changes among pages returned in both periods, including rows without optional average position, before local result filters or pagination; not property-wide growth or a net-traffic estimate. Missing Google rows are not measured zeros, and gains do not explain losses.',
+          },
           decay_results: bounded.items,
           pagination: {
             recent: paginationMetadata(recentSource),
@@ -2488,7 +2744,7 @@ class GscMcpRuntime {
       'analytics.compare',
       {
         title: 'Compare Performance Between Periods',
-        description: 'Compare Search Console performance metrics (clicks, impressions, CTR, average position) between two distinct date ranges (Period A vs Period B) for a selected dimension (query, page, country, device). Only dimension keys returned in both Search Analytics period responses are compared; a key missing from one response is not treated as zero because Google does not guarantee every data row. Apply the same search type, data state, and optional dimension filters to both periods. data_state defaults to final, preserving Google\'s finalized-only behavior when dataState is omitted; use all explicitly when recent preliminary-capable rows are desired. Results are ranked by largest absolute click change, then impression change, and safely paged with limit/start_row. Percentage change is null when an explicitly returned baseline row has zero and the comparison value differs. Discover and Google News are intentionally unavailable because this comparison contract includes average position, which those reports do not support.',
+        description: 'Compare Search Console clicks, impressions, CTR, and available average position between two date ranges for a selected dimension. Only keys observed in both periods are compared; up to three observed-only examples per period help identify follow-up checks, not new/lost traffic (missing rows are not zero). Web, Image, Video, and Search News-tab support query/page/country/device; Discover and Google News support only page/country/device, without average position (null, never an invented rank). Apply the same search type, data state and filters to both periods. Finalized data is the default; all may include preliminary data. Results default to absolute raw click-change ranking; opt-in impression, CTR or average-position movement ranking uses observed common rows without implying live rankings. Optional click_change_direction and impression_change_direction isolate observed raw/daily movement; ctr_change_direction isolates unrounded CTR gains or losses, while position_change_direction separates available average-position improvements from declines, before bounded pagination.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe(
@@ -2505,9 +2761,9 @@ class GscMcpRuntime {
           ),
           dimension: z.enum(['query', 'page', 'country', 'device']).default('query').describe('The dimension to compare performance for. Defaults to query.'),
           search_type: z
-            .enum(['web', 'image', 'video', 'news'])
+            .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
             .default('web')
-            .describe('Which Search Console search index to compare. The same search type is used for both periods. Discover and Google News are excluded because this tool returns average-position comparisons.'),
+            .describe('Which Search Console surface to compare for both periods. Discover/Google News accept page, country or device only; their average position is unavailable and returned as null.'),
           data_state: z
             .enum(['all', 'final'])
             .default('final')
@@ -2520,6 +2776,23 @@ class GscMcpRuntime {
             .describe(
               "Optional Search Console filters applied identically to both periods. Filter operator defaults to 'equals' when omitted, and expressions are limited to 4096 characters. A caller-supplied query regex can approximate a manual brand/non-brand split, but it is not equivalent to Search Console's AI-assisted native Branded/Non-branded filter, which the Search Analytics API does not expose. Countries use ISO 3166-1 alpha-3 codes.",
             ),
+          sort_by: z.enum(['absolute_click_change', 'absolute_daily_click_change', 'absolute_impression_change', 'absolute_daily_impression_change', 'absolute_ctr_change', 'absolute_position_change'])
+            .default('absolute_click_change')
+            .describe('Rank common returned keys by absolute raw click change (default), daily click change, raw impression change, daily impression change, unrounded CTR percentage-point movement, or unrounded average-position movement. CTR and position ranking require positive observed impressions in both periods; position ranking also requires a recorded position in both and is unsupported for Discover and Google News. An average-position change is not a live ranking change. Missing keys are never treated as zero.'),
+          click_change_direction: z.enum(['all', 'gain', 'loss'])
+            .default('all')
+            .describe('Keep all common returned keys (default), or only keys gaining/losing clicks: daily clicks with either daily sort mode, raw clicks otherwise. Applied before result pagination, not as a Google-side filter; ties are excluded.'),
+          impression_change_direction: z.enum(['all', 'gain', 'loss'])
+            .default('all')
+            .describe('Keep all common returned keys (default), or only keys gaining/losing impressions: daily impressions with either daily sort mode, raw impressions otherwise. Applied before result pagination, not as a Google-side filter; ties are excluded. Can be combined with click_change_direction.'),
+          ctr_change_direction: z.enum(['all', 'gain', 'loss'])
+            .default('all')
+            .describe('Keep all common returned keys (default), or only keys gaining/losing CTR by unrounded period fractions. Positive impressions in both periods are required; ties are excluded. Applied before pagination, independently of click/impression filters and sort_by, without additional Google requests.'),
+          position_change_direction: z.enum(['all', 'improvement', 'decline'])
+            .default('all')
+            .describe('Keep all common returned keys (default), or only average-position improvements (period A lower than B) or declines (period A higher than B). Requires recorded position and positive impressions in both periods, excludes ties, and filters before pagination independently of sort_by. Unsupported for Discover and Google News.'),
+          min_impressions_per_period: z.number().int().nonnegative().default(0)
+            .describe('Optional minimum observed impressions in each of both periods before local ranking and pagination; default 0. CTR ranking always requires positive impressions in both periods. This does not change the Google API query or response coverage.'),
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,
         },
@@ -2536,6 +2809,12 @@ class GscMcpRuntime {
         search_type,
         data_state,
         dimension_filter_groups,
+        sort_by = 'absolute_click_change',
+        click_change_direction = 'all',
+        impression_change_direction = 'all',
+        ctr_change_direction = 'all',
+        position_change_direction = 'all',
+        min_impressions_per_period = 0,
         limit = DEFAULT_ANALYSIS_RESULT_LIMIT,
         start_row = 0,
       }) => {
@@ -2544,6 +2823,27 @@ class GscMcpRuntime {
         const today = getSearchConsoleCalendarDate();
         assertDateNotInFuture(end_date_a, today, 'end_date_a');
         assertDateNotInFuture(end_date_b, today, 'end_date_b');
+        // UTC-midnight anchors count calendar days, independent of Pacific DST changes.
+        const inclusiveDays = (start: string, end: string) =>
+          Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000) + 1;
+        const periodADays = inclusiveDays(start_date_a, end_date_a);
+        const periodBDays = inclusiveDays(start_date_b, end_date_b);
+        const equalLength = periodADays === periodBDays;
+        const periodsOverlap = start_date_a <= end_date_b && start_date_b <= end_date_a;
+        if ((sort_by === 'absolute_position_change' || position_change_direction !== 'all')
+          && (search_type === 'discover' || search_type === 'googleNews')) {
+          return toolError('Average position is not reported for Discover or Google News. Choose another sort_by or position_change_direction mode.');
+        }
+        assertSearchAnalyticsQueryCompatible({
+          startDate: start_date_a,
+          endDate: end_date_a,
+          dimensions: [dimension],
+          rowLimit: 1,
+          type: search_type,
+          ...(dimension_filter_groups !== undefined
+            ? { dimensionFilterGroups: dimension_filter_groups }
+            : {}),
+        });
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'analytics.compare');
         if (rateLimitError) return rateLimitError;
@@ -2571,14 +2871,162 @@ class GscMcpRuntime {
             : {}),
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
-        const comparison = processPerformanceComparison(sourceA.rows, sourceB.rows);
+        const allComparisons = processPerformanceComparison(sourceA.rows, sourceB.rows);
+        const dailyBasis = sort_by === 'absolute_daily_click_change'
+          || sort_by === 'absolute_daily_impression_change';
+        const comparison = click_change_direction === 'all' && impression_change_direction === 'all'
+          && ctr_change_direction === 'all' && position_change_direction === 'all'
+          && min_impressions_per_period === 0 && sort_by !== 'absolute_ctr_change'
+          && sort_by !== 'absolute_position_change' ? allComparisons
+          : allComparisons.filter((row) => {
+            if (row.period_a.impressions < min_impressions_per_period
+              || row.period_b.impressions < min_impressions_per_period) return false;
+            if ((sort_by === 'absolute_ctr_change' || ctr_change_direction !== 'all')
+              && (row.period_a.impressions === 0 || row.period_b.impressions === 0)) return false;
+            if ((sort_by === 'absolute_position_change' || position_change_direction !== 'all')
+              && (row.period_a.position === null || row.period_b.position === null
+                || row.period_a.impressions === 0 || row.period_b.impressions === 0)) return false;
+            const clickChange = dailyBasis
+              ? row.period_a.clicks / periodADays - row.period_b.clicks / periodBDays
+              : row.diff.clicks;
+            const impressionChange = dailyBasis
+              ? row.period_a.impressions / periodADays - row.period_b.impressions / periodBDays
+              : row.diff.impressions;
+            const clickMatches = click_change_direction === 'all'
+              || (click_change_direction === 'gain' ? clickChange > 0 : clickChange < 0);
+            const impressionMatches = impression_change_direction === 'all'
+              || (impression_change_direction === 'gain' ? impressionChange > 0 : impressionChange < 0);
+            const ctrChange = row.period_a.ctr - row.period_b.ctr;
+            const ctrMatches = ctr_change_direction === 'all'
+              || (ctr_change_direction === 'gain' ? ctrChange > 0 : ctrChange < 0);
+            const positionChange = (row.period_a.position ?? 0) - (row.period_b.position ?? 0);
+            const positionMatches = position_change_direction === 'all'
+              || (position_change_direction === 'improvement' ? positionChange < 0 : positionChange > 0);
+            return clickMatches && impressionMatches && ctrMatches && positionMatches;
+          });
+        if (sort_by === 'absolute_daily_click_change') {
+          comparison.sort((a, b) =>
+            Math.abs(b.period_a.clicks / periodADays - b.period_b.clicks / periodBDays)
+              - Math.abs(a.period_a.clicks / periodADays - a.period_b.clicks / periodBDays)
+            || Math.abs(b.diff.clicks) - Math.abs(a.diff.clicks)
+            || Math.abs(b.diff.impressions) - Math.abs(a.diff.impressions)
+            || a.key.localeCompare(b.key));
+        } else if (sort_by === 'absolute_impression_change') {
+          comparison.sort((a, b) =>
+            Math.abs(b.diff.impressions) - Math.abs(a.diff.impressions)
+            || Math.abs(b.diff.clicks) - Math.abs(a.diff.clicks)
+            || a.key.localeCompare(b.key));
+        } else if (sort_by === 'absolute_daily_impression_change') {
+          comparison.sort((a, b) =>
+            Math.abs(b.period_a.impressions / periodADays - b.period_b.impressions / periodBDays)
+              - Math.abs(a.period_a.impressions / periodADays - a.period_b.impressions / periodBDays)
+            || Math.abs(b.diff.impressions) - Math.abs(a.diff.impressions)
+            || Math.abs(b.diff.clicks) - Math.abs(a.diff.clicks)
+            || a.key.localeCompare(b.key));
+        } else if (sort_by === 'absolute_ctr_change') {
+          comparison.sort((a, b) =>
+            Math.abs(b.period_a.ctr - b.period_b.ctr)
+              - Math.abs(a.period_a.ctr - a.period_b.ctr)
+            || Math.abs(b.diff.clicks) - Math.abs(a.diff.clicks)
+            || a.key.localeCompare(b.key));
+        } else if (sort_by === 'absolute_position_change') {
+          comparison.sort((a, b) =>
+            Math.abs(b.period_a.position! - b.period_b.position!)
+              - Math.abs(a.period_a.position! - a.period_b.position!)
+            || Math.abs(b.diff.impressions) - Math.abs(a.diff.impressions)
+            || a.key.localeCompare(b.key));
+        }
+        const observedKeys = (rows: typeof sourceA.rows) => new Set(
+          rows.filter((row) => (row.keys?.length ?? 0) > 0)
+            .map((row) => row.keys![0]),
+        );
+        const keysA = observedKeys(sourceA.rows);
+        const keysB = observedKeys(sourceB.rows);
+        const commonCount = [...keysA].filter((key) => keysB.has(key)).length;
+        const sampleObservedOnly = (rows: typeof sourceA.rows, otherKeys: ReadonlySet<string>) => {
+          const seen = new Set<string>();
+          return rows
+            .filter((row) => row.keys !== undefined && row.keys.length > 0
+              && !otherKeys.has(row.keys[0]))
+            .sort((a, b) => b.impressions - a.impressions || b.clicks - a.clicks
+              || a.keys![0].localeCompare(b.keys![0]))
+            .filter((row) => {
+              const key = row.keys![0];
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            })
+            .slice(0, 3)
+            .map((row) => ({
+              key: row.keys![0], clicks: row.clicks, impressions: row.impressions,
+              ctr: row.ctr, position: row.position ?? null,
+            }));
+        };
         const bounded = windowKnownResults(comparison, start_row, limit);
+        const commonTotals = allComparisons.reduce((totals, item) => ({
+          aClicks: totals.aClicks + item.period_a.clicks,
+          bClicks: totals.bClicks + item.period_b.clicks,
+          aImpressions: totals.aImpressions + item.period_a.impressions,
+          bImpressions: totals.bImpressions + item.period_b.impressions,
+        }), { aClicks: 0, bClicks: 0, aImpressions: 0, bImpressions: 0 });
+        const aDailyClicks = commonTotals.aClicks / periodADays;
+        const bDailyClicks = commonTotals.bClicks / periodBDays;
+        const aDailyImpressions = commonTotals.aImpressions / periodADays;
+        const bDailyImpressions = commonTotals.bImpressions / periodBDays;
+        const comparisonScopeNote = [
+          `site_url=${site_url}`,
+          `dimension=${dimension ?? 'query'}`,
+          `search_type=${search_type ?? 'web'}`,
+          `data_state=${data_state ?? 'final'}`,
+          `sort_by=${sort_by}`,
+          `click_change_direction=${click_change_direction}`,
+          `impression_change_direction=${impression_change_direction}`,
+          `ctr_change_direction=${ctr_change_direction}`,
+          `position_change_direction=${position_change_direction}`,
+          `min_impressions_per_period=${min_impressions_per_period}`,
+          `period_a=${start_date_a}..${end_date_a}`,
+          `period_b=${start_date_b}..${end_date_b}`,
+          `dimension_filter_groups=${dimension_filter_groups?.length ?? 0}`,
+        ].join('; ');
         const payload = {
+          site_url,
           comparison_scope: 'common_returned_rows_only' as const,
-          comparison_note: COMMON_RETURNED_ROWS_COMPARISON_NOTE,
+          comparison_note: `${COMMON_RETURNED_ROWS_COMPARISON_NOTE} Scope: ${comparisonScopeNote}. Filter groups, if present, are applied equally to both periods. Click and impression direction filters independently use ${dailyBasis ? 'daily-average' : 'raw'} differences before pagination, regardless of the ranking metric; both must match if set, and ties are excluded from gain/loss. The optional impression floor requires observations in both periods before pagination.${sort_by === 'absolute_ctr_change' ? ' CTR movement ranks by unrounded period CTR fractions (percentage-point difference), excluding rows with zero observed impressions in either period; displayed CTR differences remain rounded.' : ''}${sort_by === 'absolute_position_change' ? ' Average-position movement ranks by unrounded period averages for keys with recorded positions and positive impressions in both periods; the displayed position difference remains rounded. This is not a live ranking or proof of a ranking change for the page.' : ''}${ctr_change_direction !== 'all' ? ' CTR direction uses unrounded period fractions and requires positive observed impressions in both periods, independent of the selected ranking and raw/daily time basis; CTR ties are excluded.' : ''}${position_change_direction !== 'all' ? ' Lower average position in period A than period B is an improvement; a higher average position is a decline. Direction uses unrounded averages, requires recorded positions and positive impressions in both periods, and excludes ties before pagination. This is not a verified live ranking change.' : ''}${sort_by.includes('impression_change') ? ' Impression-based ranking reveals observed visibility movement even when clicks do not move; impressions do not establish live ranking changes.' : ''}${search_type === 'discover' || search_type === 'googleNews' ? ' Average position is not supported for this surface and is null, not zero or a live ranking.' : ''}`,
+          click_change_direction,
+          impression_change_direction,
+          ctr_change_direction,
+          position_change_direction,
+          min_impressions_per_period,
+          period_comparability: {
+            period_a_days: periodADays,
+            period_b_days: periodBDays,
+            equal_length: equalLength,
+            periods_overlap: periodsOverlap,
+            note: [
+              'Raw clicks and impression differences are not normalized per day.',
+              ...(!equalLength ? ['The periods have unequal lengths, so raw totals are not directly like-for-like.'] : []),
+              ...(periodsOverlap ? ['The date ranges overlap, so these are not independent comparison periods.'] : []),
+            ].join(' '),
+          },
+          observed_dimension_overlap: {
+            period_a_count: keysA.size,
+            period_b_count: keysB.size,
+            comparable_count: commonCount,
+            period_a_only_count: keysA.size - commonCount,
+            period_b_only_count: keysB.size - commonCount,
+            period_a_only_samples: sampleObservedOnly(sourceA.rows, keysB),
+            period_b_only_samples: sampleObservedOnly(sourceB.rows, keysA),
+            note: 'Counts reflect distinct returned dimension keys, including rows without average position. Each sample lists up to three one-period-only keys ranked by observed impressions, not an exhaustive list. Missing rows are not zero traffic or proof that a key appeared/disappeared; one-period-only keys are not compared.',
+          },
           data_state,
           preliminary_data_possible: data_state !== 'final',
           comparisons: bounded.items,
+          observed_common_rows_daily_average: {
+            period_a: { clicks: aDailyClicks, impressions: aDailyImpressions },
+            period_b: { clicks: bDailyClicks, impressions: bDailyImpressions },
+            diff: { clicks: aDailyClicks - bDailyClicks, impressions: aDailyImpressions - bDailyImpressions },
+            note: 'Per-calendar-day averages sum all dimension keys returned in both periods across the fetched comparison sample, before any local click or impression direction filter; not property-wide traffic or a daily time series. Missing rows are not treated as zero. Rates do not make overlapping windows independent.',
+          },
           pagination: {
             period_a: paginationMetadata(sourceA),
             period_b: paginationMetadata(sourceB),

@@ -2517,6 +2517,17 @@ test('processQuickWins: filters queries ranking 8-20 with min impressions and so
   assert.equal(wins[1].query, 'query2');
 });
 
+test('processQuickWins: optional CTR ceiling keeps low-click opportunities and zero-CTR rows', () => {
+  const rows = [
+    { keys: ['higher ctr', 'https://example.com/a'], clicks: 10, impressions: 200, ctr: 0.05, position: 12 },
+    { keys: ['low ctr', 'https://example.com/b'], clicks: 2, impressions: 200, ctr: 0.01, position: 12 },
+    { keys: ['no clicks', 'https://example.com/c'], clicks: 0, impressions: 150, ctr: 0, position: 12 },
+  ];
+  assert.equal(processQuickWins(rows, 100, 8, 20).length, 3);
+  assert.deepEqual(processQuickWins(rows, 100, 8, 20, 0.02).map((row) => row.query), ['low ctr', 'no clicks']);
+  assert.deepEqual(processQuickWins(rows, 100, 8, 20, 0).map((row) => row.query), ['no clicks']);
+});
+
 test('processCannibalization: groups by query and finds multiple pages with min impressions and share percentage', () => {
   const rows = [
     // Cannibalized query: query1 is split across page1 and page2
@@ -2535,6 +2546,38 @@ test('processCannibalization: groups by query and finds multiple pages with min 
   assert.equal(candidates[0].total_impressions, 200);
   assert.equal(candidates[0].pages[0].impression_share, 50);
   assert.equal(candidates[0].pages.length, 2);
+});
+
+test('processCannibalization: eligibility uses exact observed impression shares before rounding for display', () => {
+  const rows = [
+    { keys: ['below threshold', 'https://example.com/main'], clicks: 20, impressions: 9004, ctr: 0.01, position: 3 },
+    { keys: ['below threshold', 'https://example.com/other'], clicks: 3, impressions: 996, ctr: 0.003, position: 12 },
+    { keys: ['exact threshold', 'https://example.com/main'], clicks: 20, impressions: 9000, ctr: 0.01, position: 3 },
+    { keys: ['exact threshold', 'https://example.com/other'], clicks: 3, impressions: 1000, ctr: 0.003, position: 12 },
+    { keys: ['above threshold', 'https://example.com/main'], clicks: 20, impressions: 8996, ctr: 0.01, position: 3 },
+    { keys: ['above threshold', 'https://example.com/other'], clicks: 3, impressions: 1004, ctr: 0.003, position: 12 },
+  ];
+  const candidates = processCannibalization(rows, 50, 10);
+  assert.deepEqual(candidates.map((candidate) => candidate.query).sort(), ['above threshold', 'exact threshold']);
+  assert.equal(candidates.find((candidate) => candidate.query === 'exact threshold')?.pages[1].impression_share, 10);
+  assert.equal(processCannibalization(rows, 50, 9.9).length, 3);
+});
+
+test('processCannibalization: retains measured competing-page traffic without optional average position', () => {
+  const rows = [
+    { keys: ['shared intent', 'https://example.com/a'], clicks: 20, impressions: 100, ctr: 0.2, position: 8 },
+    { keys: ['shared intent', 'https://example.com/b'], clicks: 4, impressions: 80, ctr: 0.05 },
+  ];
+
+  const [candidate] = processCannibalization(rows, 50, 10);
+  assert.ok(candidate, 'both returned pages should be considered for observed overlap');
+  assert.equal(candidate.total_clicks, 24);
+  assert.equal(candidate.total_impressions, 180);
+  assert.deepEqual(candidate.pages.map(({ page, position }) => ({ page, position })), [
+    { page: 'https://example.com/a', position: 8 },
+    { page: 'https://example.com/b', position: null },
+  ]);
+  assert.equal(candidate.pages[1].impression_share, 44.4);
 });
 
 test('processContentDecay: identifies page traffic drop and calculates click drop metrics', () => {
@@ -2610,6 +2653,30 @@ test('processContentDecay: ignores pages missing from one Search Analytics perio
   );
 
   assert.deepEqual(decay, []);
+});
+
+test('processContentDecay: preserves observed click declines when average position is absent', () => {
+  const recentRows = [
+    { keys: ['https://example.com/decline'], clicks: 40, impressions: 500, ctr: 0.08 },
+    { keys: ['https://example.com/uncertain'], clicks: 8, impressions: 1300, ctr: 8 / 1300, position: 5 },
+  ];
+  const previousRows = [
+    { keys: ['https://example.com/decline'], clicks: 100, impressions: 1000, ctr: 0.1, position: 8 },
+    { keys: ['https://example.com/uncertain'], clicks: 10, impressions: 1000, ctr: 0.01 },
+  ];
+
+  const results = processContentDecay(recentRows, previousRows);
+  assert.equal(results.length, 2);
+  assert.equal(results[0].classification, 'likely_decay');
+  assert.equal(results[0].page, 'https://example.com/decline');
+  assert.equal(results[0].click_difference, -60);
+  assert.equal(results[0].recent_position, null);
+  assert.equal(results[0].previous_position, 8);
+  assert.equal(results[0].position_change, null);
+  assert.equal(results[1].classification, 'weak_insufficient_evidence');
+  assert.equal(results[1].recent_position, 5);
+  assert.equal(results[1].previous_position, null);
+  assert.equal(results[1].position_change, null);
 });
 
 test('requestIndexing: sends POST request to the correct indexing endpoint for an eligible JobPosting URL', async () => {

@@ -36,3 +36,29 @@ test('processPerformanceComparison represents explicit zero baselines accurately
   });
   assert.equal(comparisons.some(({ key }) => key === 'gone'), false);
 });
+
+test('processPerformanceComparison retains observed clicks without an average-position metric', () => {
+  const comparisons = processPerformanceComparison(
+    [
+      { keys: ['https://example.com/story'], clicks: 40, impressions: 500, ctr: 0.08 },
+      { keys: ['US'], clicks: 12, impressions: 100, ctr: 0.12, position: 7 },
+      { keys: ['new only'], clicks: 3, impressions: 10, ctr: 0.3 },
+    ],
+    [
+      { keys: ['https://example.com/story'], clicks: 20, impressions: 200, ctr: 0.1 },
+      { keys: ['US'], clicks: 8, impressions: 90, ctr: 0.089 },
+      { keys: ['old only'], clicks: 10, impressions: 30, ctr: 0.33 },
+    ],
+  );
+
+  assert.deepEqual(comparisons.map(({ key }) => key), ['https://example.com/story', 'US']);
+  assert.deepEqual(comparisons[0].period_a, {
+    clicks: 40, impressions: 500, ctr: 0.08, position: null,
+  });
+  assert.deepEqual(comparisons[0].period_b, {
+    clicks: 20, impressions: 200, ctr: 0.1, position: null,
+  });
+  assert.equal(comparisons[0].diff.clicks, 20);
+  assert.equal(comparisons[0].diff.position, null);
+  assert.equal(comparisons[1].diff.position, null);
+});
