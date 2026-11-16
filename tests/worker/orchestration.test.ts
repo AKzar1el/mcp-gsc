@@ -62,6 +62,26 @@ function createPendingStateBinding() {
 }
 
 describe('Worker orchestration', () => {
+  it('advertises the existing low-CTR quick-wins filter in capabilities', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+      { google_id: 'catalog-user', email: 'catalog@example.test' },
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, never>) => Promise<{
+          structuredContent: { tools: Array<{ name: string; description: string }> };
+        }>;
+      }>;
+    })._registeredTools;
+    const capabilities = await registered['server.capabilities'].handler({});
+    const quickWins = capabilities.structuredContent.tools.find(
+      (tool) => tool.name === 'insights.quick_wins',
+    );
+    expect(quickWins?.description).toContain('max_ctr');
+    expect(quickWins?.description).toContain('after Google pagination');
+  });
+
   it('denies all four property/sitemap metadata reads before requesting Google credentials', async () => {
     const take = vi.fn(async (_bucket: string, _policy: { category: string }, _units: number) => (
       { allowed: false, retry_after_ms: 30_000 }

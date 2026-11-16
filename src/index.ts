@@ -1072,7 +1072,7 @@ const TOOL_CATALOG = [
   {
     name: 'insights.quick_wins',
     description:
-      'Find observed query/page rows meeting an impression threshold and configurable average-position opportunity range (8-20 by default). Optional search_type selects Web (default), Image, Video, or News-tab opportunities, and page_contains, query_contains, country (ISO alpha-3 searcher country) and device (desktop/mobile/tablet) filter at Google before pagination. Average position is not a literal current rank; CTR is context, not an eligibility filter; selected surfaces and scoped rows are not property-wide totals.',
+      'Find observed query/page rows meeting an impression threshold and configurable average-position opportunity range (8-20 by default). Optional max_ctr (fraction 0-1, e.g. 0.02 for 2%) selects returned rows with CTR at or below the ceiling after Google pagination, not as a Google-side filter. Optional search_type selects Web (default), Image, Video, or News-tab opportunities, and page_contains, query_contains, country (ISO alpha-3 searcher country) and device (desktop/mobile/tablet) filter at Google before pagination. Average position is not a literal current rank, and low CTR alone does not prove an SEO problem; selected surfaces and scoped rows are not property-wide totals.',
   },
   {
     name: 'insights.cannibalization',
