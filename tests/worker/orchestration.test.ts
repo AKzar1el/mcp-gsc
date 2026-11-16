@@ -4552,6 +4552,73 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('ranks observed average-position movement without rounding away differences or inventing missing positions', async () => {
+    await saveUser(workerEnv, 'position-sort-user', 'position-sort@example.test', 'position-sort-refresh');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'position-sort-user', email: 'position-sort@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'position-sort-access', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          const recent = body.startDate === '2026-09-01';
+          return response({ rows: [
+            { keys: ['large shift'], clicks: 10, impressions: 200, ctr: 0.05, position: recent ? 5.5 : 9 },
+            { keys: ['precise shift'], clicks: 5, impressions: 1000, ctr: 0.005, position: recent ? 3.14 : 3 },
+            { keys: ['smaller shift'], clicks: 5, impressions: 1000, ctr: 0.005, position: recent ? 4.11 : 4 },
+            { keys: ['missing position'], clicks: 500, impressions: 1000, ctr: 0.5,
+              ...(recent ? {} : { position: 20 }) },
+            { keys: ['zero-impression baseline'], clicks: recent ? 10 : 0, impressions: recent ? 1000 : 0,
+              ctr: recent ? 0.01 : 0, position: recent ? 1 : 30 },
+          ] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01', end_date_a: '2026-09-07',
+        start_date_b: '2026-08-25', end_date_b: '2026-08-31',
+        dimension: 'query', search_type: 'web', data_state: 'final',
+      };
+      type Result = { structuredContent: {
+        comparisons: Array<{ key: string; diff: { position: number | null } }>;
+        comparison_note: string;
+      }; isError?: boolean };
+      const sorted = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_position_change', limit: 10,
+      }) as Result;
+      expect(sorted.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['large shift', 'precise shift', 'smaller shift']);
+      expect(sorted.structuredContent.comparisons.slice(1).map((row) => row.diff.position))
+        .toEqual([0.1, 0.1]);
+      const secondPage = await tools['analytics.compare'].handler({
+        ...args, sort_by: 'absolute_position_change', start_row: 1, limit: 1,
+      }) as Result;
+      expect(secondPage.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['precise shift']);
+      expect(sorted.structuredContent.comparison_note).toContain('not a live ranking');
+      const unsupported = await tools['analytics.compare'].handler({
+        ...args, search_type: 'discover', dimension: 'page', sort_by: 'absolute_position_change',
+      }) as Result;
+      expect(unsupported.isError).toBe(true);
+      expect(requests).toHaveLength(4);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('ranks unrounded CTR movement after requiring observed impressions in both periods', async () => {
     await saveUser(workerEnv, 'ctr-movement-user', 'ctr-movement@example.test', 'ctr-movement-refresh');
     const server = await createGscMcpServer(
