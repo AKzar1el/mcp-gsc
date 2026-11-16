@@ -102,6 +102,7 @@ describe('Worker orchestration', () => {
     expect(comparison?.description).toContain('ctr_change_direction');
     expect(comparison?.description).toContain('position_change_direction');
     expect(comparison?.description).toContain('min_impressions_per_period');
+    expect(comparison?.description).toContain('min_baseline_clicks');
     expect(comparison?.description).toContain('before pagination');
     expect(comparison?.description).toContain('Discover');
   });
@@ -4619,6 +4620,7 @@ describe('Worker orchestration', () => {
       type Result = { structuredContent: {
         comparisons: Array<{ key: string; diff: { clicks_percentage: number | null } }>;
         comparison_note: string;
+        min_baseline_clicks: number;
         result_page: { next_start_row?: number };
       } };
       const sorted = await tools['analytics.compare'].handler({ ...args, limit: 10 }) as Result;
@@ -4632,7 +4634,14 @@ describe('Worker orchestration', () => {
       const secondPage = await tools['analytics.compare'].handler({ ...args, limit: 1, start_row: 1 }) as Result;
       expect(secondPage.structuredContent.comparisons.map((row) => row.key)).toEqual(['loss leader']);
       expect(secondPage.structuredContent.result_page.next_start_row).toBe(2);
-      expect(requests).toHaveLength(4);
+      const floor = await tools['analytics.compare'].handler({
+        ...args, min_baseline_clicks: 20, limit: 2,
+      }) as Result;
+      expect(floor.structuredContent.min_baseline_clicks).toBe(20);
+      expect(floor.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['raw leader', 'fine winner']);
+      expect(floor.structuredContent.comparison_note).toContain('min_baseline_clicks=20');
+      expect(requests).toHaveLength(6);
       expect(requests.every((request) => (request.startRow ?? 0) === 0)).toBe(true);
     } finally {
       globalThis.fetch = originalFetch;
