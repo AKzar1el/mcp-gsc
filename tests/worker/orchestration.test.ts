@@ -4619,6 +4619,81 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('separates observed average-position improvements and declines before pagination', async () => {
+    await saveUser(workerEnv, 'position-direction-user', 'position-direction@example.test', 'position-direction-refresh');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'position-direction-user', email: 'position-direction@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'position-direction-access', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          const current = body.startDate === '2026-09-01';
+          return response({ rows: [
+            { keys: ['strong improvement'], clicks: 6, impressions: 1000, ctr: 0.006, position: current ? 4.2 : 10 },
+            { keys: ['small improvement'], clicks: 6, impressions: 1000, ctr: 0.006, position: current ? 4.004 : 4.2 },
+            { keys: ['decline'], clicks: 6, impressions: 1000, ctr: 0.006, position: current ? 8 : 5 },
+            { keys: ['unchanged'], clicks: 6, impressions: 1000, ctr: 0.006, position: 7 },
+            { keys: ['missing baseline'], clicks: 6, impressions: 1000, ctr: 0.006,
+              ...(current ? { position: 2 } : {}) },
+            { keys: ['zero-impression baseline'], clicks: current ? 6 : 0, impressions: current ? 1000 : 0,
+              ctr: current ? 0.006 : 0, position: current ? 1 : 20 },
+            { keys: ['low-volume improvement'], clicks: 1, impressions: 10, ctr: 0.1, position: current ? 1 : 15 },
+          ] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-09-01', end_date_a: '2026-09-07',
+        start_date_b: '2026-08-25', end_date_b: '2026-08-31',
+        dimension: 'query', search_type: 'web', data_state: 'final',
+        sort_by: 'absolute_position_change', min_impressions_per_period: 100,
+      };
+      type Result = { structuredContent: {
+        comparisons: Array<{ key: string }>;
+        position_change_direction: string;
+        comparison_note: string;
+      }; isError?: boolean };
+      const improvements = await tools['analytics.compare'].handler({
+        ...args, position_change_direction: 'improvement', limit: 10,
+      }) as Result;
+      expect(improvements.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['strong improvement', 'small improvement']);
+      expect(improvements.structuredContent.position_change_direction).toBe('improvement');
+      const declines = await tools['analytics.compare'].handler({
+        ...args, position_change_direction: 'decline', limit: 10,
+      }) as Result;
+      expect(declines.structuredContent.comparisons.map((row) => row.key)).toEqual(['decline']);
+      const secondImprovement = await tools['analytics.compare'].handler({
+        ...args, position_change_direction: 'improvement', start_row: 1, limit: 1,
+      }) as Result;
+      expect(secondImprovement.structuredContent.comparisons.map((row) => row.key))
+        .toEqual(['small improvement']);
+      const unsupported = await tools['analytics.compare'].handler({
+        ...args, search_type: 'discover', dimension: 'page',
+        sort_by: 'absolute_click_change', position_change_direction: 'decline',
+      }) as Result;
+      expect(unsupported.isError).toBe(true);
+      expect(improvements.structuredContent.comparison_note).toContain('Lower average position');
+      expect(requests).toHaveLength(6);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('ranks unrounded CTR movement after requiring observed impressions in both periods', async () => {
     await saveUser(workerEnv, 'ctr-movement-user', 'ctr-movement@example.test', 'ctr-movement-refresh');
     const server = await createGscMcpServer(
