@@ -1,7 +1,12 @@
+import { z } from 'zod';
+
 export const STRUCTURED_RESULT_BYTE_BUDGET = 48_000;
 export const DEFAULT_ANALYSIS_RESULT_LIMIT = 50;
 export const MAX_ANALYSIS_RESULT_LIMIT = 100;
 export const MAX_DIRECT_SOURCE_ROWS = 500;
+
+// Search Analytics startRow is a signed 32-bit integer; validate before rate-limit reservation.
+export const SEARCH_ANALYTICS_START_ROW_SCHEMA = z.number().int().min(0).max(2_147_483_647);
 
 export interface BoundedItems<T> {
   items: T[];

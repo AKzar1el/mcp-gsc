@@ -4,5 +4,48 @@ export const CONTENT_DECAY_COMPARE_DAYS_SCHEMA = z
   .number()
   .int()
   .min(1)
+  // Two contiguous periods plus the three-day finalized-data lag must fit inside
+  // the shortest rolling 16-calendar-month Search Console performance window.
+  .max(240)
   .default(30)
-  .describe('Number of days to compare (recent period vs previous period). Must be at least 1. Default is 30.');
+  .describe('Number of days in each comparison period (recent vs previous). Must be 1-240 to keep both periods inside Search Console\'s 16-month performance history with a three-day finalized-data lag. Default is 30.');
+
+export const CONTENT_DECAY_PAGE_CONTAINS_SCHEMA = z
+  .string()
+  .trim()
+  .min(1)
+  .max(120)
+  .optional()
+  .describe('Optional case-insensitive page URL substring, such as /de/, applied to both Google Search Analytics requests before pagination. Restricts both comparison periods to matching page URLs without extra requests or treating absent rows as zero.');
+
+export const CONTENT_DECAY_QUERY_CONTAINS_SCHEMA = z
+  .string()
+  .trim()
+  .min(1)
+  .max(240)
+  .optional()
+  .describe('Optional case-insensitive query topic substring, such as technical seo, applied to both Google Search Analytics requests before pagination. Can combine with page_contains as AND; results reflect the filtered query topic, not all property traffic.');
+
+export const CONTENT_DECAY_COUNTRY_SCHEMA = z
+  .string()
+  .trim()
+  .regex(/^[a-zA-Z]{3}$/, 'Use a three-letter ISO 3166-1 alpha-3 country code such as SVN or DEU.')
+  .optional()
+  .describe('Optional ISO 3166-1 alpha-3 searcher country, such as DEU for Germany, not the page language. Applies identically to both periods and combines with page_contains and query_contains as Google-side AND filters.');
+
+export const CONTENT_DECAY_DEVICE_SCHEMA = z
+  .enum(['desktop', 'mobile', 'tablet'])
+  .optional()
+  .describe('Optional searcher device (desktop, mobile, or tablet). Applied to both comparison periods as a Google-side AND filter alongside page_contains, query_contains, and country; omitting it preserves all-device behavior.');
+
+export const CONTENT_DECAY_CLASSIFICATION_FILTER_SCHEMA = z
+  .enum(['all', 'likely_decay', 'weak_insufficient_evidence', 'improving_visibility_with_click_volatility'])
+  .default('all')
+  .describe('Optional local result filter: all (default) returns every observed click-decline assessment; choose one evidence classification to focus returned rows. It does not change Google requests, source coverage, or total assessment/decay counts.');
+
+export const CONTENT_DECAY_MIN_CLICK_LOSS_SCHEMA = z
+  .number()
+  .int()
+  .nonnegative()
+  .optional()
+  .describe('Optional minimum absolute observed click decline between comparable periods (e.g. 20 means at least 20 fewer clicks). Applied only to returned assessment rows, not Google requests or unfiltered evidence counts. Omit for all observed declines; zero does not exclude any.');

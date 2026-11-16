@@ -18,6 +18,7 @@ const QUICK_WINS_THRESHOLDS_SHAPE = {
   min_impressions: z.number().int().min(0).default(100).describe('Minimum impressions required to consider an observed query/page row. Must be at least 0. Default is 100.'),
   min_position: z.number().positive().default(8).describe('Minimum Search Console average position for the opportunity range (inclusive). This is an aggregate metric, not a literal current rank. Must be greater than 0. Default is 8.'),
   max_position: z.number().positive().default(20).describe('Maximum Search Console average position for the opportunity range (inclusive). This is an aggregate metric, not a literal current rank. Must be greater than 0. Default is 20.'),
+  max_ctr: z.number().min(0).max(1).optional().describe('Optional inclusive upper bound on observed Search Console CTR expressed as a fraction (0.02 means 2%). Applied locally to returned rows after Google pagination; omit to keep all CTR values. A low CTR does not itself prove an SEO problem.'),
 };
 
 export function createQuickWinsInputSchema() {
@@ -32,7 +33,25 @@ export function createQuickWinsInputSchema() {
           'End date (inclusive) in YYYY-MM-DD format. Note the 2-3 day GSC data lag.',
         ),
       ),
+      search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe(
+        'Google Search surface for opportunity rows: Web (default), Image, Video, or News tab. Thresholds and average position apply only within that surface; not Discover or Google News, which lack average position.',
+      ),
+      data_state: z.enum(['all', 'final']).optional().describe(
+        "Omit for Google's finalized-only default; 'all' includes recent preliminary Search Analytics rows that may still change. 'final' requests finalized data only.",
+      ),
       ...QUICK_WINS_THRESHOLDS_SHAPE,
+      page_contains: z.string().trim().min(1).max(240).optional().describe(
+        'Optional case-insensitive page URL substring (for example /de/). Google filters matching pages before query/page pagination, so opportunities are limited to that URL subset, not property-wide results.',
+      ),
+      query_contains: z.string().trim().min(1).max(240).optional().describe(
+        'Optional case-insensitive query topic substring (for example technical seo). Google filters matching queries before query/page pagination; combine with page_contains to target one topic in one URL section. Filtered results are not property-wide.',
+      ),
+      country: z.string().trim().regex(/^[a-zA-Z]{3}$/, 'Use a three-letter ISO 3166-1 alpha-3 country code such as SVN or DEU.').optional().describe(
+        'Optional searcher country (ISO 3166-1 alpha-3, e.g. DEU for Germany), not URL language. Combined with page_contains and query_contains as Google-side AND filters before pagination; the result is not property-wide.',
+      ),
+      device: z.enum(['desktop', 'mobile', 'tablet']).optional().describe(
+        'Optional Search Console searcher device. Combined with page_contains, query_contains and country as Google-side AND filters before pagination. Omit for all devices; filtered results are not property-wide.',
+      ),
       limit: z
         .number()
         .int()
