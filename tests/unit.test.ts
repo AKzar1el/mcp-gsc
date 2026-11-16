@@ -2655,6 +2655,30 @@ test('processContentDecay: ignores pages missing from one Search Analytics perio
   assert.deepEqual(decay, []);
 });
 
+test('processContentDecay: preserves observed click declines when average position is absent', () => {
+  const recentRows = [
+    { keys: ['https://example.com/decline'], clicks: 40, impressions: 500, ctr: 0.08 },
+    { keys: ['https://example.com/uncertain'], clicks: 8, impressions: 1300, ctr: 8 / 1300, position: 5 },
+  ];
+  const previousRows = [
+    { keys: ['https://example.com/decline'], clicks: 100, impressions: 1000, ctr: 0.1, position: 8 },
+    { keys: ['https://example.com/uncertain'], clicks: 10, impressions: 1000, ctr: 0.01 },
+  ];
+
+  const results = processContentDecay(recentRows, previousRows);
+  assert.equal(results.length, 2);
+  assert.equal(results[0].classification, 'likely_decay');
+  assert.equal(results[0].page, 'https://example.com/decline');
+  assert.equal(results[0].click_difference, -60);
+  assert.equal(results[0].recent_position, null);
+  assert.equal(results[0].previous_position, 8);
+  assert.equal(results[0].position_change, null);
+  assert.equal(results[1].classification, 'weak_insufficient_evidence');
+  assert.equal(results[1].recent_position, 5);
+  assert.equal(results[1].previous_position, null);
+  assert.equal(results[1].position_change, null);
+});
+
 test('requestIndexing: sends POST request to the correct indexing endpoint for an eligible JobPosting URL', async () => {
   const mockResult = {
     urlNotificationMetadata: {

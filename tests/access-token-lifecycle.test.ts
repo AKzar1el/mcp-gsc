@@ -54,13 +54,13 @@ function installDigestAnalyticsMock(
       clicks: number;
       impressions: number;
       ctr: number;
-      position: number;
+      position?: number;
     };
     previousTotals?: {
       clicks: number;
       impressions: number;
       ctr: number;
-      position: number;
+      position?: number;
     };
     previousQueryRows?: Array<{
       keys: string[];
@@ -453,6 +453,85 @@ test('weekly digest reports only the distinct queries actually seen in both boun
     );
     assert.match(digest, /Returned query-row overlap:.*2.*2.*1/);
     assert.doesNotMatch(digest, /Query trends not comparable/);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest surfaces only observed current-only query examples without inventing new demand', async () => {
+  const row = (query: string, impressions: number) => ({
+    keys: [query], clicks: 1, impressions, ctr: 1 / impressions, position: 9,
+  });
+  const totals = { clicks: 15, impressions: 400, ctr: 0.0375, position: 9 };
+  const restoreFetch = installDigestAnalyticsMock([
+    row('site:example.com', 120), row('shared query', 100),
+    row('low priority', 8), row('middle opportunity', 45),
+    row('high opportunity', 80), row('third opportunity', 25),
+  ], {
+    previousQueryRows: [row('shared query', 100), row('previous only', 20)],
+    currentTotals: totals,
+    previousTotals: totals,
+  });
+  const mockedFetch = globalThis.fetch;
+  let requestCount = 0;
+  globalThis.fetch = async (input, init) => {
+    requestCount++;
+    return mockedFetch(input, init);
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const sample = digest.match(/### Queries returned this week but not in last week's sample([\s\S]*?)(?=\n## |\n### |$)/)?.[1];
+    assert.ok(sample, 'show a bounded sample of current-only observed query rows');
+    assert.match(sample, /high opportunity.*80 impressions/);
+    assert.match(sample, /middle opportunity.*45 impressions/);
+    assert.match(sample, /third opportunity.*25 impressions/);
+    assert.ok(sample.indexOf('high opportunity') < sample.indexOf('middle opportunity'));
+    assert.ok(sample.indexOf('middle opportunity') < sample.indexOf('third opportunity'));
+    assert.doesNotMatch(sample, /site:example\.com|shared query|low priority/);
+    assert.match(sample, /not proof of new demand/i);
+    assert.match(sample, /missing.*not.*zero/i);
+    assert.equal(requestCount, 5, 'reuse the existing five Search Analytics calls');
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest surfaces observed prior-only queries without claiming lost traffic', async () => {
+  const row = (query: string, impressions: number) => ({
+    keys: [query], clicks: 1, impressions, ctr: 1 / impressions, position: 9,
+  });
+  const totals = { clicks: 15, impressions: 400, ctr: 0.0375, position: 9 };
+  const restoreFetch = installDigestAnalyticsMock([row('shared query', 100)], {
+    previousQueryRows: [
+      row('site:example.com', 500), row('shared query', 100), row('lower priority', 5),
+      row('high previous', 90), row('middle previous', 60), row('third previous', 30),
+    ],
+    currentTotals: totals,
+    previousTotals: totals,
+  });
+  const mockedFetch = globalThis.fetch;
+  let requestCount = 0;
+  globalThis.fetch = async (input, init) => {
+    requestCount++;
+    return mockedFetch(input, init);
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const sample = digest.match(/### Queries returned last week but not in this week's sample([\s\S]*?)(?=\n## |\n### |$)/)?.[1];
+    assert.ok(sample, 'show observed prior-only query examples');
+    assert.match(sample, /high previous.*90 impressions/);
+    assert.match(sample, /middle previous.*60 impressions/);
+    assert.match(sample, /third previous.*30 impressions/);
+    assert.ok(sample.indexOf('high previous') < sample.indexOf('middle previous'));
+    assert.ok(sample.indexOf('middle previous') < sample.indexOf('third previous'));
+    assert.doesNotMatch(sample, /site:example\.com|shared query|lower priority/);
+    assert.match(sample, /not proof of lost traffic/i);
+    assert.match(sample, /missing.*not.*zero/i);
+    assert.equal(requestCount, 5);
   } finally {
     restoreFetch();
   }
@@ -921,6 +1000,27 @@ test('weekly digest does not assign a cause from sitewide average-position movem
     assert.doesNotMatch(digest, /Something you did is working/i);
   } finally {
     restoreFetch();
+  }
+});
+
+test('weekly digest does not claim an average-position change when either aggregate omits position', async () => {
+  const stableMetrics = { clicks: 10, impressions: 100, ctr: 0.1 };
+  for (const missingPeriod of ['current', 'previous'] as const) {
+    const restoreFetch = installDigestAnalyticsMock([], {
+      currentTotals: { ...stableMetrics, position: missingPeriod === 'current' ? undefined : 8 },
+      previousTotals: { ...stableMetrics, position: missingPeriod === 'previous' ? undefined : 8 },
+    });
+    try {
+      const digest = await generateWeeklyDigest(
+        createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+      );
+      assert.match(digest, /Average Search Console position:.*\(no comparison available\)/);
+      assert.doesNotMatch(digest, /### Site-level changes/);
+      assert.doesNotMatch(digest, /average Search Console position (?:improved|worsened) by/i);
+      assert.match(digest, /Query trends not comparable/);
+    } finally {
+      restoreFetch();
+    }
   }
 });
 
