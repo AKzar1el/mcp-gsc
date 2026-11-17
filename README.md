@@ -224,6 +224,8 @@ MCP clients can call read-only `server.capabilities` to discover the existing `a
 
 ## What you can ask
 
+For a multilingual site, call `indexing.list_pages` with `page_contains: "/de/"` to find Search-visible pages within the German URL section. The filter is applied at Google before pagination and adds no API requests. The response echoes `page_contains`, and its metrics describe only the matching pages returned by Search Analytics. This is not a complete index-coverage inventory: use URL Inspection to check an individual page's indexed state.
+
 **Agency reporting workflow:** [Read-only weekly Search Console reporting for SEO agencies](docs/agency-weekly-reporting.md) walks through exact-property verification, one bounded weekly digest, matched-period comparisons, evidence checks, and a reusable human-reviewed client report. It contains no fabricated client metrics or automated outreach.
 
 Weekly digest headings retain the URL path for a URL-prefix property (for example, `example.com/de/` versus `example.com/fr/`) so reports for different site sections remain distinguishable. HTTP URL-prefix headings explicitly retain `http://` to distinguish them from HTTPS properties; Domain property headings identify their broader property type. Common HTTPS root properties keep short host headings. This reflects Search Console's separate protocol/property scopes, not guaranteed complete traffic.
