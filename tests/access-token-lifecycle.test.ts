@@ -830,6 +830,43 @@ test('finalized weekly digest retains observed page and query rows without aggre
   }
 });
 
+test('finalized missing-aggregate digest retains bounded prior-week query evidence without claiming lost traffic', async () => {
+  const originalFetch = globalThis.fetch;
+  let analyticsCalls = 0;
+  globalThis.fetch = async (_input, init) => {
+    analyticsCalls++;
+    const request = JSON.parse(String(init?.body)) as { dimensions?: string[]; startDate: string };
+    const rows = request.startDate === '2026-07-28' && request.dimensions?.[0] === 'query'
+      ? [
+          { keys: ['site:example.com'], clicks: 0, impressions: 100 },
+          { keys: ['previous guide'], clicks: 8, impressions: 80 },
+          { keys: ['previous tutorial'], clicks: 4, impressions: 60 },
+          { keys: ['previous pricing'], clicks: 1, impressions: 40 },
+          { keys: ['previous support'], clicks: 1, impressions: 20 },
+        ].map((row) => ({ ...row, ctr: row.clicks / row.impressions, position: 10 }))
+      : request.startDate === '2026-07-28' && !request.dimensions
+        ? [{ clicks: 15, impressions: 300, ctr: 0.05, position: 10 }]
+        : [];
+    return new Response(JSON.stringify({ rows }), { headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10', undefined, '2026-08-14',
+    );
+    assert.equal(analyticsCalls, 5, 'reuse the five existing Google queries');
+    assert.match(digest, /no aggregate Search Analytics row/i);
+    assert.match(digest, /Previously returned query rows \(not exhaustive\)/);
+    assert.match(digest, /previous guide: 8 clicks, 80 impressions/);
+    assert.match(digest, /previous tutorial: 4 clicks, 60 impressions/);
+    assert.match(digest, /previous pricing: 1 click, 40 impressions/);
+    assert.doesNotMatch(digest, /previous support|site:example\.com/);
+    assert.match(digest, /not evidence of lost traffic/i);
+    assert.doesNotMatch(digest, /## What changed this week|## What to do this week|\b0 clicks this week\b/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('weekly digest does not infer branded demand from operator-only query rows', async () => {
   const fixture = createLifecycle();
   const restoreFetch = installDigestAnalyticsMock([
