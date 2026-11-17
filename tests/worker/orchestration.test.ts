@@ -172,6 +172,50 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('offers a quota-aware quick-win review prompt without triggering Google calls', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, string>) => Promise<{
+          messages: Array<{ content: { type: string; text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts;
+    expect(prompts['gsc-quick-win-review']).toBeDefined();
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const response = await prompts['gsc-quick-win-review'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-10-01',
+        end_date: '2026-10-28',
+        search_type: 'web',
+        page_contains: '/de/',
+        query_contains: 'technical seo',
+        country: 'DEU',
+        device: 'mobile',
+      });
+      const text = response.messages[0].content.text;
+      for (const expected of ['sc-domain:example.com', '2026-10-01', '2026-10-28', '/de/', 'technical seo', 'DEU', 'mobile']) {
+        expect(text).toContain(expected);
+      }
+      expect(text).toContain('insights.quick_wins');
+      expect(text).toContain('insights.page_queries');
+      expect(text).toContain('not property-wide');
+      expect(text).toContain('not a live rank');
+      expect(text).toContain('not zero traffic');
+      expect(text).toContain('Never request indexing');
+      expect(fetchSpy).not.toHaveBeenCalled();
+      await expect(prompts['gsc-quick-win-review'].handler({
+        site_url: 'sc-domain:example.com', start_date: '2026-10-28', end_date: '2026-10-01',
+      })).rejects.toThrow();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('advertises the existing low-CTR quick-wins filter in capabilities', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
