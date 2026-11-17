@@ -825,14 +825,15 @@ const PERFORMANCE_COMPARISON_OUTPUT_SCHEMA = {
     comparable_count: z.number().int().nonnegative(),
     period_a_only_count: z.number().int().nonnegative(),
     period_b_only_count: z.number().int().nonnegative(),
+    sample_limit: z.number().int().min(1).max(10),
     period_a_only_samples: z.array(z.object({
       key: z.string(), ...METRIC_OUTPUT_SCHEMA, position: z.number().nullable(),
-    })).max(3),
+    })).max(10),
     period_b_only_samples: z.array(z.object({
       key: z.string(), ...METRIC_OUTPUT_SCHEMA, position: z.number().nullable(),
-    })).max(3),
+    })).max(10),
     note: z.string(),
-  }).describe('Distinct returned dimension keys and up to three observed-only examples from each period; absent keys are not zero traffic or proof of new/lost visibility.'),
+  }).describe('Distinct returned dimension keys and up to ten bounded observed-only examples from each period; absent keys are not zero traffic or proof of new/lost visibility.'),
   data_state: z.enum(['all', 'final']).describe(
     'The Search Analytics dataState applied identically to both comparison periods.',
   ),
@@ -1113,7 +1114,7 @@ const TOOL_CATALOG = [
   {
     name: 'analytics.compare',
     description:
-      'Compare only dimension keys observed in both Search Console date ranges; missing rows are not zero traffic. Optional sort_by ranks observed click, relative click-percentage (positive baseline clicks only), impression, CTR or average-position movement; click_change_direction, impression_change_direction, ctr_change_direction, position_change_direction, min_baseline_clicks (period B) and min_impressions_per_period narrow common rows before pagination. Discover and Google News lack average position. Both periods use the same search type, finalized/all data state and filters; this adds no Google requests.',
+      'Compare only dimension keys observed in both Search Console date ranges; missing rows are not zero traffic. observed_only_sample_limit (default 3, max 10) increases bounded one-period-only query/page examples for follow-up investigation without comparing absent rows. Optional sort_by ranks observed click, relative click-percentage (positive baseline clicks only), impression, CTR or average-position movement; click_change_direction, impression_change_direction, ctr_change_direction, position_change_direction, min_baseline_clicks (period B) and min_impressions_per_period narrow common rows before pagination. Discover and Google News lack average position. Both periods use the same search type, finalized/all data state and filters; this adds no Google requests.',
   },
   {
     name: 'reports.weekly_digest',
@@ -2802,6 +2803,8 @@ class GscMcpRuntime {
             .describe('Optional minimum observed period B (previous baseline) clicks before local sorting and pagination; default 0. Useful to avoid exaggerated relative click changes from tiny baselines. It does not add a Google request or alter period A evidence.'),
           min_impressions_per_period: z.number().int().nonnegative().default(0)
             .describe('Optional minimum observed impressions in each of both periods before local ranking and pagination; default 0. CTR ranking always requires positive impressions in both periods. This does not change the Google API query or response coverage.'),
+          observed_only_sample_limit: z.number().int().min(1).max(10).default(3)
+            .describe('Number of observed keys exclusive to either period to include as follow-up samples per period (1-10, default 3), ranked by observed impressions. These are not confirmed new/lost keys or evidence of zero traffic. This changes no Google requests.'),
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,
         },
@@ -2825,6 +2828,7 @@ class GscMcpRuntime {
         position_change_direction = 'all',
         min_baseline_clicks = 0,
         min_impressions_per_period = 0,
+        observed_only_sample_limit = 3,
         limit = DEFAULT_ANALYSIS_RESULT_LIMIT,
         start_row = 0,
       }) => {
@@ -2976,7 +2980,7 @@ class GscMcpRuntime {
               seen.add(key);
               return true;
             })
-            .slice(0, 3)
+            .slice(0, observed_only_sample_limit)
             .map((row) => ({
               key: row.keys![0], clicks: row.clicks, impressions: row.impressions,
               ctr: row.ctr, position: row.position ?? null,
@@ -3005,6 +3009,7 @@ class GscMcpRuntime {
           `position_change_direction=${position_change_direction}`,
           `min_impressions_per_period=${min_impressions_per_period}`,
           `min_baseline_clicks=${min_baseline_clicks}`,
+          `observed_only_sample_limit=${observed_only_sample_limit}`,
           `period_a=${start_date_a}..${end_date_a}`,
           `period_b=${start_date_b}..${end_date_b}`,
           `dimension_filter_groups=${dimension_filter_groups?.length ?? 0}`,
@@ -3036,9 +3041,10 @@ class GscMcpRuntime {
             comparable_count: commonCount,
             period_a_only_count: keysA.size - commonCount,
             period_b_only_count: keysB.size - commonCount,
+            sample_limit: observed_only_sample_limit,
             period_a_only_samples: sampleObservedOnly(sourceA.rows, keysB),
             period_b_only_samples: sampleObservedOnly(sourceB.rows, keysA),
-            note: 'Counts reflect distinct returned dimension keys, including rows without average position. Each sample lists up to three one-period-only keys ranked by observed impressions, not an exhaustive list. Missing rows are not zero traffic or proof that a key appeared/disappeared; one-period-only keys are not compared.',
+            note: `Counts reflect distinct returned dimension keys, including rows without average position. Each sample lists up to ${observed_only_sample_limit} one-period-only keys ranked by observed impressions, not an exhaustive list. Missing rows are not zero traffic or proof that a key appeared/disappeared; one-period-only keys are not compared.`,
           },
           data_state,
           preliminary_data_possible: data_state !== 'final',
