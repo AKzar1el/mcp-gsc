@@ -2683,6 +2683,76 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('forwards Google-native multi-country and multi-device filterLists without extra provider reads', async () => {
+    await saveUser(workerEnv, 'regional-user', 'region@example.test', 'regional-refresh-token');
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'regional-access-token', expires_in: 3600 });
+        }
+        if (url.endsWith('/searchAnalytics/query')) {
+          requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+          return response({ rows: [{
+            keys: ['https://example.com/dach/'], clicks: 6,
+            impressions: 60, ctr: 0.1, position: 3,
+          }] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const call = async (name: string, args: Record<string, unknown>, id: number) => {
+        const res = await mcpApiHandler.fetch(new Request('https://worker.example/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'MCP-Protocol-Version': '2025-06-18',
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }),
+        }), workerEnv, { props: { google_id: 'regional-user', email: 'region@example.test' } } as unknown as ExecutionContext);
+        expect(res.status).toBe(200);
+        return JSON.stringify(await readMcpJsonRpc(res));
+      };
+      const dimension_filter_groups = [{ filterLists: [
+        { dimension: 'country', expressions: ['deu', 'aut', 'che'] },
+        { dimension: 'device', expressions: ['mobile', 'desktop'] },
+      ] }];
+      const direct = await call('analytics.query', {
+        site_url: 'sc-domain:example.com', start_date: '2026-11-01', end_date: '2026-11-07',
+        dimensions: ['page'], row_limit: 10, dimension_filter_groups,
+      }, 810);
+      expect(direct).not.toContain('Output validation error');
+      expect(requests).toHaveLength(1);
+      const expected = [{ groupType: 'and', filters: [], filterLists: [
+        { dimension: 'country', expressions: ['DEU', 'AUT', 'CHE'] },
+        { dimension: 'device', expressions: ['MOBILE', 'DESKTOP'] },
+      ] }];
+      expect(requests[0]?.dimensionFilterGroups).toEqual(expected);
+      const compared = await call('analytics.compare', {
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-11-08', end_date_a: '2026-11-14',
+        start_date_b: '2026-11-01', end_date_b: '2026-11-07',
+        dimension: 'page', dimension_filter_groups,
+      }, 811);
+      expect(compared).not.toContain('Output validation error');
+      expect(requests).toHaveLength(3);
+      expect(requests.slice(1).every((req) => JSON.stringify(req.dimensionFilterGroups) === JSON.stringify(expected))).toBe(true);
+      const invalid = await call('analytics.query', {
+        site_url: 'sc-domain:example.com', start_date: '2026-11-01', end_date: '2026-11-07',
+        dimensions: ['page'], row_limit: 10, dimension_filter_groups: [{
+          filters: [{ dimension: 'country', expression: 'DEU', operator: 'equals' }],
+          filterLists: [{ dimension: 'country', expressions: ['AUT', 'CHE'] }],
+        }],
+      }, 812);
+      expect(invalid).toContain('cannot appear in both filters and filterLists');
+      expect(requests).toHaveLength(3);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('keeps query/page dimension keys and exposes usable analytics pagination metadata', async () => {
     await saveUser(
       workerEnv,

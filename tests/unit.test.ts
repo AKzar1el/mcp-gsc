@@ -2133,6 +2133,40 @@ test('webMultimodal rejects text-query groupings and filters before a provider r
   }), /webMultimodal.*query filters/);
 });
 
+test('Search Analytics filterLists allow regional/device OR with independent AND filters', () => {
+  const base = {
+    startDate: '2026-11-01', endDate: '2026-11-07', dimensions: ['page'] as Array<'page'>,
+    rowLimit: 100, type: 'web' as const,
+  };
+  const region = { dimension: 'country' as const, expressions: ['DEU', 'AUT', 'CHE'] };
+  const devices = { dimension: 'device' as const, expressions: ['MOBILE', 'DESKTOP'] };
+  assert.doesNotThrow(() => assertSearchAnalyticsQueryCompatible({
+    ...base, dimensionFilterGroups: [{ groupType: 'and', filters: [
+      { dimension: 'page', operator: 'contains', expression: '/de/' },
+    ], filterLists: [region, devices] }],
+  }));
+  assert.throws(() => assertSearchAnalyticsQueryCompatible({
+    ...base, dimensionFilterGroups: [{ groupType: 'and', filters: [
+      { dimension: 'country', operator: 'equals', expression: 'DEU' },
+    ], filterLists: [region] }],
+  }), /country.*filters.*filterLists/);
+  assert.throws(() => assertSearchAnalyticsQueryCompatible({
+    ...base, dimensionFilterGroups: [{ groupType: 'and', filters: [], filterLists: [
+      { dimension: 'country', expressions: ['DEU', 'DEU'] },
+    ] }],
+  }), /duplicate.*country/i);
+  assert.throws(() => assertSearchAnalyticsQueryCompatible({
+    ...base, dimensionFilterGroups: [{ groupType: 'and', filters: [], filterLists: [
+      { dimension: 'device', expressions: ['PHONE'] },
+    ] }],
+  }), /device.*DESKTOP.*MOBILE.*TABLET/);
+  assert.throws(() => assertSearchAnalyticsQueryCompatible({
+    ...base, dimensionFilterGroups: [{ groupType: 'and', filters: [], filterLists: [
+      { dimension: 'country', expressions: [] },
+    ] }],
+  }), /filterLists.*at least one/);
+});
+
 test('querySearchAnalytics: gives actionable guidance for non-retryable Search Analytics load quota exhaustion', async () => {
   const { calls } = await withMockFetch(
     () =>
