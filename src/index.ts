@@ -181,6 +181,7 @@ const SEARCH_ANALYTICS_FILTER_SCHEMA = z
       'country',
       'device',
       'searchAppearance',
+      'brandedClassification',
     ]),
     operator: z
       .enum([
@@ -413,6 +414,7 @@ const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
         'date',
         'hour',
         'searchAppearance',
+        'brandedClassification',
       ]),
     )
     .describe(
@@ -440,7 +442,7 @@ const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
   ),
   generative_ai_note: z.string(),
   multimodal_report_isolatable: z.literal(false).describe(
-    'False because the current documented Search Analytics API exposes no dedicated web multimodal search type or filter selector.',
+    'False because this MCP version does not yet expose the newly documented webMultimodal API search type.',
   ),
   multimodal_note: z.string(),
   next_start_row: z.number().int().nonnegative().optional(),
@@ -970,7 +972,7 @@ const GENERATIVE_AI_REPORT_API_NOTE =
   "Search Console's dedicated Generative AI performance reports are not exposed by the current documented Search Analytics API as a dedicated search type or filter selector. AI Overviews and AI Mode remain included in overall web Search performance data. Do not infer isolated Generative AI metrics from analytics.query or guess a searchAppearance identifier.";
 
 const MULTIMODAL_REPORT_API_NOTE =
-  "Search Console's web multimodal performance filter is currently available in the Search Console UI, but the documented Search Analytics API does not expose a multimodal search type or filter selector. Current API search types remain web, image, video, news, discover, and googleNews. Do not pass search_type='multimodal' or guess a searchAppearance identifier to isolate Lens, Circle to Search, image-upload, or Chrome image-search traffic.";
+  "Google documented webMultimodal as a Search Analytics API type on 2026-11-16, but this MCP version has not yet enabled that selector. Do not pass search_type='multimodal' or guess a searchAppearance identifier to isolate multimodal traffic; the exact webMultimodal selector must be implemented before claiming API isolation.";
 
 function paginationMetadata(result: PaginatedSearchAnalyticsResult) {
   return {
@@ -1039,7 +1041,7 @@ const TOOL_CATALOG = [
   {
     name: 'analytics.query',
     description:
-      'Query Search Console search analytics (impressions, clicks, CTR, average position) over a date range, broken down by query, page, country, device, date, or search appearance. Supports filters and pagination. Google does not guarantee every data row and can return only top rows. The current documented API does not expose a dedicated Generative AI performance-report selector; do not invent one.',
+      'Query Search Console search analytics over a date range, grouped by query, page, country, device, date, search appearance or Google-native brandedClassification. Branded grouping/filtering requires an eligible top-level property; unavailable classification returns no rows, not zero traffic. Supports filters and pagination. Google may return only top rows. The API does not expose a dedicated Generative AI performance-report selector.',
   },
   {
     name: 'insights.page_queries',
@@ -1794,22 +1796,20 @@ class GscMcpRuntime {
           '  included in overall web Search performance data. Do not guess a',
           '  searchAppearance identifier or claim analytics.query isolates the',
           '  dedicated Generative AI report.',
-          '- WEB MULTIMODAL REPORT: Search Console now has a web multimodal',
-          '  performance filter in its UI for searches such as Lens, Circle to',
-          '  Search, image uploads, and Chrome image search. The current',
-          '  documented Search Analytics API still exposes only web, image,',
-          '  video, news, discover, and googleNews search types, with no',
-          '  multimodal selector. Do not pass search_type="multimodal" or guess',
-          '  a searchAppearance identifier to isolate this UI report.',
+          '- WEB MULTIMODAL REPORT: Google documented webMultimodal as an API',
+          '  search type on 2026-11-16, but this MCP version has not enabled it.',
+          '  Do not pass the invented search_type="multimodal" or guess a',
+          '  searchAppearance identifier for isolated multimodal metrics.',
           '- Use dimension_filter_groups to filter by country, device, query',
-          '  content, page URL, or search feature. includingRegex and',
-          '  excludingRegex use RE2 syntax. A query regex can provide a manual',
-          '  brand/non-brand approximation when the caller supplies the brand',
-          "  pattern. It is not equivalent to Search Console's native Branded/",
-          '  Non-branded filter: Google describes that classification as',
-          '  AI-assisted (including language variants, typos, and associated',
-          '  products/services), and the Search Analytics API does not expose',
-          '  that native classifier as a filter.',
+          '  content, page URL, search feature or brandedClassification.',
+          '  includingRegex and excludingRegex use RE2 syntax; a query regex',
+          '  is a manual brand/non-brand approximation, not Google\'s native',
+          '  classification. To use the native AI-assisted classification,',
+          '  group by brandedClassification or filter it with equals BRANDED',
+          '  or NON_BRANDED. Never combine branded grouping/filtering with a',
+          '  query filter. This API data starts 2026-02-21 and is available',
+          '  only for eligible top-level properties with sufficient volume;',
+          '  empty rows mean unavailable or no returned data, NOT zero traffic.',
           "- data_state defaults to 'all' which matches the GSC dashboard.",
           "  Pass 'final' only when the user explicitly asks for stable,",
           '  non-preliminary data.',
@@ -1834,6 +1834,7 @@ class GscMcpRuntime {
                 'date',
                 'hour',
                 'searchAppearance',
+                'brandedClassification',
               ]),
             )
             .superRefine((dimensions, ctx) => {
@@ -1852,7 +1853,7 @@ class GscMcpRuntime {
             })
             .default(['query'])
             .describe(
-              "Dimensions to group rows by. Pass [] (empty array) to get a single row of true site-level totals. searchAppearance must be the only grouping dimension; discover an appearance value with ['searchAppearance'], then filter to that value in a separate query when grouping by another dimension. The 'hour' dimension requires data_state 'hourly_all' and an inclusive date range of at most 10 days. Google Discover and Google News do not support the query dimension.",
+              "Dimensions to group rows by. Pass [] for site totals. searchAppearance must be the only grouping dimension. brandedClassification groups Google's native BRANDED/NON_BRANDED categories for eligible top-level properties only; unavailable classification returns no rows, not zero traffic, and cannot be combined with a query filter. The 'hour' dimension requires data_state 'hourly_all' and a range of at most 10 days. Google Discover and Google News do not support the query dimension.",
             ),
           row_limit: z
             .number()
@@ -1877,7 +1878,7 @@ class GscMcpRuntime {
           search_type: z
             .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
             .default('web')
-            .describe('Which documented Search Analytics search index to query. Defaults to web. Google Discover and Google News do not support query grouping/filtering or average position. The current API does not expose a dedicated Generative AI performance-report search type or the Search Console UI web multimodal filter as a search type.'),
+            .describe('Which supported Search Analytics index to query. Defaults to web. Discover and Google News do not support query grouping/filtering or average position. Google documents webMultimodal in the API, but this MCP version has not yet enabled it; a dedicated Generative AI report selector remains unavailable.'),
           aggregation_type: z
             .enum(['auto', 'byNewsShowcasePanel', 'byPage', 'byProperty'])
             .default('auto')
@@ -1888,7 +1889,7 @@ class GscMcpRuntime {
             .array(SEARCH_ANALYTICS_FILTER_GROUP_SCHEMA)
             .optional()
             .describe(
-              "Optional filters ANDed together, e.g. [{ groupType: 'and', filters: [{ dimension: 'country', expression: 'usa' }] }]. Filter operator defaults to 'equals' when omitted, matching Search Console. Expressions are limited to 4096 characters. Countries use ISO 3166-1 alpha-3 codes. Query filters are not supported when search_type is discover or googleNews.",
+              "Optional Google-side filters ANDed together. Operator defaults to equals; expressions max 4096 characters. Country uses ISO alpha-3. Native brandedClassification supports only equals BRANDED/NON_BRANDED, is eligible-property-only and cannot coexist with query filters; an empty response is not measured zero traffic. Discover/Google News do not accept query filters.",
             ),
         },
         outputSchema: SEARCH_ANALYTICS_OUTPUT_SCHEMA,
@@ -2983,7 +2984,7 @@ class GscMcpRuntime {
             .array(SEARCH_ANALYTICS_FILTER_GROUP_SCHEMA)
             .optional()
             .describe(
-              "Optional Search Console filters applied identically to both periods. Filter operator defaults to 'equals' when omitted, and expressions are limited to 4096 characters. A caller-supplied query regex can approximate a manual brand/non-brand split, but it is not equivalent to Search Console's AI-assisted native Branded/Non-branded filter, which the Search Analytics API does not expose. Countries use ISO 3166-1 alpha-3 codes.",
+              "Optional Search Console filters applied identically to both periods. A query regex is a manual brand/non-brand approximation; native brandedClassification now supports only equals BRANDED/NON_BRANDED for eligible top-level properties, with no query filter in the same request. Unavailable classification or missing rows never imply zero traffic. Countries use ISO alpha-3 codes.",
             ),
           sort_by: z.enum(['absolute_click_change', 'absolute_daily_click_change', 'absolute_click_percentage_change', 'absolute_impression_change', 'absolute_daily_impression_change', 'absolute_ctr_change', 'absolute_position_change'])
             .default('absolute_click_change')

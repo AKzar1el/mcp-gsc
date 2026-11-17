@@ -259,11 +259,11 @@ Once connected, ask your assistant things like:
 - *"Using this brand regex I provide, approximate my clicks as brand vs non-brand."*
 - *"How is my site doing in Google Discover vs regular web search?"*
 
-Query regexes are a manual approximation only. Search Console's native Branded/Non-branded filter uses Google's own AI-assisted classification (including language variants, typos, and associated products/services), and that native classifier is not exposed as a Search Analytics API filter.
+Query regexes are a manual approximation only. Google's native `brandedClassification` on the Search Analytics API uses AI-assisted classification (including variants and related products). `analytics.query` can group by this dimension or filter with `dimension: "brandedClassification", operator: "equals", expression: "BRANDED"` (or `"NON_BRANDED"`). `analytics.compare` accepts the same native filter for both periods. Do not combine native branded classification with a query filter. It is available from February 21, 2026 for eligible top-level properties with sufficient traffic only; no returned classification rows does **not** prove zero branded or non-branded traffic.
 
 Search Console also has dedicated Generative AI performance reports for Search and Discover. The current documented Search Analytics API does not expose a dedicated Generative AI search type or filter selector, so this MCP does not guess one. AI Overviews and AI Mode remain included in overall web Search performance data; use the Search Console UI for the dedicated Generative AI report until Google documents API access.
 
-As of September 24, 2026, Search Console also has a web multimodal performance filter in the UI for searches such as Lens, Circle to Search, image uploads, and Chrome image search. The current Search Analytics API and Discovery document still expose only `web`, `image`, `video`, `news`, `discover`, and `googleNews` search types, so this MCP does not invent `search_type: "multimodal"` or guess a `searchAppearance` value. Use the Search Console UI for isolated multimodal reporting until Google documents API access.
+Google documented the `webMultimodal` Search Analytics API search type on November 16, 2026 for web multimodal searches. This MCP version does not yet offer that selector; `search_type: "multimodal"` is not a valid substitute and a guessed `searchAppearance` value is not equivalent. Use the Search Console UI for isolated multimodal reporting until native `webMultimodal` support is implemented here.
 
 ## Connect in your AI client
 

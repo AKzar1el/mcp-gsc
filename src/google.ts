@@ -549,7 +549,8 @@ export type SearchDimension =
   | 'device'
   | 'date'
   | 'hour'
-  | 'searchAppearance';
+  | 'searchAppearance'
+  | 'brandedClassification';
 
 export type SearchType =
   | 'web'
@@ -572,7 +573,8 @@ export type FilterDimension =
   | 'page'
   | 'country'
   | 'device'
-  | 'searchAppearance';
+  | 'searchAppearance'
+  | 'brandedClassification';
 
 export type FilterOperator =
   | 'equals'
@@ -591,6 +593,15 @@ export interface DimensionFilter {
 export function assertSearchAnalyticsFilterCompatible(
   filter: DimensionFilter,
 ): void {
+  if (filter.dimension === 'brandedClassification') {
+    if (filter.operator !== 'equals') {
+      throw new Error('Search Analytics brandedClassification filters support only equals.');
+    }
+    if (filter.expression !== 'BRANDED' && filter.expression !== 'NON_BRANDED') {
+      throw new Error('Search Analytics brandedClassification must be BRANDED or NON_BRANDED.');
+    }
+    return;
+  }
   if (filter.operator !== 'equals' && filter.operator !== 'notEquals') return;
 
   if (filter.dimension === 'country' && !/^[A-Za-z]{3}$/.test(filter.expression)) {
@@ -667,6 +678,11 @@ export function assertSearchAnalyticsQueryCompatible(body: SearchAnalyticsQuery)
   }
 
   const filters = body.dimensionFilterGroups?.flatMap((group) => group.filters) ?? [];
+  if ((body.dimensions.includes('brandedClassification') ||
+      filters.some((filter) => filter.dimension === 'brandedClassification')) &&
+      filters.some((filter) => filter.dimension === 'query')) {
+    throw new Error('Search Analytics brandedClassification grouping or filtering cannot be combined with a query filter.');
+  }
   const hasPageGroupingOrFilter =
     body.dimensions.includes('page') || filters.some((filter) => filter.dimension === 'page');
   const hasQueryGroupingOrFilter =
