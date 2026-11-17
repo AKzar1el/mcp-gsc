@@ -681,21 +681,31 @@ test('Search Analytics metadata does not fabricate dedicated Generative AI API s
   );
 });
 
-test('Search Analytics runtime does not claim webMultimodal is enabled in this MCP version', () => {
+test('Search Analytics exposes documented webMultimodal selector without inventing multimodal type', () => {
   assert.match(
     indexSource,
-    /multimodal_report_isolatable/,
-    'runtime structured output must expose the web multimodal isolation boundary',
+    /multimodal_report_isolatable: true/,
+    'runtime structured output must truthfully advertise native web multimodal selection',
+  );
+  assert.match(
+    indexSource,
+    /search_type='webMultimodal'/,
+    'runtime guidance must use the exact documented Google API type',
+  );
+  assert.match(
+    indexSource,
+    /\.enum\(\['web', 'image', 'video', 'news', 'discover', 'googleNews', 'webMultimodal'\]\)/,
+    'both generic Search Analytics tools must accept webMultimodal',
+  );
+  assert.match(
+    readmeSource,
+    /search_type: "webMultimodal"/,
+    'README must document usable native multimodal reporting',
   );
   assert.match(
     indexSource,
     /Do not pass search_type='multimodal' or guess a searchAppearance identifier/,
     'runtime guidance must reject invented multimodal selectors',
-  );
-  assert.match(
-    readmeSource,
-    /Use the Search Console UI for isolated multimodal reporting until native `webMultimodal` support is implemented here/i,
-    'README must distinguish documented API support from unavailable MCP capability',
   );
   assert.doesNotMatch(
     indexSource,

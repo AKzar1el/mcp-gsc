@@ -2107,6 +2107,32 @@ test('native branded classification accepts eligible grouping and enforces provi
   }), /brandedClassification.*query filter/);
 });
 
+test('webMultimodal rejects text-query groupings and filters before a provider request', () => {
+  const base = {
+    startDate: '2026-10-01',
+    endDate: '2026-10-08',
+    dimensions: ['page'] as Array<'page' | 'query'>,
+    rowLimit: 100,
+    type: 'webMultimodal' as const,
+  };
+  assert.doesNotThrow(() => assertSearchAnalyticsQueryCompatible(base));
+  assert.doesNotThrow(() => assertSearchAnalyticsQueryCompatible({
+    ...base,
+    dimensions: [],
+  }));
+  assert.throws(() => assertSearchAnalyticsQueryCompatible({
+    ...base,
+    dimensions: ['query'],
+  }), /webMultimodal.*query dimension/);
+  assert.throws(() => assertSearchAnalyticsQueryCompatible({
+    ...base,
+    dimensionFilterGroups: [{
+      groupType: 'and',
+      filters: [{ dimension: 'query', operator: 'contains', expression: 'shoes' }],
+    }],
+  }), /webMultimodal.*query filters/);
+});
+
 test('querySearchAnalytics: gives actionable guidance for non-retryable Search Analytics load quota exhaustion', async () => {
   const { calls } = await withMockFetch(
     () =>

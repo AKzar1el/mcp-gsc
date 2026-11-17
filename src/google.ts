@@ -554,6 +554,7 @@ export type SearchDimension =
 
 export type SearchType =
   | 'web'
+  | 'webMultimodal'
   | 'image'
   | 'video'
   | 'news'
@@ -687,6 +688,12 @@ export function assertSearchAnalyticsQueryCompatible(body: SearchAnalyticsQuery)
     body.dimensions.includes('page') || filters.some((filter) => filter.dimension === 'page');
   const hasQueryGroupingOrFilter =
     body.dimensions.includes('query') || filters.some((filter) => filter.dimension === 'query');
+
+  if (body.type === 'webMultimodal' && hasQueryGroupingOrFilter) {
+    throw new Error(
+      'Search Analytics webMultimodal does not support the query dimension or query filters; use page, country, device, or date instead.',
+    );
+  }
 
   for (const filter of filters) {
     if (filter.expression.length > 4096) {

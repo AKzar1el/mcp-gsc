@@ -2617,11 +2617,67 @@ describe('Worker orchestration', () => {
       expect(serialized).toContain('"generative_ai_report_isolatable":false');
       expect(serialized).toContain('dedicated Generative AI performance reports');
       expect(serialized).toContain('overall web Search performance data');
-      expect(serialized).toContain('"multimodal_report_isolatable":false');
-      expect(serialized).toContain('Google documented webMultimodal as a Search Analytics API type');
+      expect(serialized).toContain('"multimodal_report_isolatable":true');
+      expect(serialized).toContain("search_type='webMultimodal'");
       expect(serialized).toContain("search_type='multimodal'");
       expect(serialized).not.toContain('Output validation error');
       expect(serialized).not.toContain('\"keys\"');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('forwards documented webMultimodal type in query and both comparison periods', async () => {
+    await saveUser(workerEnv, 'visual-user', 'visual@example.test', 'visual-refresh-token');
+    const originalFetch = globalThis.fetch;
+    const providerTypes: unknown[] = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'visual-access-token', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          providerTypes.push(body.type);
+          return response({ rows: [{
+            keys: ['https://example.com/visual-guide/'],
+            clicks: 6, impressions: 80, ctr: 0.075, position: 3.1,
+          }] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const call = async (name: string, args: Record<string, unknown>, id: number) => {
+        const result = await mcpApiHandler.fetch(new Request('https://worker.example/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'MCP-Protocol-Version': '2025-06-18',
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }),
+        }), workerEnv, { props: {
+          google_id: 'visual-user', email: 'visual@example.test',
+        } } as unknown as ExecutionContext);
+        expect(result.status).toBe(200);
+        return JSON.stringify(await readMcpJsonRpc(result));
+      };
+      const query = await call('analytics.query', {
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-10-01', end_date: '2026-10-08',
+        dimensions: ['page'], row_limit: 10, search_type: 'webMultimodal',
+      }, 99);
+      expect(query).toContain('\\"search_type\\":\\"webMultimodal\\"');
+      expect(query).toContain('\\"multimodal_report_isolatable\\":true');
+      expect(query).not.toContain('Output validation error');
+      const compare = await call('analytics.compare', {
+        site_url: 'sc-domain:example.com',
+        start_date_a: '2026-10-09', end_date_a: '2026-10-16',
+        start_date_b: '2026-10-01', end_date_b: '2026-10-08',
+        dimension: 'page', search_type: 'webMultimodal',
+      }, 100);
+      expect(compare).not.toContain('Output validation error');
+      expect(providerTypes).toEqual(['webMultimodal', 'webMultimodal', 'webMultimodal']);
     } finally {
       globalThis.fetch = originalFetch;
     }
