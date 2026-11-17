@@ -209,7 +209,11 @@ const SEARCH_ANALYTICS_FILTER_SCHEMA = z
 
 const SEARCH_ANALYTICS_FILTER_GROUP_SCHEMA = z.object({
   groupType: z.literal('and').default('and'),
-  filters: z.array(SEARCH_ANALYTICS_FILTER_SCHEMA),
+  filters: z.array(SEARCH_ANALYTICS_FILTER_SCHEMA).default([]),
+  filterLists: z.array(z.object({
+    dimension: z.enum(['country', 'device']),
+    expressions: z.array(z.string().trim().toUpperCase()).min(1).max(50),
+  })).max(2).optional(),
 });
 
 const SITE_VERIFICATION_STATE_SCHEMA = z
@@ -1893,7 +1897,7 @@ class GscMcpRuntime {
             .array(SEARCH_ANALYTICS_FILTER_GROUP_SCHEMA)
             .optional()
             .describe(
-              "Optional Google-side filters ANDed together. Operator defaults to equals; expressions max 4096 characters. Country uses ISO alpha-3. Native brandedClassification supports only equals BRANDED/NON_BRANDED, is eligible-property-only and cannot coexist with query filters; an empty response is not measured zero traffic. Discover/Google News do not accept query filters.",
+              "Optional Google-side filters ANDed together. Operator defaults to equals; expressions max 4096 characters. filterLists optionally select up to 50 country (ISO alpha-3) or device (DESKTOP/MOBILE/TABLET) values per dimension as exact-match OR within one Google request; omit filters when using only filterLists. Do not combine filters and filterLists on the same dimension. Native brandedClassification supports only equals BRANDED/NON_BRANDED, is eligible-property-only and cannot coexist with query filters; an empty response is not measured zero traffic. Discover/Google News do not accept query filters.",
             ),
         },
         outputSchema: SEARCH_ANALYTICS_OUTPUT_SCHEMA,
@@ -2988,7 +2992,7 @@ class GscMcpRuntime {
             .array(SEARCH_ANALYTICS_FILTER_GROUP_SCHEMA)
             .optional()
             .describe(
-              "Optional Search Console filters applied identically to both periods. A query regex is a manual brand/non-brand approximation; native brandedClassification now supports only equals BRANDED/NON_BRANDED for eligible top-level properties, with no query filter in the same request. Unavailable classification or missing rows never imply zero traffic. Countries use ISO alpha-3 codes.",
+              "Optional Search Console filters applied identically to both periods. filterLists select up to 50 exact country (ISO alpha-3) or device values each, OR within the list and AND with other dimensions; the same dimension cannot appear in filters and filterLists. A query regex is a manual brand/non-brand approximation; native brandedClassification supports only equals BRANDED/NON_BRANDED for eligible properties, with no query filter in the same request. Unavailable classification or missing rows never imply zero traffic.",
             ),
           sort_by: z.enum(['absolute_click_change', 'absolute_daily_click_change', 'absolute_click_percentage_change', 'absolute_impression_change', 'absolute_daily_impression_change', 'absolute_ctr_change', 'absolute_position_change'])
             .default('absolute_click_change')
