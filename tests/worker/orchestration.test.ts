@@ -216,6 +216,49 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('guides a scoped query/page overlap review without asserting cannibalization or making provider calls', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, string>) => Promise<{
+          messages: Array<{ content: { type: string; text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts;
+    expect(prompts['gsc-query-overlap-review']).toBeDefined();
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const response = await prompts['gsc-query-overlap-review'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-10-01',
+        end_date: '2026-10-28',
+        search_type: 'web',
+        query_contains: 'technical seo',
+        page_contains: '/de/',
+        country: 'DEU',
+        device: 'mobile',
+      });
+      const guidance = response.messages[0].content.text;
+      for (const expected of ['sc-domain:example.com', '2026-10-01', '2026-10-28',
+        'technical seo', '/de/', 'DEU', 'mobile', 'insights.cannibalization',
+        'insights.query_pages']) {
+        expect(guidance).toContain(expected);
+      }
+      expect(guidance).toContain('not proof');
+      expect(guidance).toContain('not property-wide');
+      expect(guidance).toContain('Never request indexing');
+      expect(fetchSpy).not.toHaveBeenCalled();
+      await expect(prompts['gsc-query-overlap-review'].handler({
+        site_url: 'sc-domain:example.com', start_date: '2026-10-28', end_date: '2026-10-01',
+      })).rejects.toThrow();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('advertises the existing low-CTR quick-wins filter in capabilities', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
