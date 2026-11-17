@@ -172,6 +172,43 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('offers a native brand-segmentation review prompt without provider requests', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, string>) => Promise<{
+          messages: Array<{ content: { type: string; text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts;
+    expect(prompts['gsc-brand-traffic-review']).toBeDefined();
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const result = await prompts['gsc-brand-traffic-review'].handler({
+        site_url: 'sc-domain:example.com',
+        end_date: '2026-11-10',
+        search_type: 'image',
+      });
+      const guidance = result.messages[0].content.text;
+      for (const value of ['sc-domain:example.com', '2026-11-10', 'image', 'analytics.query', 'brandedClassification', 'BRANDED', 'NON_BRANDED']) {
+        expect(guidance).toContain(value);
+      }
+      expect(guidance).toContain('no rows');
+      expect(guidance).toContain('not measured zero traffic');
+      expect(guidance).toContain('Do not use a query filter');
+      expect(guidance).toContain('Never call indexing.request');
+      expect(fetchSpy).not.toHaveBeenCalled();
+      await expect(prompts['gsc-brand-traffic-review'].handler({
+        site_url: 'https://example.com/?bad=1',
+      })).rejects.toThrow();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a quota-aware quick-win review prompt without triggering Google calls', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
