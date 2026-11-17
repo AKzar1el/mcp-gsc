@@ -421,7 +421,7 @@ const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
       'Ordered labels for rows[].keys. Each key position corresponds to the dimension at the same index. Empty for aggregate dimensions: [] queries.',
     ),
   search_type: z
-    .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
+    .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews', 'webMultimodal'])
     .describe('The Search Analytics search type requested for this response.'),
   data_state: z.enum(['all', 'final', 'hourly_all']).describe(
     'The Search Analytics dataState requested from Google for this response.',
@@ -441,8 +441,8 @@ const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
     'False because the current documented Search Analytics API exposes no dedicated Generative AI report search type or filter selector.',
   ),
   generative_ai_note: z.string(),
-  multimodal_report_isolatable: z.literal(false).describe(
-    'False because this MCP version does not yet expose the newly documented webMultimodal API search type.',
+  multimodal_report_isolatable: z.literal(true).describe(
+    'True because search_type webMultimodal now selects the dedicated API surface, separate from ordinary web Search. Availability of rows is property-dependent.',
   ),
   multimodal_note: z.string(),
   next_start_row: z.number().int().nonnegative().optional(),
@@ -972,7 +972,7 @@ const GENERATIVE_AI_REPORT_API_NOTE =
   "Search Console's dedicated Generative AI performance reports are not exposed by the current documented Search Analytics API as a dedicated search type or filter selector. AI Overviews and AI Mode remain included in overall web Search performance data. Do not infer isolated Generative AI metrics from analytics.query or guess a searchAppearance identifier.";
 
 const MULTIMODAL_REPORT_API_NOTE =
-  "Google documented webMultimodal as a Search Analytics API type on 2026-11-16, but this MCP version has not yet enabled that selector. Do not pass search_type='multimodal' or guess a searchAppearance identifier to isolate multimodal traffic; the exact webMultimodal selector must be implemented before claiming API isolation.";
+  "Google added the webMultimodal Search Analytics API type on 2026-11-16. Pass search_type='webMultimodal' to isolate performance from Google Lens, Circle to Search, and image uploads in Google Search. Text query grouping/filtering is unavailable for image-led searches; use page, country, device, or date. Ordinary web and webMultimodal are separate reporting scopes; an empty response is not proof of zero visual-search traffic. Do not pass search_type='multimodal' or guess a searchAppearance identifier.";
 
 function paginationMetadata(result: PaginatedSearchAnalyticsResult) {
   return {
@@ -1796,8 +1796,12 @@ class GscMcpRuntime {
           '  included in overall web Search performance data. Do not guess a',
           '  searchAppearance identifier or claim analytics.query isolates the',
           '  dedicated Generative AI report.',
-          '- WEB MULTIMODAL REPORT: Google documented webMultimodal as an API',
-          '  search type on 2026-11-16, but this MCP version has not enabled it.',
+          '- WEB MULTIMODAL REPORT: pass search_type="webMultimodal" to query',
+          '  Google Lens, Circle to Search and image-upload traffic as a',
+          '  separate Google Search surface, not an ordinary web total.',
+          '  Text query grouping/filtering is unavailable for this surface;',
+          '  use page, country, device, date or aggregate dimensions instead.',
+          '  Empty returned rows do not establish zero visual-search traffic.',
           '  Do not pass the invented search_type="multimodal" or guess a',
           '  searchAppearance identifier for isolated multimodal metrics.',
           '- Use dimension_filter_groups to filter by country, device, query',
@@ -1876,9 +1880,9 @@ class GscMcpRuntime {
               "'all' includes fresh (preliminary) data and matches the GSC dashboard; 'final' returns only finalized data; 'hourly_all' includes hourly preliminary data and must be used when grouping by the 'hour' dimension. Hour-grouped requests can span at most 10 inclusive days.",
             ),
           search_type: z
-            .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
+            .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews', 'webMultimodal'])
             .default('web')
-            .describe('Which supported Search Analytics index to query. Defaults to web. Discover and Google News do not support query grouping/filtering or average position. Google documents webMultimodal in the API, but this MCP version has not yet enabled it; a dedicated Generative AI report selector remains unavailable.'),
+            .describe('Which supported Search Analytics surface to query. webMultimodal isolates Google Lens, Circle to Search and image-upload traffic, not the ordinary web total, and does not support text query grouping/filtering (use dimensions page/country/device/date or []). Unavailable rows are not proven zero. Discover and Google News do not support query grouping/filtering or average position. A dedicated Generative AI report selector remains unavailable.'),
           aggregation_type: z
             .enum(['auto', 'byNewsShowcasePanel', 'byPage', 'byProperty'])
             .default('auto')
@@ -1971,7 +1975,7 @@ class GscMcpRuntime {
           provider_note: SEARCH_ANALYTICS_PROVIDER_NOTE,
           generative_ai_report_isolatable: false,
           generative_ai_note: GENERATIVE_AI_REPORT_API_NOTE,
-          multimodal_report_isolatable: false,
+          multimodal_report_isolatable: true,
           multimodal_note: MULTIMODAL_REPORT_API_NOTE,
           has_more: bounded.resultPage.has_more,
           truncated: bounded.resultPage.truncated,
@@ -2954,7 +2958,7 @@ class GscMcpRuntime {
       'analytics.compare',
       {
         title: 'Compare Performance Between Periods',
-        description: 'Compare Search Console clicks, impressions, CTR, and available average position between two date ranges for a selected dimension. Only keys observed in both periods are compared; up to three observed-only examples per period by default (configurable to ten) help identify follow-up checks, not new/lost traffic (missing rows are not zero). Web, Image, Video, and Search News-tab support query/page/country/device; Discover and Google News support only page/country/device, without average position (null, never an invented rank). Apply the same search type, data state and filters to both periods. Finalized data is the default; all may include preliminary data. Results default to absolute raw click-change ranking; opt-in impression, CTR or average-position movement ranking uses observed common rows without implying live rankings. Optional click_change_direction and impression_change_direction isolate observed raw/daily movement; ctr_change_direction isolates unrounded CTR gains or losses, while position_change_direction separates available average-position improvements from declines. min_absolute_click_change removes small raw click movements before bounded pagination without extra Google requests.',
+        description: 'Compare Search Console clicks, impressions, CTR, and available average position between two date ranges for a selected dimension. Only keys observed in both periods are compared; up to three observed-only examples per period by default (configurable to ten) help identify follow-up checks, not new/lost traffic (missing rows are not zero). Web, webMultimodal (Google Lens/Circle to Search/image-upload traffic), Image, Video, and Search News-tab support query/page/country/device; Discover and Google News support only page/country/device, without average position (null, never an invented rank). Apply the same search type, data state and filters to both periods. Finalized data is the default; all may include preliminary data. Results default to absolute raw click-change ranking; opt-in impression, CTR or average-position movement ranking uses observed common rows without implying live rankings. Optional click_change_direction and impression_change_direction isolate observed raw/daily movement; ctr_change_direction isolates unrounded CTR gains or losses, while position_change_direction separates available average-position improvements from declines. min_absolute_click_change removes small raw click movements before bounded pagination without extra Google requests.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           start_date_a: SEARCH_CONSOLE_DATE_SCHEMA.describe(
@@ -2971,9 +2975,9 @@ class GscMcpRuntime {
           ),
           dimension: z.enum(['query', 'page', 'country', 'device']).default('query').describe('The dimension to compare performance for. Defaults to query.'),
           search_type: z
-            .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews'])
+            .enum(['web', 'image', 'video', 'news', 'discover', 'googleNews', 'webMultimodal'])
             .default('web')
-            .describe('Which Search Console surface to compare for both periods. Discover/Google News accept page, country or device only; their average position is unavailable and returned as null.'),
+            .describe('Which Search Console surface to compare for both periods. webMultimodal isolates Google Lens/Circle to Search/image-upload traffic, not all web queries; choose dimension page/country/device because text query grouping is unavailable. Discover/Google News accept page, country or device only; their average position is unavailable and returned as null.'),
           data_state: z
             .enum(['all', 'final'])
             .default('final')
