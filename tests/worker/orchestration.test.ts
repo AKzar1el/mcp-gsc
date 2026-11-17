@@ -62,6 +62,39 @@ function createPendingStateBinding() {
 }
 
 describe('Worker orchestration', () => {
+  it('offers a scoped read-only traffic-drop workflow as an MCP prompt', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, string>) => Promise<{
+          messages: Array<{ content: { type: string; text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts;
+    expect(prompts['gsc-traffic-drop-triage']).toBeDefined();
+
+    const result = await prompts['gsc-traffic-drop-triage'].handler({
+      site_url: 'sc-domain:example.com',
+      end_date: '2026-11-10',
+      page_contains: '/de/',
+    });
+    const guidance = result.messages[0].content.text;
+    expect(guidance).toContain('sc-domain:example.com');
+    expect(guidance).toContain('2026-11-10');
+    expect(guidance).toContain('/de/');
+    expect(guidance).toContain('reports.weekly_digest');
+    expect(guidance).toContain('insights.content_decay');
+    expect(guidance).toContain('analytics.compare');
+    expect(guidance).toContain('urls.inspect');
+    expect(guidance).toContain('not zero traffic');
+    expect(guidance).toContain('do not submit');
+    await expect(prompts['gsc-traffic-drop-triage'].handler({
+      site_url: 'https://example.com/?unexpected=1',
+    })).rejects.toThrow();
+  });
+
   it('advertises the existing low-CTR quick-wins filter in capabilities', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
