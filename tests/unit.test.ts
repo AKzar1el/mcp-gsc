@@ -2068,6 +2068,45 @@ test('Search Analytics request validation accepts a valid News Showcase panel re
   );
 });
 
+test('native branded classification accepts eligible grouping and enforces provider filter rules', () => {
+  const base = {
+    startDate: '2026-06-01',
+    endDate: '2026-06-30',
+    dimensions: ['brandedClassification'] as Array<'brandedClassification' | 'query' | 'page'>,
+    rowLimit: 100,
+    type: 'web' as const,
+  };
+  const branded = { dimension: 'brandedClassification' as const, operator: 'equals' as const, expression: 'BRANDED' };
+  assert.doesNotThrow(() => assertSearchAnalyticsQueryCompatible({
+    ...base,
+    dimensionFilterGroups: [{ groupType: 'and', filters: [branded] }],
+  }));
+  assert.doesNotThrow(() => assertSearchAnalyticsQueryCompatible({
+    ...base,
+    dimensions: ['query'],
+    dimensionFilterGroups: [{ groupType: 'and', filters: [{ ...branded, expression: 'NON_BRANDED' }] }],
+  }));
+  assert.throws(() => assertSearchAnalyticsQueryCompatible({
+    ...base,
+    dimensionFilterGroups: [{ groupType: 'and', filters: [{ ...branded, operator: 'contains' }] }],
+  }), /brandedClassification.*equals/);
+  assert.throws(() => assertSearchAnalyticsQueryCompatible({
+    ...base,
+    dimensionFilterGroups: [{ groupType: 'and', filters: [{ ...branded, expression: 'brand' }] }],
+  }), /brandedClassification.*BRANDED.*NON_BRANDED/);
+  assert.throws(() => assertSearchAnalyticsQueryCompatible({
+    ...base,
+    dimensionFilterGroups: [
+      { groupType: 'and', filters: [branded] },
+      { groupType: 'and', filters: [{ dimension: 'query', operator: 'contains', expression: 'example' }] },
+    ],
+  }), /brandedClassification.*query filter/);
+  assert.throws(() => assertSearchAnalyticsQueryCompatible({
+    ...base,
+    dimensionFilterGroups: [{ groupType: 'and', filters: [{ dimension: 'query', operator: 'equals', expression: 'example' }] }],
+  }), /brandedClassification.*query filter/);
+});
+
 test('querySearchAnalytics: gives actionable guidance for non-retryable Search Analytics load quota exhaustion', async () => {
   const { calls } = await withMockFetch(
     () =>

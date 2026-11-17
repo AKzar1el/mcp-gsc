@@ -681,17 +681,7 @@ test('Search Analytics metadata does not fabricate dedicated Generative AI API s
   );
 });
 
-test('Search Analytics metadata does not fabricate the new web multimodal UI filter as API support', () => {
-  const manifestTool = manifestJson.tools.find(
-    (entry: { name: string }) => entry.name === 'analytics.query',
-  );
-  assert.ok(manifestTool, 'manifest.json must describe analytics.query');
-  assert.match(
-    manifestTool.description,
-    /web multimodal performance-report selector/i,
-    'manifest.json must preserve the UI-only multimodal boundary',
-  );
-
+test('Search Analytics runtime does not claim webMultimodal is enabled in this MCP version', () => {
   assert.match(
     indexSource,
     /multimodal_report_isolatable/,
@@ -704,8 +694,8 @@ test('Search Analytics metadata does not fabricate the new web multimodal UI fil
   );
   assert.match(
     readmeSource,
-    /Use the Search Console UI for isolated multimodal reporting until Google documents API access/i,
-    'README must route isolated multimodal reporting to the supported surface',
+    /Use the Search Console UI for isolated multimodal reporting until native `webMultimodal` support is implemented here/i,
+    'README must distinguish documented API support from unavailable MCP capability',
   );
   assert.doesNotMatch(
     indexSource,
@@ -737,26 +727,31 @@ test('period comparison guidance does not turn one-sided Search Analytics absenc
   );
 });
 
-test('manual brand regex guidance does not impersonate Search Console branded classification', () => {
+test('native brand classification is discoverable without equating regex to Google classification', () => {
   assert.match(
     indexSource,
-    /query regex can provide a manual[\s\S]*brand\/non-brand approximation/i,
-    'analytics.query must describe query-regex segmentation as a manual approximation',
+    /query regex[\s\S]*manual brand\/non-brand approximation/i,
+    'analytics.query must describe query-regex segmentation as manual',
   );
   assert.match(
     indexSource,
-    /AI-assisted[\s\S]*Search Analytics API does not expose/i,
-    'runtime metadata must distinguish manual regexes from the native branded classifier',
+    /group by brandedClassification or filter it with equals BRANDED[\s\S]*NON_BRANDED/,
+    'runtime guidance must expose Google-native brand classification',
   );
   assert.match(
     indexSource,
-    /caller-supplied query regex can approximate a manual brand\/non-brand split/i,
-    'analytics.compare must preserve the same distinction',
+    /query regex is a manual brand\/non-brand approximation; native brandedClassification/,
+    'analytics.compare must distinguish native classification from manual patterns',
   );
   assert.match(
     readmeSource,
     /Query regexes are a manual approximation only/i,
-    'README must not present regex segmentation as Search Console native branded classification',
+    'README must preserve manual regex caveat',
+  );
+  assert.match(
+    readmeSource,
+    /brandedClassification[\s\S]*eligible top-level/i,
+    'README must document the native classifier eligibility boundary',
   );
 });
 

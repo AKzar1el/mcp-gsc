@@ -2618,7 +2618,7 @@ describe('Worker orchestration', () => {
       expect(serialized).toContain('dedicated Generative AI performance reports');
       expect(serialized).toContain('overall web Search performance data');
       expect(serialized).toContain('"multimodal_report_isolatable":false');
-      expect(serialized).toContain('web multimodal performance filter');
+      expect(serialized).toContain('Google documented webMultimodal as a Search Analytics API type');
       expect(serialized).toContain("search_type='multimodal'");
       expect(serialized).not.toContain('Output validation error');
       expect(serialized).not.toContain('\"keys\"');
@@ -4558,6 +4558,73 @@ describe('Worker orchestration', () => {
       expect(requests).toHaveLength(2);
       expect(requests[1]).not.toHaveProperty('dimensionFilterGroups');
       expect(unfiltered.structuredContent.page_contains).toBeNull();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('forwards native branded classification grouping and filters without extra provider reads', async () => {
+    await saveUser(workerEnv, 'native-brand-user', 'brand@example.test', 'brand-refresh-token');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'native-brand-user', email: 'brand@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    const filters = [{ groupType: 'and', filters: [{
+      dimension: 'brandedClassification', operator: 'equals', expression: 'NON_BRANDED',
+    }] }];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'native-brand-access', expires_in: 3600 });
+        }
+        if (url.endsWith('/searchAnalytics/query')) {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          return response({ rows: [{
+            keys: (body.dimensions as string[])[0] === 'brandedClassification'
+              ? ['NON_BRANDED'] : ['https://example.com/page'],
+            clicks: 7, impressions: 70, ctr: 0.1, position: 3,
+          }] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const direct = (await tools['analytics.query'].handler({
+        site_url: 'sc-domain:example.com', start_date: '2026-06-01', end_date: '2026-06-07',
+        dimensions: ['brandedClassification'], row_limit: 10, start_row: 0,
+        data_state: 'final', search_type: 'web', aggregation_type: 'auto',
+        dimension_filter_groups: filters,
+      })) as { structuredContent: { rows: Array<{ keys: string[] }>; dimensions: string[] } };
+      expect(direct.structuredContent.dimensions).toEqual(['brandedClassification']);
+      expect(direct.structuredContent.rows[0]?.keys).toEqual(['NON_BRANDED']);
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        dimensions: ['brandedClassification'], dimensionFilterGroups: filters,
+      });
+
+      await tools['analytics.compare'].handler({
+        site_url: 'sc-domain:example.com', start_date_a: '2026-06-01', end_date_a: '2026-06-07',
+        start_date_b: '2026-05-25', end_date_b: '2026-05-31', dimension: 'page',
+        search_type: 'web', data_state: 'final', dimension_filter_groups: filters,
+      });
+      expect(requests).toHaveLength(3);
+      expect(requests.slice(1).every((request) =>
+        JSON.stringify(request.dimensionFilterGroups) === JSON.stringify(filters))).toBe(true);
+      await expect(tools['analytics.query'].handler({
+        site_url: 'sc-domain:example.com', start_date: '2026-06-01', end_date: '2026-06-07',
+        dimensions: ['brandedClassification'], row_limit: 10, start_row: 0,
+        data_state: 'final', search_type: 'web', aggregation_type: 'auto',
+        dimension_filter_groups: [{ groupType: 'and', filters: [{
+          dimension: 'query', operator: 'contains', expression: 'example',
+        }] }],
+      })).rejects.toThrow(/brandedClassification.*query filter/);
+      expect(requests).toHaveLength(3);
     } finally {
       globalThis.fetch = originalFetch;
     }
