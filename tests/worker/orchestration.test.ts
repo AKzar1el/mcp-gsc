@@ -133,6 +133,45 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('offers a scoped client-ready weekly report prompt without provider calls or outbound actions', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, string>) => Promise<{
+          messages: Array<{ content: { type: string; text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts;
+    expect(prompts['gsc-weekly-client-report']).toBeDefined();
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const report = await prompts['gsc-weekly-client-report'].handler({
+        site_url: 'sc-domain:example.com',
+        end_date: '2026-11-10',
+        search_type: 'web',
+        page_contains: '/de/',
+        query_contains: 'technical seo',
+        country: 'DEU',
+        device: 'mobile',
+      });
+      const guidance = report.messages[0].content.text;
+      for (const value of ['sc-domain:example.com', '2026-11-10', '/de/', 'technical seo', 'DEU', 'mobile']) {
+        expect(guidance).toContain(value);
+      }
+      expect(guidance).toContain('reports.weekly_digest');
+      expect(guidance).toContain('analytics.compare');
+      expect(guidance).toContain('not property-wide');
+      expect(guidance).toContain('not zero traffic');
+      expect(guidance).toContain('Never email');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('advertises the existing low-CTR quick-wins filter in capabilities', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
