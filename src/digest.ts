@@ -1,5 +1,4 @@
 import {
-  hasRecordedPosition,
   querySearchAnalytics,
   type DimensionFilterGroup,
   type SearchAnalyticsRow,
@@ -18,7 +17,7 @@ interface SiteTotals {
   clicks: number;
   impressions: number;
   ctr: number;
-  position: number;
+  position: number | null;
 }
 
 interface QueryRow {
@@ -26,7 +25,7 @@ interface QueryRow {
   clicks: number;
   impressions: number;
   ctr: number;
-  position: number;
+  position?: number;
 }
 
 interface PageRow {
@@ -44,8 +43,8 @@ interface Mover {
   prevClicks: number;
   currentImpressions: number;
   prevImpressions: number;
-  currentPosition: number;
-  prevPosition: number;
+  currentPosition?: number;
+  prevPosition?: number;
   change: number;
 }
 
@@ -53,6 +52,12 @@ interface Movers {
   rising: Mover[];
   falling: Mover[];
   newImpressions: Mover[];
+}
+
+interface ObservedQueryOverlap {
+  current: number;
+  previous: number;
+  common: number;
 }
 
 type ActionKey =
@@ -203,6 +208,7 @@ export async function generateWeeklyDigest(
       `# Your weekly site report - ${escapeMarkdownInline(siteDisplayName(siteUrl))}`,
       `### Preliminary snapshot for ${dates.currentStart} to ${dates.currentEnd}`,
       '',
+      ...searchConsoleReviewLines(siteUrl),
       ...(searchTypeNotice ? [searchTypeNotice, ''] : []),
       ...(pageScopeNotice ? [pageScopeNotice, ''] : []),
       ...(deviceScopeNotice ? [deviceScopeNotice, ''] : []),
@@ -222,20 +228,23 @@ export async function generateWeeklyDigest(
         '## Available current-week metrics',
         `- ${formatNumber(totals.clicks)} clicks`,
         `- ${formatNumber(totals.impressions)} impressions`,
+        `- ${formatCtr(totals)} click-through rate (CTR; preliminary, no week-over-week comparison)`,
       );
-      const pages = rowsToPages(currentPagesResponse.rows).slice(0, 3);
-      if (pages.length > 0) {
-        lines.push('', '## Selected returned page rows (not exhaustive)');
-        for (const page of pages) {
-          lines.push(`- ${escapeMarkdownInline(page.page)}: ${formatNumber(page.impressions)} impressions`);
-        }
+    }
+    // A missing aggregate row is not a zero, but independently returned
+    // dimension rows can still provide useful preliminary evidence.
+    const pages = rowsToPages(currentPagesResponse.rows).slice(0, 3);
+    if (pages.length > 0) {
+      lines.push('', '## Selected returned page rows (not exhaustive)');
+      for (const page of pages) {
+        lines.push(`- ${topPageMarkdown(page.page, page.page)}: ${formatNumber(page.clicks)} clicks, ${formatNumber(page.impressions)} impressions`);
       }
-      const queries = rowsToQueries(currentQueriesResponse.rows).slice(0, 3);
-      if (queries.length > 0) {
-        lines.push('', '## Selected returned query rows (not exhaustive)');
-        for (const query of queries) {
-          lines.push(`- ${escapeMarkdownInline(query.query)}: ${formatNumber(query.impressions)} impressions`);
-        }
+    }
+    const queries = rowsToQueries(currentQueriesResponse.rows).slice(0, 3);
+    if (queries.length > 0) {
+      lines.push('', '## Selected returned query rows (not exhaustive)');
+      for (const query of queries) {
+        lines.push(`- ${escapeMarkdownInline(query.query)}: ${formatNumber(query.clicks)} clicks, ${formatNumber(query.impressions)} impressions`);
       }
     }
     lines.push(
@@ -261,10 +270,15 @@ export async function generateWeeklyDigest(
       : []),
   ];
   if (missingPeriods.length > 0) {
+    const previousObservedQueries = rowsToQueries(prevQueriesResponse.rows)
+      .filter((row) => row.query.trim() !== '' && !isOperatorQuery(row.query) && row.impressions > 0)
+      .sort((a, b) => b.impressions - a.impressions || a.query.localeCompare(b.query))
+      .slice(0, 3);
     return [
       `# Your weekly site report - ${escapeMarkdownInline(siteDisplayName(siteUrl))}`,
       `### Week of ${dates.currentStart} to ${dates.currentEnd}`,
       '',
+      ...searchConsoleReviewLines(siteUrl),
       ...(searchTypeNotice ? [searchTypeNotice, ''] : []),
       ...(pageScopeNotice ? [pageScopeNotice, ''] : []),
       ...(deviceScopeNotice ? [deviceScopeNotice, ''] : []),
@@ -274,6 +288,27 @@ export async function generateWeeklyDigest(
       `Google Search Console returned no aggregate Search Analytics row for ${missingPeriods.join(' and ')}.`,
       'An empty API response does not establish a measured zero for clicks or impressions. It may reflect no search activity or data that has not yet been processed.',
       'A week-over-week comparison and SEO action recommendation are withheld rather than treating absent rows as confirmed traffic loss.',
+      // The aggregate can be absent even when dimensioned rows are available.
+      // Preserve only directly returned current-period observations, not inferred totals.
+      ...(currentPagesResponse.rows.length > 0 ? [
+        '',
+        '## Selected returned page rows (not exhaustive)',
+        ...rowsToPages(currentPagesResponse.rows).slice(0, 3).map((page) =>
+          `- ${topPageMarkdown(page.page, page.page)}: ${formatNumber(page.clicks)} clicks, ${formatNumber(page.impressions)} impressions`),
+      ] : []),
+      ...(currentQueriesResponse.rows.length > 0 ? [
+        '',
+        '## Selected returned query rows (not exhaustive)',
+        ...rowsToQueries(currentQueriesResponse.rows).slice(0, 3).map((query) =>
+          `- ${escapeMarkdownInline(query.query)}: ${formatNumber(query.clicks)} clicks, ${formatNumber(query.impressions)} impressions`),
+      ] : []),
+      ...(previousObservedQueries.length > 0 ? [
+        '',
+        '## Previously returned query rows (not exhaustive)',
+        `> These queries were observed in the previous ${dates.prevStart} to ${dates.prevEnd} sample (up to 25 rows), not necessarily absent from the current week. Missing aggregate data or unreturned current rows are not evidence of lost traffic. Diagnostic search-operator queries are excluded.`,
+        ...previousObservedQueries.map((query) =>
+          `- ${escapeMarkdownInline(query.query)}: ${formatNumber(query.clicks)} ${query.clicks === 1 ? 'click' : 'clicks'}, ${formatNumber(query.impressions)} impressions last week.`),
+      ] : []),
       '',
       '## What to check',
       '1. Open the Search Console Performance report and check its latest available reporting date.',
@@ -286,6 +321,24 @@ export async function generateWeeklyDigest(
   const currentQueries = rowsToQueries(currentQueriesResponse.rows);
   const prevQueries = rowsToQueries(prevQueriesResponse.rows);
   const currentPages = rowsToPages(currentPagesResponse.rows);
+
+  const currentQueryKeys = new Set(currentQueries.map((row) => row.query).filter(Boolean));
+  const previousQueryKeys = new Set(prevQueries.map((row) => row.query).filter(Boolean));
+  const observedQueryOverlap: ObservedQueryOverlap = {
+    current: currentQueryKeys.size,
+    previous: previousQueryKeys.size,
+    common: [...currentQueryKeys].filter((query) => previousQueryKeys.has(query)).length,
+  };
+  const currentOnlyQueries = currentQueries
+    .filter((row) => row.query.trim() !== '' && !isOperatorQuery(row.query)
+      && !previousQueryKeys.has(row.query) && row.impressions > 0)
+    .sort((a, b) => b.impressions - a.impressions || a.query.localeCompare(b.query))
+    .slice(0, 3);
+  const previousOnlyQueries = prevQueries
+    .filter((row) => row.query.trim() !== '' && !isOperatorQuery(row.query)
+      && !currentQueryKeys.has(row.query) && row.impressions > 0)
+    .sort((a, b) => b.impressions - a.impressions || a.query.localeCompare(b.query))
+    .slice(0, 3);
 
   const movers = computeMovers(currentQueries, prevQueries);
   const action = searchType === 'web'
@@ -310,6 +363,10 @@ export async function generateWeeklyDigest(
     currentTotals,
     prevTotals,
     movers,
+    observedQueryOverlap,
+    currentOnlyQueries,
+    previousOnlyQueries,
+    currentQueries,
     currentPages,
     action,
   });
@@ -332,25 +389,23 @@ function computeDateRanges(endDate: string): DateRanges {
 }
 
 function totalsFromRow(row: SearchAnalyticsRow | undefined): SiteTotals {
-  if (!row) return { clicks: 0, impressions: 0, ctr: 0, position: 0 };
+  if (!row) return { clicks: 0, impressions: 0, ctr: 0, position: null };
   return {
     clicks: row.clicks ?? 0,
     impressions: row.impressions ?? 0,
     ctr: row.ctr ?? 0,
-    position: row.position ?? 0,
+    position: row.position ?? null,
   };
 }
 
 function rowsToQueries(rows: SearchAnalyticsRow[]): QueryRow[] {
-  return rows
-    .filter(hasRecordedPosition)
-    .map((r) => ({
-      query: r.keys?.[0] ?? '',
-      clicks: r.clicks,
-      impressions: r.impressions,
-      ctr: r.ctr,
-      position: r.position,
-    }));
+  return rows.map((r) => ({
+    query: r.keys?.[0] ?? '',
+    clicks: r.clicks,
+    impressions: r.impressions,
+    ctr: r.ctr,
+    position: r.position,
+  }));
 }
 
 function rowsToPages(rows: SearchAnalyticsRow[]): PageRow[] {
@@ -501,7 +556,8 @@ function pickActionAndBuild(
   }
 
   const risingWithWeakerAveragePosition = movers.rising.find(
-    (m) => m.currentPosition > 10,
+    (m): m is Mover & { currentPosition: number } =>
+      m.currentPosition !== undefined && m.currentPosition > 10,
   );
   if (risingWithWeakerAveragePosition) {
     return {
@@ -514,8 +570,11 @@ function pickActionAndBuild(
     };
   }
 
-  const positionImprovement = prevTotals.position - currentTotals.position;
-  if (prevTotals.position > 0 && currentTotals.position > 0 && positionImprovement > 2) {
+  const positionImprovement = prevTotals.position !== null && currentTotals.position !== null
+    && prevTotals.position > 0 && currentTotals.position > 0
+    ? prevTotals.position - currentTotals.position
+    : null;
+  if (positionImprovement !== null && positionImprovement > 2) {
     return {
       key: 'celebrate_and_double_down',
       item: {
@@ -544,6 +603,15 @@ function escapeMarkdownInline(value: string): string {
     .replace(/([\\`*_{}\[\]()#+.!|~-])/g, '\\$1');
 }
 
+function searchConsoleReviewLines(siteUrl: string): string[] {
+  const href = `https://search.google.com/search-console/performance/search-analytics?resource_id=${encodeURIComponent(siteUrl)}`;
+  return [
+    `[Open this property in Search Console Performance](${href})`,
+    '> Choose the same dates and filters in Search Console; this link opens the property but does not apply this report\'s filters.',
+    '',
+  ];
+}
+
 function renderMarkdown(data: {
   siteUrl: string;
   searchTypeNotice?: string;
@@ -555,10 +623,14 @@ function renderMarkdown(data: {
   currentTotals: SiteTotals;
   prevTotals: SiteTotals;
   movers: Movers;
+  observedQueryOverlap: ObservedQueryOverlap;
+  currentOnlyQueries: QueryRow[];
+  previousOnlyQueries: QueryRow[];
+  currentQueries: QueryRow[];
   currentPages: PageRow[];
   action: { key: ActionKey; item: ActionItem };
 }): string {
-  const { siteUrl, searchTypeNotice, pageScopeNotice, deviceScopeNotice, queryScopeNotice, countryScopeNotice, dates, currentTotals, prevTotals, movers, currentPages, action } = data;
+  const { siteUrl, searchTypeNotice, pageScopeNotice, deviceScopeNotice, queryScopeNotice, countryScopeNotice, dates, currentTotals, prevTotals, movers, observedQueryOverlap, currentOnlyQueries, previousOnlyQueries, currentQueries, currentPages, action } = data;
   const siteName = siteDisplayName(siteUrl);
   const lines: string[] = [];
 
@@ -572,6 +644,7 @@ function renderMarkdown(data: {
   lines.push(`# Your weekly site report — ${escapeMarkdownInline(siteName)}`);
   lines.push(`### Week of ${dates.currentStart} to ${dates.currentEnd}`);
   lines.push('');
+  lines.push(...searchConsoleReviewLines(siteUrl));
   if (searchTypeNotice) lines.push(searchTypeNotice, '');
   if (pageScopeNotice) lines.push(pageScopeNotice, '');
   if (deviceScopeNotice) lines.push(deviceScopeNotice, '');
@@ -586,6 +659,9 @@ function renderMarkdown(data: {
     `- **Clicks from Google Search:** ${formatNumber(currentTotals.clicks)} (${formatPctChange(currentTotals.clicks, prevTotals.clicks)})`,
   );
   lines.push(
+    `- **Click-through rate (CTR):** ${formatCtr(currentTotals)} (${formatCtrChange(currentTotals, prevTotals)})`,
+  );
+  lines.push(
     `- **Average Search Console position:** ${formatPosition(currentTotals.position)} (${formatPositionChange(currentTotals.position, prevTotals.position)})`,
   );
   lines.push('');
@@ -594,6 +670,9 @@ function renderMarkdown(data: {
   lines.push('');
   lines.push(
     '> Query movers compare only query rows returned in both weekly Search Console result sets. A query missing from one bounded response is not treated as zero because Search Analytics returns top rows and does not guarantee every data row.',
+  );
+  lines.push(
+    `> **Returned query-row overlap:** ${observedQueryOverlap.current} distinct current-week queries, ${observedQueryOverlap.previous} previous-week queries, ${observedQueryOverlap.common} observed in both. Each period contains at most 25 returned query rows; these counts are not exhaustive.`,
   );
   lines.push('');
 
@@ -607,7 +686,7 @@ function renderMarkdown(data: {
     lines.push('');
     for (const m of movers.rising) {
       lines.push(
-        `- **"${escapeMarkdownInline(m.query)}"** — ${m.currentClicks} clicks this week (was ${m.prevClicks} last week). Average position ${m.currentPosition.toFixed(1)}.`,
+        `- **"${escapeMarkdownInline(m.query)}"** — ${m.currentClicks} clicks this week (was ${m.prevClicks} last week).${m.currentPosition !== undefined ? ` Average position ${m.currentPosition.toFixed(1)}.` : ''}`,
       );
     }
     lines.push('');
@@ -618,7 +697,7 @@ function renderMarkdown(data: {
     lines.push('');
     for (const m of movers.falling) {
       lines.push(
-        `- **"${escapeMarkdownInline(m.query)}"** — ${m.currentClicks} clicks this week (was ${m.prevClicks} last week). Average position ${m.currentPosition.toFixed(1)}.`,
+        `- **"${escapeMarkdownInline(m.query)}"** — ${m.currentClicks} clicks this week (was ${m.prevClicks} last week).${m.currentPosition !== undefined ? ` Average position ${m.currentPosition.toFixed(1)}.` : ''}`,
       );
     }
     lines.push('');
@@ -644,14 +723,17 @@ function renderMarkdown(data: {
       currentTotals.clicks,
       prevTotals.clicks,
     );
-    const sitePositionDelta = currentTotals.position - prevTotals.position;
+    const sitePositionDelta = currentTotals.position !== null && prevTotals.position !== null
+      && currentTotals.position > 0 && prevTotals.position > 0
+      ? currentTotals.position - prevTotals.position
+      : null;
 
     const siteHadBigMove =
       siteImpressionsChangePct === null ||
       siteClicksChangePct === null ||
       Math.abs(siteImpressionsChangePct) >= 25 ||
       Math.abs(siteClicksChangePct) >= 25 ||
-      Math.abs(sitePositionDelta) >= 3;
+      (sitePositionDelta !== null && Math.abs(sitePositionDelta) >= 3);
 
     if (siteHadBigMove) {
       lines.push('### Site-level changes');
@@ -660,12 +742,38 @@ function renderMarkdown(data: {
         `Your overall numbers moved this week, but the available query rows do not establish which queries drove the change. ${describeSiteLevelMove(siteImpressionsChangePct, siteClicksChangePct, sitePositionDelta)}`,
       );
       lines.push('');
+    } else if (observedQueryOverlap.common === 0) {
+      lines.push('### Query trends not comparable');
+      lines.push('Aggregate site totals are stable, but the bounded query results have no shared returned queries. Stability of individual query performance cannot be established from these samples.');
+      lines.push('');
     } else {
       lines.push('### Steady week');
       lines.push('');
       lines.push('Nothing major changed this week. Numbers are stable.');
       lines.push('');
     }
+  }
+
+  if (currentOnlyQueries.length > 0) {
+    lines.push('### Queries returned this week but not in last week\'s sample');
+    lines.push('');
+    lines.push('> These queries were observed only in the current up-to-25 returned query rows, not in the previous up-to-25 sample. This is not proof of new demand or new rankings: missing previous rows are not measured zero. Anonymized queries may be omitted, and diagnostic search-operator queries are excluded.');
+    lines.push('');
+    for (const query of currentOnlyQueries) {
+      lines.push(`- **${escapeMarkdownInline(query.query)}** — ${formatNumber(query.impressions)} impressions, ${formatNumber(query.clicks)} clicks this week.`);
+    }
+    lines.push('');
+  }
+
+  if (previousOnlyQueries.length > 0) {
+    lines.push('### Queries returned last week but not in this week\'s sample');
+    lines.push('');
+    lines.push('> These queries were observed only in the previous up-to-25 returned query rows, not in the current up-to-25 sample. This is not proof of lost traffic or declining rankings: missing current rows are not measured zero. Anonymized queries may be omitted, and diagnostic search-operator queries are excluded.');
+    lines.push('');
+    for (const query of previousOnlyQueries) {
+      lines.push(`- **${escapeMarkdownInline(query.query)}** — ${formatNumber(query.impressions)} impressions, ${formatNumber(query.clicks)} clicks last week.`);
+    }
+    lines.push('');
   }
 
   lines.push('## Your top pages this week');
@@ -684,11 +792,49 @@ function renderMarkdown(data: {
       // Keep concise paths unless dropping the host would merge distinct URLs.
       const displayPage = (pagePathCounts.get(path) ?? 0) > 1 ? p.page : path;
       lines.push(
-        `- **${escapeMarkdownInline(displayPage)}** — ${formatNumber(p.clicks)} clicks, ${formatNumber(p.impressions)} times shown.`,
+        `- ${topPageMarkdown(p.page, displayPage)} — ${formatNumber(p.clicks)} clicks, ${formatNumber(p.impressions)} times shown.`,
       );
     }
   }
   lines.push('');
+
+  // Reuse the already returned page sample; requesting additional rows would
+  // consume extra Google quota and still would not make this sample exhaustive.
+  const noClickPages = currentPages
+    .filter((page) => page.clicks === 0 && page.impressions > 0)
+    .sort((a, b) => b.impressions - a.impressions)
+    .slice(0, 3);
+  if (noClickPages.length > 0) {
+    lines.push('### Returned pages with impressions but no clicks');
+    lines.push('');
+    lines.push('> These candidates appear only in the up-to-10 returned page rows (not exhaustive). Missing pages are not zero; inspect matching queries and page-level context before changing content.');
+    lines.push('');
+    for (const page of noClickPages) {
+      lines.push(`- ${topPageMarkdown(page.page, page.page)} — ${formatNumber(page.impressions)} impressions, 0 observed clicks.`);
+    }
+    lines.push('');
+  }
+
+  // The existing bounded query response can highlight search terms worth
+  // reviewing without a further Search Analytics request or inferred zeros.
+  const noClickQueries = currentQueries
+    .filter((query) => query.query.trim() !== '' && !isOperatorQuery(query.query)
+      && query.clicks === 0 && query.impressions > 0)
+    .sort((a, b) => b.impressions - a.impressions)
+    .slice(0, 3);
+  if (noClickQueries.length > 0) {
+    lines.push('### Returned search queries with impressions but no clicks');
+    lines.push('');
+    lines.push('> These candidates come only from the up-to-25 returned query rows (not exhaustive); anonymized queries may be omitted and diagnostic search-operator queries are excluded. Missing queries are not zero. Average position is an observed Search Console metric, not a live rank, and is omitted when unavailable. Check search intent, ranking context and SERP features before changing content.');
+    lines.push('');
+    for (const query of noClickQueries) {
+      const positionContext = query.position !== undefined && Number.isFinite(query.position) && query.position >= 1
+        ? `, average position ${query.position.toFixed(1)}`
+        : '';
+      lines.push(`- **${escapeMarkdownInline(query.query)}** — ${formatNumber(query.impressions)} impressions, 0 observed clicks${positionContext}.`);
+    }
+    lines.push('');
+  }
 
   lines.push('## What to do this week');
   lines.push('');
@@ -711,6 +857,7 @@ function renderMarkdown(data: {
     '- **Impressions:** Your site appeared in Google Search results. This counts result appearances according to Search Console\'s reporting rules; it is not a unique-person count.',
   );
   lines.push('- **Clicks:** Your link was clicked from Google Search results.');
+  lines.push('- **Click-through rate (CTR):** Clicks divided by impressions for the same selected search scope. Changes in CTR are shown in percentage points, not relative percentages. A period without impressions has no comparable CTR.');
   lines.push(
     '- **Average position:** Search Console averages the topmost position of your result across recorded impressions. Lower values mean a higher average position, but this is not a literal current rank or results-page number.',
   );
@@ -724,8 +871,23 @@ function formatNumber(n: number): string {
   return Math.round(n).toLocaleString('en-US');
 }
 
-function formatPosition(n: number): string {
-  if (n === 0) return '—';
+function formatCtr(totals: SiteTotals): string {
+  return totals.impressions > 0
+    ? `${(totals.ctr * 100).toFixed(1)}%`
+    : 'unavailable (zero recorded impressions)';
+}
+
+function formatCtrChange(current: SiteTotals, previous: SiteTotals): string {
+  if (current.impressions <= 0 || previous.impressions <= 0) {
+    return 'no comparable CTR baseline';
+  }
+  const difference = (current.ctr - previous.ctr) * 100;
+  if (Math.abs(difference) < 0.05) return 'same as last week';
+  return `${Math.abs(difference).toFixed(1)} percentage points ${difference > 0 ? 'higher' : 'lower'} vs last week`;
+}
+
+function formatPosition(n: number | null): string {
+  if (n === null || n === 0) return '—';
   return n.toFixed(1);
 }
 
@@ -744,8 +906,8 @@ function percentageChangeOrNull(current: number, baseline: number): number | nul
   return ((current - baseline) / baseline) * 100;
 }
 
-function formatPositionChange(current: number, prev: number): string {
-  if (prev === 0 || current === 0) return 'no comparison available';
+function formatPositionChange(current: number | null, prev: number | null): string {
+  if (prev === null || current === null || prev === 0 || current === 0) return 'no comparison available';
   const diff = current - prev;
   if (Math.abs(diff) < 0.05) return 'same as last week';
   if (diff < 0) {
@@ -756,10 +918,13 @@ function formatPositionChange(current: number, prev: number): string {
 
 function siteDisplayName(siteUrl: string): string {
   if (siteUrl.startsWith('sc-domain:')) {
-    return siteUrl.slice('sc-domain:'.length);
+    return `${siteUrl.slice('sc-domain:'.length)} (Domain property)`;
   }
   try {
-    return new URL(siteUrl).hostname;
+    const url = new URL(siteUrl);
+    // URL-prefix properties can differ by protocol or path even on the same host.
+    const protocolLabel = url.protocol === 'http:' ? 'http://' : '';
+    return protocolLabel + url.host + (url.pathname === '/' ? '' : url.pathname);
   } catch {
     return siteUrl;
   }
@@ -771,6 +936,21 @@ function relativePagePath(pageUrl: string): string {
     return u.pathname + u.search;
   } catch {
     return pageUrl;
+  }
+}
+
+function topPageMarkdown(pageUrl: string, displayPage: string): string {
+  const label = `**${escapeMarkdownInline(displayPage)}**`;
+  try {
+    const url = new URL(pageUrl);
+    if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) {
+      return label;
+    }
+    // Parentheses in a URL would terminate an ordinary Markdown link target.
+    const href = url.href.replace(/\(/g, '%28').replace(/\)/g, '%29');
+    return `[${label}](${href})`;
+  } catch {
+    return label;
   }
 }
 
@@ -794,7 +974,7 @@ function isWithinLast3Days(endDate: string): boolean {
 function describeSiteLevelMove(
   impressionsChangePct: number | null,
   clicksChangePct: number | null,
-  positionDelta: number,
+  positionDelta: number | null,
 ): string {
   const candidates: Array<{
     metric: 'impressions' | 'position' | 'clicks';
@@ -811,7 +991,7 @@ function describeSiteLevelMove(
       ratio: Math.abs(impressionsChangePct) / 25,
     });
   }
-  if (Math.abs(positionDelta) >= 3) {
+  if (positionDelta !== null && Math.abs(positionDelta) >= 3) {
     candidates.push({ metric: 'position', ratio: Math.abs(positionDelta) / 3 });
   }
   if (
@@ -847,7 +1027,7 @@ function describeSiteLevelMove(
     return `Your site recorded fewer search impressions this week (${impressionsChangePct.toFixed(0)}%). The aggregate does not identify which queries drove this change; inspect Query and Page rows in Search Console.`;
   }
 
-  if (winner.metric === 'position') {
+  if (winner.metric === 'position' && positionDelta !== null) {
     if (positionDelta >= 3) {
       return `Your average Search Console position worsened by ${positionDelta.toFixed(1)} this week. This aggregate can move because of changes in the mix of queries, pages, devices, countries, or result types, so inspect those dimensions before assigning a cause.`;
     }

@@ -43,7 +43,11 @@ const cursorSkills = [
   {
     path: 'skills/gsc-weekly-review/SKILL.md',
     name: 'gsc-weekly-review',
-    requiredTerms: ['reports.weekly_digest', 'analytics.compare', 'average position'],
+    requiredTerms: [
+      'reports.weekly_digest', 'analytics.compare', 'average position',
+      'search_type', 'page_contains', 'query_contains', 'device', 'country',
+      'ISO 3166-1 alpha-3', 'same scope',
+    ],
   },
   {
     path: 'skills/gsc-indexing-triage/SKILL.md',
@@ -53,7 +57,10 @@ const cursorSkills = [
   {
     path: 'skills/gsc-search-opportunities/SKILL.md',
     name: 'gsc-search-opportunities',
-    requiredTerms: ['insights.quick_wins', 'insights.cannibalization', 'not guaranteed exhaustive'],
+    requiredTerms: [
+      'insights.quick_wins', 'insights.cannibalization', 'not guaranteed exhaustive',
+      'page_contains', 'query_contains', 'country', 'before pagination', 'not a page language',
+    ],
   },
 ] as const;
 
@@ -772,11 +779,6 @@ test('Search Analytics page discovery is not presented as index coverage', () =>
       /not an index-coverage inventory/i,
       `${label} must reject index-inventory semantics`,
     );
-    assert.match(
-      tool.description,
-      /page_contains.*before pagination/i,
-      `${label} must expose the URL-section filter before pagination`,
-    );
     assert.doesNotMatch(
       tool.description,
       /proxy for indexed pages/i,
@@ -1112,8 +1114,16 @@ test('quick wins advertises Web/Image/Video/News search surfaces without claimin
   assert.match(schema, /search_type:\s*z\.enum\(\['web', 'image', 'video', 'news'\]\)\.default\('web'\)/);
   const catalog = indexSource.split("name: 'insights.quick_wins'")[1]?.split('\n  },')[0] ?? '';
   assert.match(catalog, /search_type/);
-  assert.match(indexSource, /const QUICK_WIN_OUTPUT_SCHEMA = \{\s*search_type:/);
+  assert.match(indexSource, /const QUICK_WIN_OUTPUT_SCHEMA = \{[\s\S]*?search_type:/);
   assert.match(readmeSource, /For `insights\.quick_wins`, optional `search_type` selects/);
+});
+
+test('quick wins advertises preliminary-data opt-in and truthful response state', () => {
+  assert.match(quickWinsSource, /data_state:\s*z\.enum\(\['all', 'final'\]\)\.optional\(\)/);
+  const registration = indexSource.match(/this\.server\.registerTool\(\s*'insights\.quick_wins'([\s\S]*?)outputSchema:/)?.[1] ?? '';
+  assert.match(registration, /preliminary/);
+  assert.match(indexSource, /const QUICK_WIN_OUTPUT_SCHEMA = \{[\s\S]*?preliminary_data_possible:/);
+  assert.match(readmeSource, /For `insights\.quick_wins`, optional `data_state: "all"`/);
 });
 
 test('exact page and query drilldowns validate a searcher country rather than inferring page language', () => {
@@ -1123,6 +1133,17 @@ test('exact page and query drilldowns validate a searcher country rather than in
   }
   assert.match(indexSource, /const DIRECT_INSIGHT_COUNTRY_SCHEMA[\s\S]*?ISO 3166-1 alpha-3/);
   assert.match(indexSource, /searcher country[^']*not the page language/i);
+});
+
+test('exact page/query drilldowns offer opt-in preliminary data without changing finalized defaults', () => {
+  for (const toolName of ['insights.page_queries', 'insights.query_pages']) {
+    const catalog = indexSource.split(`name: '${toolName}'`)[1]?.split('\n  },')[0] ?? '';
+    const registration = indexSource.match(new RegExp(`this\\.server\\.registerTool\\(\\s*'${toolName.replaceAll('.', '\\.')}'([\\s\\S]*?)outputSchema:`))?.[1] ?? '';
+    assert.match(catalog, /data_state=all/);
+    assert.match(registration, /data_state:\s*DIRECT_INSIGHT_DATA_STATE_SCHEMA/);
+  }
+  assert.match(readmeSource, /For `insights\.page_queries` and `insights\.query_pages`, optional `data_state: "all"`/);
+  assert.match(indexSource, /const DIRECT_INSIGHT_DATA_STATE_SCHEMA[\s\S]*?finalized-only default/);
 });
 
 test('direct page and query drilldowns advertise optional device scope', () => {
@@ -1156,6 +1177,11 @@ test('content decay advertises an optional finalized historical comparison end d
   assert.match(readmeSource, /For `insights\.content_decay`, optional `end_date`/);
 });
 
+test('content decay exposes the exact property for saved cross-period results', () => {
+  assert.match(indexSource, /const CONTENT_DECAY_OUTPUT_SCHEMA = \{\s*site_url:\s*SEARCH_CONSOLE_PROPERTY_SCHEMA/);
+  assert.match(readmeSource, /`insights\.content_decay` includes the exact requested `site_url`/);
+});
+
 test('cannibalization country scope is discoverable and described as searcher geography', () => {
   const registration = indexSource.match(/this\.server\.registerTool\(\s*'insights\.cannibalization'([\s\S]*?)outputSchema:/)?.[1] ?? '';
   assert.match(registration, /country:\s*CANNIBALIZATION_COUNTRY_SCHEMA/);
@@ -1178,8 +1204,27 @@ test('cannibalization exposes Web/Image/Video/News-tab surfaces and labels scope
   assert.match(schema, /CANNIBALIZATION_SEARCH_TYPE_SCHEMA[\s\S]*?web[\s\S]*?image[\s\S]*?video[\s\S]*?news/);
   const catalog = indexSource.split("name: 'insights.cannibalization'")[1]?.split('\n  },')[0] ?? '';
   assert.match(catalog, /search_type/);
-  assert.match(indexSource, /const CANNIBALIZATION_OUTPUT_SCHEMA = \{\s*search_type:/);
+  assert.match(indexSource, /const CANNIBALIZATION_OUTPUT_SCHEMA = \{[\s\S]*?search_type:/);
   assert.match(readmeSource, /For `insights\.cannibalization`, optional `search_type` selects/);
+});
+
+test('cannibalization preliminary data is opt-in and disclosed as provisional', () => {
+  const registration = indexSource.match(/this\.server\.registerTool\(\s*'insights\.cannibalization'([\s\S]*?)outputSchema:/)?.[1] ?? '';
+  assert.match(registration, /data_state:\s*CANNIBALIZATION_DATA_STATE_SCHEMA/);
+  const schema = readFileSync(resolve(projectRoot, 'src/cannibalization-schema.ts'), 'utf8');
+  assert.match(schema, /CANNIBALIZATION_DATA_STATE_SCHEMA[\s\S]*?all[\s\S]*?final/);
+  assert.match(indexSource, /const CANNIBALIZATION_OUTPUT_SCHEMA = \{[\s\S]*?preliminary_data_possible:/);
+  assert.match(readmeSource, /For `insights\.cannibalization`, optional `data_state: "all"`/);
+});
+
+test('saved quick-win and cannibalization insights disclose their exact property and inclusive dates', () => {
+  for (const name of ['QUICK_WIN_OUTPUT_SCHEMA', 'CANNIBALIZATION_OUTPUT_SCHEMA']) {
+    const schema = indexSource.match(new RegExp(`const ${name} = \\{([\\s\\S]*?)search_type:`))?.[1] ?? '';
+    for (const field of ['site_url', 'start_date', 'end_date']) {
+      assert.match(schema, new RegExp(`\\b${field}:`), `${name} must expose ${field}`);
+    }
+  }
+  assert.match(readmeSource, /insights\.quick_wins.*insights\.cannibalization.*site_url.*start_date.*end_date/);
 });
 
 test('direct Search Analytics tools bound start_row before quota reservation', () => {

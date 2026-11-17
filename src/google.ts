@@ -329,7 +329,7 @@ export async function exchangeCodeForTokens(
 export interface GoogleUserInfo {
   id: string;
   email: string;
-  verified_email?: boolean;
+  verified_email?: boolean | null;
 }
 
 export async function fetchGoogleUserInfo(
@@ -357,6 +357,10 @@ export async function fetchGoogleUserInfo(
     // The Google ID keys the encrypted refresh-token record and OAuth tenant.
     // An unchecked/undefined ID could collapse distinct sign-ins into one KV key.
     throw new Error('Google userinfo response missing a valid account ID or email.');
+  }
+  if ('verified_email' in profile && profile.verified_email != null &&
+      typeof profile.verified_email !== 'boolean') {
+    throw new Error('Google userinfo response has invalid verified_email data.');
   }
   return profile as GoogleUserInfo;
 }
@@ -1383,6 +1387,7 @@ export function processQuickWins(
   minImpressions: number,
   minPosition: number,
   maxPosition: number,
+  maxCtr?: number,
 ): QuickWinResult[] {
   return rows
     .filter(hasRecordedPosition)
@@ -1391,7 +1396,8 @@ export function processQuickWins(
         (row.keys?.length ?? 0) >= 2 &&
         row.position >= minPosition &&
         row.position <= maxPosition &&
-        row.impressions >= minImpressions
+        row.impressions >= minImpressions &&
+        (maxCtr === undefined || row.ctr <= maxCtr)
     )
     .sort(
       (a, b) =>
@@ -1415,7 +1421,7 @@ export interface CannibalizationPage {
   clicks: number;
   impressions: number;
   ctr: number;
-  position: number;
+  position: number | null;
   impression_share: number;
 }
 
@@ -1432,9 +1438,9 @@ export function processCannibalization(
   minImpressions: number,
   minPagePercentage: number,
 ): CannibalizationResult[] {
-  const queryGroups = new Map<string, Array<{ page: string; clicks: number; impressions: number; ctr: number; position: number }>>();
+  const queryGroups = new Map<string, Array<{ page: string; clicks: number; impressions: number; ctr: number; position: number | null }>>();
   for (const row of rows) {
-    if ((row.keys?.length ?? 0) < 2 || row.position === undefined) continue;
+    if ((row.keys?.length ?? 0) < 2) continue;
     const query = row.keys![0];
     const page = row.keys![1];
     if (!queryGroups.has(query)) {
@@ -1445,7 +1451,7 @@ export function processCannibalization(
       clicks: row.clicks,
       impressions: row.impressions,
       ctr: row.ctr,
-      position: row.position,
+      position: row.position ?? null,
     });
   }
 
@@ -1456,11 +1462,15 @@ export function processCannibalization(
     const totalClicks = pages.reduce((sum, p) => sum + p.clicks, 0);
 
     const competingPages = pages
+      .filter((p) =>
+        totalImpressions > 0 &&
+        p.impressions >= minImpressions &&
+        (p.impressions / totalImpressions) * 100 >= minPagePercentage
+      )
       .map((p) => ({
         ...p,
         impression_share: Math.round((p.impressions / totalImpressions) * 1000) / 10,
-      }))
-      .filter((p) => p.impressions >= minImpressions && p.impression_share >= minPagePercentage);
+      }));
 
     if (competingPages.length >= 2) {
       cannibalizationCandidates.push({
@@ -1500,8 +1510,8 @@ export interface DecayPageResult {
   recent_impressions: number;
   impression_difference: number;
   impression_change_percentage: number | null;
-  previous_position: number;
-  recent_position: number;
+  previous_position: number | null;
+  recent_position: number | null;
   position_change: number | null;
 }
 
@@ -1515,8 +1525,8 @@ function classifyContentDecay(input: {
   recentClicks: number;
   previousImpressions: number;
   recentImpressions: number;
-  previousPosition: number;
-  recentPosition: number;
+  previousPosition: number | null;
+  recentPosition: number | null;
 }): { classification: ContentDecayClassification; evidence: string } {
   const {
     previousClicks,
@@ -1537,12 +1547,14 @@ function classifyContentDecay(input: {
     previousImpressions > 0
       ? ((previousImpressions - recentImpressions) / previousImpressions) * 100
       : 0;
+  const comparablePosition = previousPosition !== null && recentPosition !== null
+    && previousPosition > 0 && recentPosition > 0;
   const positionImprovement =
-    previousPosition > 0 && recentPosition > 0
+    comparablePosition
       ? previousPosition - recentPosition
       : 0;
   const positionWorsening =
-    previousPosition > 0 && recentPosition > 0
+    comparablePosition
       ? recentPosition - previousPosition
       : 0;
 
@@ -1582,25 +1594,24 @@ export function processContentDecay(
   recentRows: SearchAnalyticsRow[],
   previousRows: SearchAnalyticsRow[],
 ): DecayPageResult[] {
-  const recentMap = new Map<string, { clicks: number; impressions: number; ctr: number; position: number }>();
+  const recentMap = new Map<string, { clicks: number; impressions: number; position: number | null }>();
   for (const row of recentRows) {
-    if ((row.keys?.length ?? 0) < 1 || row.position === undefined) continue;
+    if ((row.keys?.length ?? 0) < 1) continue;
     recentMap.set(row.keys![0], {
       clicks: row.clicks,
       impressions: row.impressions,
-      ctr: row.ctr,
-      position: row.position,
+      position: row.position ?? null,
     });
   }
 
   const decayCandidates: DecayPageResult[] = [];
 
   for (const row of previousRows) {
-    if ((row.keys?.length ?? 0) < 1 || row.position === undefined) continue;
+    if ((row.keys?.length ?? 0) < 1) continue;
     const page = row.keys![0];
     const prevClicks = row.clicks;
     const prevImps = row.impressions;
-    const prevPos = row.position;
+    const prevPos = row.position ?? null;
 
     const recent = recentMap.get(page);
     if (!recent) continue;
@@ -1635,7 +1646,7 @@ export function processContentDecay(
         previous_position: prevPos,
         recent_position: recPos,
         position_change:
-          prevPos > 0 && recPos > 0
+          prevPos !== null && recPos !== null && prevPos > 0 && recPos > 0
             ? Math.round((recPos - prevPos) * 10) / 10
             : null,
       });
@@ -2542,15 +2553,15 @@ export async function getIndexingNotificationMetadata(
 
 export interface PerformanceComparisonRow {
   key: string;
-  period_a: { clicks: number; impressions: number; ctr: number; position: number };
-  period_b: { clicks: number; impressions: number; ctr: number; position: number };
+  period_a: { clicks: number; impressions: number; ctr: number; position: number | null };
+  period_b: { clicks: number; impressions: number; ctr: number; position: number | null };
   diff: {
     clicks: number;
     clicks_percentage: number | null;
     impressions: number;
     impressions_percentage: number | null;
     ctr: number;
-    position: number;
+    position: number | null;
   };
 }
 
@@ -2566,26 +2577,26 @@ export function processPerformanceComparison(
   rowsA: SearchAnalyticsRow[],
   rowsB: SearchAnalyticsRow[],
 ): PerformanceComparisonRow[] {
-  const mapB = new Map<string, { clicks: number; impressions: number; ctr: number; position: number }>();
+  const mapB = new Map<string, { clicks: number; impressions: number; ctr: number; position: number | null }>();
   for (const row of rowsB) {
-    if ((row.keys?.length ?? 0) < 1 || row.position === undefined) continue;
+    if ((row.keys?.length ?? 0) < 1) continue;
     mapB.set(row.keys![0], {
       clicks: row.clicks,
       impressions: row.impressions,
       ctr: row.ctr,
-      position: row.position,
+      position: row.position ?? null,
     });
   }
 
   const comparison: PerformanceComparisonRow[] = [];
 
   for (const row of rowsA) {
-    if ((row.keys?.length ?? 0) < 1 || row.position === undefined) continue;
+    if ((row.keys?.length ?? 0) < 1) continue;
     const key = row.keys![0];
     const clicksA = row.clicks;
     const impsA = row.impressions;
     const ctrA = row.ctr;
-    const posA = row.position;
+    const posA = row.position ?? null;
 
     const b = mapB.get(key);
     if (!b) continue;
@@ -2607,7 +2618,9 @@ export function processPerformanceComparison(
         impressions: impsDiff,
         impressions_percentage: calculatePercentageChange(impsA, impsB),
         ctr: Math.round((ctrA - ctrB) * 1000) / 1000,
-        position: Math.round((posA - posB) * 10) / 10,
+        position: posA !== null && posB !== null
+          ? Math.round((posA - posB) * 10) / 10
+          : null,
       },
     });
   }

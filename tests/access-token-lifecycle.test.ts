@@ -47,27 +47,27 @@ function installDigestAnalyticsMock(
     clicks: number;
     impressions: number;
     ctr: number;
-    position: number;
+    position?: number;
   }>,
   options: {
     currentTotals?: {
       clicks: number;
       impressions: number;
       ctr: number;
-      position: number;
+      position?: number;
     };
     previousTotals?: {
       clicks: number;
       impressions: number;
       ctr: number;
-      position: number;
+      position?: number;
     };
     previousQueryRows?: Array<{
       keys: string[];
       clicks: number;
       impressions: number;
       ctr: number;
-      position: number;
+      position?: number;
     }>;
     currentPageUrl?: string;
     currentPageRows?: Array<{
@@ -93,7 +93,7 @@ function installDigestAnalyticsMock(
       clicks: number;
       impressions: number;
       ctr: number;
-      position: number;
+      position?: number;
     }> = [];
     if (!dimension) {
       rows = [
@@ -345,6 +345,198 @@ test('weekly digest escapes the site name when aggregate rows are unavailable', 
   }
 });
 
+test('weekly digest headings distinguish URL-prefix paths, protocols, and Domain properties', async () => {
+  const heading = (report: string) => report.split('\n').find((line) => line.startsWith('# Your weekly site report'));
+  const restoreFetch = installDigestAnalyticsMock([]);
+  try {
+    const de = await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'https://example.com/de/', '2026-08-10');
+    const fr = await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'https://example.com/fr/', '2026-08-10');
+    const root = await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10');
+    const httpRoot = await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'http://example.com/', '2026-08-10');
+    const domain = await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'sc-domain:example.com', '2026-08-10');
+    assert.ok(heading(de)?.includes('example\\.com/de/'));
+    assert.ok(heading(fr)?.includes('example\\.com/fr/'));
+    assert.notEqual(heading(de), heading(fr));
+    assert.ok(heading(root)?.endsWith('example\\.com'));
+    assert.ok(heading(httpRoot)?.includes('http://example\\.com'));
+    assert.ok(heading(domain)?.includes('Domain property'));
+    assert.notEqual(heading(httpRoot), heading(root));
+    assert.notEqual(heading(root), heading(domain));
+  } finally {
+    restoreFetch();
+  }
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ rows: [] }), {
+    headers: { 'content-type': 'application/json' },
+  });
+  try {
+    const missing = await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'https://example.com/de/', '2026-08-10');
+    const preliminary = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/fr/', '2026-08-10', undefined, '2026-08-12',
+    );
+    assert.ok(heading(missing)?.includes('example\\.com/de/'));
+    assert.ok(heading(preliminary)?.includes('example\\.com/fr/'));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('weekly digest links to its exact Search Console property without implying filters carry over', async () => {
+  const propertyLink = (siteUrl: string) =>
+    `[Open this property in Search Console Performance](https://search.google.com/search-console/performance/search-analytics?resource_id=${encodeURIComponent(siteUrl)})`;
+  const restoreFetch = installDigestAnalyticsMock([]);
+  try {
+    const prefix = await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'https://example.com/de/', '2026-08-10');
+    const domain = await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'sc-domain:example.com', '2026-08-10');
+    const preliminary = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/fr/', '2026-08-10', undefined, '2026-08-12',
+    );
+    assert.ok(prefix.includes(propertyLink('https://example.com/de/')));
+    assert.ok(domain.includes(propertyLink('sc-domain:example.com')));
+    assert.ok(preliminary.includes(propertyLink('https://example.com/fr/')));
+    for (const report of [prefix, domain, preliminary]) {
+      assert.match(report, /choose the same dates and filters in Search Console/i);
+    }
+  } finally {
+    restoreFetch();
+  }
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ rows: [] }), {
+    headers: { 'content-type': 'application/json' },
+  });
+  try {
+    const unavailable = await generateWeeklyDigest(createLifecycle().lifecycle, 'user-a', 'https://example.com/de/', '2026-08-10');
+    assert.ok(unavailable.includes(propertyLink('https://example.com/de/')));
+    assert.match(unavailable, /choose the same dates and filters in Search Console/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('weekly digest distinguishes steady aggregate totals from unmatched returned query rows', async () => {
+  const row = (query: string) => ({
+    keys: [query], clicks: 1, impressions: 25, ctr: 0.04, position: 8,
+  });
+  const totals = { clicks: 10, impressions: 100, ctr: 0.1, position: 8 };
+  const restoreFetch = installDigestAnalyticsMock([row('current-only')], {
+    previousQueryRows: [row('previous-only')],
+    currentTotals: totals,
+    previousTotals: totals,
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.match(digest, /Returned query-row overlap:.*1.*1.*0/);
+    assert.match(digest, /Query trends not comparable/);
+    assert.doesNotMatch(digest, /Nothing major changed this week/);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest reports only the distinct queries actually seen in both bounded periods', async () => {
+  const row = (query: string) => ({
+    keys: [query], clicks: 1, impressions: 25, ctr: 0.04, position: 8,
+  });
+  const totals = { clicks: 10, impressions: 100, ctr: 0.1, position: 8 };
+  const restoreFetch = installDigestAnalyticsMock([row('shared'), row('this-week')], {
+    previousQueryRows: [row('shared'), row('last-week')],
+    currentTotals: totals,
+    previousTotals: totals,
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.match(digest, /Returned query-row overlap:.*2.*2.*1/);
+    assert.doesNotMatch(digest, /Query trends not comparable/);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest surfaces only observed current-only query examples without inventing new demand', async () => {
+  const row = (query: string, impressions: number) => ({
+    keys: [query], clicks: 1, impressions, ctr: 1 / impressions, position: 9,
+  });
+  const totals = { clicks: 15, impressions: 400, ctr: 0.0375, position: 9 };
+  const restoreFetch = installDigestAnalyticsMock([
+    row('site:example.com', 120), row('shared query', 100),
+    row('low priority', 8), row('middle opportunity', 45),
+    row('high opportunity', 80), row('third opportunity', 25),
+  ], {
+    previousQueryRows: [row('shared query', 100), row('previous only', 20)],
+    currentTotals: totals,
+    previousTotals: totals,
+  });
+  const mockedFetch = globalThis.fetch;
+  let requestCount = 0;
+  globalThis.fetch = async (input, init) => {
+    requestCount++;
+    return mockedFetch(input, init);
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const sample = digest.match(/### Queries returned this week but not in last week's sample([\s\S]*?)(?=\n## |\n### |$)/)?.[1];
+    assert.ok(sample, 'show a bounded sample of current-only observed query rows');
+    assert.match(sample, /high opportunity.*80 impressions/);
+    assert.match(sample, /middle opportunity.*45 impressions/);
+    assert.match(sample, /third opportunity.*25 impressions/);
+    assert.ok(sample.indexOf('high opportunity') < sample.indexOf('middle opportunity'));
+    assert.ok(sample.indexOf('middle opportunity') < sample.indexOf('third opportunity'));
+    assert.doesNotMatch(sample, /site:example\.com|shared query|low priority/);
+    assert.match(sample, /not proof of new demand/i);
+    assert.match(sample, /missing.*not.*zero/i);
+    assert.equal(requestCount, 5, 'reuse the existing five Search Analytics calls');
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest surfaces observed prior-only queries without claiming lost traffic', async () => {
+  const row = (query: string, impressions: number) => ({
+    keys: [query], clicks: 1, impressions, ctr: 1 / impressions, position: 9,
+  });
+  const totals = { clicks: 15, impressions: 400, ctr: 0.0375, position: 9 };
+  const restoreFetch = installDigestAnalyticsMock([row('shared query', 100)], {
+    previousQueryRows: [
+      row('site:example.com', 500), row('shared query', 100), row('lower priority', 5),
+      row('high previous', 90), row('middle previous', 60), row('third previous', 30),
+    ],
+    currentTotals: totals,
+    previousTotals: totals,
+  });
+  const mockedFetch = globalThis.fetch;
+  let requestCount = 0;
+  globalThis.fetch = async (input, init) => {
+    requestCount++;
+    return mockedFetch(input, init);
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const sample = digest.match(/### Queries returned last week but not in this week's sample([\s\S]*?)(?=\n## |\n### |$)/)?.[1];
+    assert.ok(sample, 'show observed prior-only query examples');
+    assert.match(sample, /high previous.*90 impressions/);
+    assert.match(sample, /middle previous.*60 impressions/);
+    assert.match(sample, /third previous.*30 impressions/);
+    assert.ok(sample.indexOf('high previous') < sample.indexOf('middle previous'));
+    assert.ok(sample.indexOf('middle previous') < sample.indexOf('third previous'));
+    assert.doesNotMatch(sample, /site:example\.com|shared query|lower priority/);
+    assert.match(sample, /not proof of lost traffic/i);
+    assert.match(sample, /missing.*not.*zero/i);
+    assert.equal(requestCount, 5);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test('weekly digest queries only finalized Search Console data for all five report sections', async () => {
   const restoreFetch = installDigestAnalyticsMock([]);
   const originalMockFetch = globalThis.fetch;
@@ -532,7 +724,10 @@ test('weekly digest honors explicit recent dates as preliminary snapshots withou
     const rows = request.dimensions?.[0] === 'query'
       ? [{ keys: ['example query'], clicks: 3, impressions: 30, ctr: 0.1, position: 7 }]
       : request.dimensions?.[0] === 'page'
-        ? [{ keys: ['https://example.com/page'], clicks: 3, impressions: 30, ctr: 0.1, position: 7 }]
+        ? [
+            { keys: ['https://example.com/page'], clicks: 3, impressions: 30, ctr: 0.1, position: 7 },
+            { keys: ['javascript:alert(1)'], clicks: 1, impressions: 10, ctr: 0.1, position: 7 },
+          ]
         : [{ clicks: 12, impressions: 80, ctr: 0.15, position: 8 }];
     return new Response(JSON.stringify({ rows }), { headers: { 'content-type': 'application/json' } });
   };
@@ -545,6 +740,10 @@ test('weekly digest honors explicit recent dates as preliminary snapshots withou
     assert.match(digest, /preliminary Search Console data/i);
     assert.match(digest, /12 clicks/i);
     assert.match(digest, /80 impressions/i);
+    assert.ok(digest.includes('[**https://example\\.com/page**](https://example.com/page): 3 clicks, 30 impressions'));
+    assert.match(digest, /example query: 3 clicks, 30 impressions/i);
+    assert.match(digest, /javascript:alert/);
+    assert.doesNotMatch(digest, /\]\(javascript:/i);
     assert.doesNotMatch(digest, /## What changed this week|## What to do this week|% vs last week/i);
   } finally {
     globalThis.fetch = originalFetch;
@@ -568,6 +767,101 @@ test('weekly digest never fabricates zero traffic when recent preliminary rows a
     assert.match(digest, /preliminary Search Console data/i);
     assert.match(digest, /missing data is not a measured zero/i);
     assert.doesNotMatch(digest, /0 clicks|0 impressions|## What to do this week/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('preliminary weekly digest retains returned page and query evidence when aggregate totals are unavailable', async () => {
+  const originalFetch = globalThis.fetch;
+  const dimensions: string[] = [];
+  globalThis.fetch = async (_input, init) => {
+    const request = JSON.parse(String(init?.body)) as { dimensions?: string[]; dataState?: string };
+    assert.equal(request.dataState, 'all');
+    dimensions.push(request.dimensions?.[0] ?? 'totals');
+    const rows = request.dimensions?.[0] === 'page'
+      ? [{ keys: ['https://example.com/de/guide'], clicks: 2, impressions: 25, ctr: 0.08, position: 9 }]
+      : request.dimensions?.[0] === 'query'
+        ? [{ keys: ['example guide'], clicks: 2, impressions: 25, ctr: 0.08, position: 9 }]
+        : [];
+    return new Response(JSON.stringify({ rows }), { headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', getSearchConsoleCalendarDate(),
+    );
+    assert.deepEqual(dimensions.sort(), ['page', 'query', 'totals']);
+    assert.match(digest, /no aggregate row yet/i);
+    assert.match(digest, /missing data is not a measured zero/i);
+    assert.match(digest, /Selected returned page rows \(not exhaustive\)/);
+    assert.match(digest, /https:\/\/example\.com\/de\/guide/);
+    assert.match(digest, /Selected returned query rows \(not exhaustive\)/);
+    assert.match(digest, /example guide: 2 clicks, 25 impressions/);
+    assert.doesNotMatch(digest, /## Available current-week metrics|## What changed this week|## What to do this week/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('finalized weekly digest retains observed page and query rows without aggregate totals', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    const request = JSON.parse(String(init?.body)) as { dimensions?: string[]; startDate: string };
+    const isCurrent = request.startDate === '2026-08-04';
+    const rows = isCurrent && request.dimensions?.[0] === 'page'
+      ? [{ keys: ['https://example.com/guide'], clicks: 3, impressions: 30, ctr: 0.1, position: 8 }]
+      : isCurrent && request.dimensions?.[0] === 'query'
+        ? [{ keys: ['guide topic'], clicks: 3, impressions: 30, ctr: 0.1, position: 8 }]
+        : [];
+    return new Response(JSON.stringify({ rows }), { headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10', undefined, '2026-08-14',
+    );
+    assert.match(digest, /no aggregate Search Analytics row/i);
+    assert.match(digest, /Selected returned page rows \(not exhaustive\)/);
+    assert.match(digest, /example\.com\/guide/);
+    assert.match(digest, /Selected returned query rows \(not exhaustive\)/);
+    assert.match(digest, /guide topic: 3 clicks, 30 impressions/);
+    assert.doesNotMatch(digest, /## What changed this week|## What to do this week|\b0 clicks|\b0 impressions/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('finalized missing-aggregate digest retains bounded prior-week query evidence without claiming lost traffic', async () => {
+  const originalFetch = globalThis.fetch;
+  let analyticsCalls = 0;
+  globalThis.fetch = async (_input, init) => {
+    analyticsCalls++;
+    const request = JSON.parse(String(init?.body)) as { dimensions?: string[]; startDate: string };
+    const rows = request.startDate === '2026-07-28' && request.dimensions?.[0] === 'query'
+      ? [
+          { keys: ['site:example.com'], clicks: 0, impressions: 100 },
+          { keys: ['previous guide'], clicks: 8, impressions: 80 },
+          { keys: ['previous tutorial'], clicks: 4, impressions: 60 },
+          { keys: ['previous pricing'], clicks: 1, impressions: 40 },
+          { keys: ['previous support'], clicks: 1, impressions: 20 },
+        ].map((row) => ({ ...row, ctr: row.clicks / row.impressions, position: 10 }))
+      : request.startDate === '2026-07-28' && !request.dimensions
+        ? [{ clicks: 15, impressions: 300, ctr: 0.05, position: 10 }]
+        : [];
+    return new Response(JSON.stringify({ rows }), { headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10', undefined, '2026-08-14',
+    );
+    assert.equal(analyticsCalls, 5, 'reuse the five existing Google queries');
+    assert.match(digest, /no aggregate Search Analytics row/i);
+    assert.match(digest, /Previously returned query rows \(not exhaustive\)/);
+    assert.match(digest, /previous guide: 8 clicks, 80 impressions/);
+    assert.match(digest, /previous tutorial: 4 clicks, 60 impressions/);
+    assert.match(digest, /previous pricing: 1 click, 40 impressions/);
+    assert.doesNotMatch(digest, /previous support|site:example\.com/);
+    assert.match(digest, /not evidence of lost traffic/i);
+    assert.doesNotMatch(digest, /## What changed this week|## What to do this week|\b0 clicks this week\b/i);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -746,6 +1040,27 @@ test('weekly digest does not assign a cause from sitewide average-position movem
   }
 });
 
+test('weekly digest does not claim an average-position change when either aggregate omits position', async () => {
+  const stableMetrics = { clicks: 10, impressions: 100, ctr: 0.1 };
+  for (const missingPeriod of ['current', 'previous'] as const) {
+    const restoreFetch = installDigestAnalyticsMock([], {
+      currentTotals: { ...stableMetrics, position: missingPeriod === 'current' ? undefined : 8 },
+      previousTotals: { ...stableMetrics, position: missingPeriod === 'previous' ? undefined : 8 },
+    });
+    try {
+      const digest = await generateWeeklyDigest(
+        createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+      );
+      assert.match(digest, /Average Search Console position:.*\(no comparison available\)/);
+      assert.doesNotMatch(digest, /### Site-level changes/);
+      assert.doesNotMatch(digest, /average Search Console position (?:improved|worsened) by/i);
+      assert.match(digest, /Query trends not comparable/);
+    } finally {
+      restoreFetch();
+    }
+  }
+});
+
 test('weekly digest treats a query click drop as an observation, not a proven cause', async () => {
   const fixture = createLifecycle();
   const restoreFetch = installDigestAnalyticsMock(
@@ -801,6 +1116,54 @@ test('weekly digest treats a query click drop as an observation, not a proven ca
   }
 });
 
+test('weekly digest reports measured CTR changes in percentage points, not relative percent', async () => {
+  const restoreFetch = installDigestAnalyticsMock([], {
+    currentTotals: { clicks: 12, impressions: 1000, ctr: 0.012, position: 8 },
+    previousTotals: { clicks: 8, impressions: 400, ctr: 0.02, position: 8 },
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.match(digest, /Click-through rate \(CTR\).*1\.2%.*0\.8 percentage points lower vs last week/i);
+    assert.doesNotMatch(digest, /CTR.*-40%/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest with zero prior impressions does not invent a comparable CTR baseline', async () => {
+  const restoreFetch = installDigestAnalyticsMock([], {
+    currentTotals: { clicks: 5, impressions: 100, ctr: 0.05, position: 8 },
+    previousTotals: { clicks: 0, impressions: 0, ctr: 0, position: 0 },
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.match(digest, /Click-through rate \(CTR\).*5\.0%.*no comparable CTR baseline/i);
+    assert.doesNotMatch(digest, /CTR.*5\.0 percentage points higher/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest preliminary snapshot reports observed CTR without prior-week comparison', async () => {
+  const restoreFetch = installDigestAnalyticsMock([], {
+    currentTotals: { clicks: 7, impressions: 100, ctr: 0.07, position: 9 },
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/',
+      '2026-08-10', undefined, '2026-08-11',
+    );
+    assert.match(digest, /7\.0% click-through rate \(CTR; preliminary, no week-over-week comparison\)/i);
+    assert.doesNotMatch(digest, /percentage points (higher|lower) vs last week/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test('weekly digest renders provider queries and page paths as plain Markdown text', async () => {
   const query = 'picks **hot** [free](https://fake.invalid)\n## fake heading';
   const restoreFetch = installDigestAnalyticsMock(
@@ -850,6 +1213,25 @@ test('weekly digest distinguishes the same path across different hosts', async (
   }
 });
 
+test('weekly digest links safely to returned top pages without allowing unsafe URL schemes', async () => {
+  const restoreFetch = installDigestAnalyticsMock([], {
+    currentPageRows: [
+      { keys: ['https://example.com/docs(v2)?ref=search'], clicks: 7, impressions: 70, ctr: 0.1, position: 6 },
+      { keys: ['javascript:alert(1)'], clicks: 3, impressions: 30, ctr: 0.1, position: 9 },
+    ],
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.ok(digest.includes('[**/docs\\(v2\\)?ref=search**](https://example.com/docs%28v2%29?ref=search)'));
+    assert.ok(digest.includes('**alert\\(1\\)**'));
+    assert.doesNotMatch(digest, /\]\(javascript:/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test('weekly digest does not infer zero page impressions from an empty Pages response', async () => {
   const restoreFetch = installDigestAnalyticsMock([], {
     currentTotals: { clicks: 0, impressions: 40, ctr: 0, position: 8 },
@@ -862,6 +1244,168 @@ test('weekly digest does not infer zero page impressions from an empty Pages res
     assert.match(digest, /No page-level rows were returned for this period/i);
     assert.match(digest, /40/);
     assert.doesNotMatch(digest, /No pages had impressions this week/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest flags only returned pages with observed impressions but no clicks', async () => {
+  const restoreFetch = installDigestAnalyticsMock([], {
+    currentTotals: { clicks: 11, impressions: 560, ctr: 11 / 560, position: 8 },
+    currentPageRows: [
+      { keys: ['https://example.com/active'], clicks: 11, impressions: 200, ctr: 0.055, position: 7 },
+      { keys: ['https://example.com/low-signal'], clicks: 0, impressions: 35, ctr: 0, position: 14 },
+      { keys: ['https://example.com/high-signal'], clicks: 0, impressions: 70, ctr: 0, position: 12 },
+      { keys: ['https://example.com/no-impressions'], clicks: 0, impressions: 0, ctr: 0, position: 0 },
+    ],
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const section = digest.split('### Returned pages with impressions but no clicks')[1]?.split('## What to do this week')[0] ?? '';
+    assert.match(section, /high-signal.*70 impressions/);
+    assert.match(section, /low-signal.*35 impressions/);
+    assert.ok(section.indexOf('high-signal') < section.indexOf('low-signal'));
+    assert.doesNotMatch(section, /active|no-impressions/);
+    assert.match(section, /returned page rows.*not exhaustive/i);
+    assert.match(section, /inspect matching queries.*before changing content/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest highlights only the highest-impression returned queries with zero clicks', async () => {
+  const restoreFetch = installDigestAnalyticsMock([
+    { keys: ['smaller opportunity'], clicks: 0, impressions: 35, ctr: 0, position: 11 },
+    { keys: ['clicked query'], clicks: 6, impressions: 200, ctr: 0.03, position: 6 },
+    { keys: ['largest opportunity'], clicks: 0, impressions: 120, ctr: 0, position: 9 },
+    { keys: ['unseen opportunity'], clicks: 0, impressions: 0, ctr: 0, position: 0 },
+    { keys: ['medium opportunity'], clicks: 0, impressions: 80, ctr: 0, position: 12 },
+    { keys: ['fourth opportunity'], clicks: 0, impressions: 20, ctr: 0, position: 14 },
+  ]);
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const section = digest.split('### Returned search queries with impressions but no clicks')[1]
+      ?.split('## What to do this week')[0] ?? '';
+    assert.match(section, /largest opportunity.*120 impressions/);
+    assert.match(section, /medium opportunity.*80 impressions/);
+    assert.match(section, /smaller opportunity.*35 impressions/);
+    assert.ok(section.indexOf('largest opportunity') < section.indexOf('medium opportunity'));
+    assert.ok(section.indexOf('medium opportunity') < section.indexOf('smaller opportunity'));
+    assert.doesNotMatch(section, /clicked query|unseen opportunity|fourth opportunity/);
+    assert.match(section, /up-to-25 returned query rows.*not exhaustive/i);
+    assert.match(section, /anonymized queries.*omitted/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly zero-click query context reports observed average position without inventing missing ranks', async () => {
+  const restoreFetch = installDigestAnalyticsMock([
+    { keys: ['high impression query'], clicks: 0, impressions: 140, ctr: 0, position: 8.74 },
+    { keys: ['unknown position query'], clicks: 0, impressions: 80, ctr: 0, position: 0 },
+    { keys: ['farther query'], clicks: 0, impressions: 40, ctr: 0, position: 42.16 },
+  ]);
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const section = digest.split('### Returned search queries with impressions but no clicks')[1]
+      ?.split('## What to do this week')[0] ?? '';
+    assert.match(section, /high impression query.*140 impressions, 0 observed clicks, average position 8\.7/);
+    assert.match(section, /farther query.*40 impressions, 0 observed clicks, average position 42\.2/);
+    const missingPositionLine = section.split('\n').find((line) => line.includes('unknown position query')) ?? '';
+    assert.match(missingPositionLine, /80 impressions, 0 observed clicks/);
+    assert.doesNotMatch(missingPositionLine, /average position|position 0/);
+    assert.match(section, /average position.*not a live rank/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest keeps observed query clicks and impressions when average position is omitted', async () => {
+  const restoreFetch = installDigestAnalyticsMock([
+    { keys: ['positionless opportunity'], clicks: 0, impressions: 120, ctr: 0 },
+    { keys: ['ranked opportunity'], clicks: 0, impressions: 70, ctr: 0, position: 13 },
+  ], {
+    currentTotals: { clicks: 0, impressions: 190, ctr: 0, position: 0 },
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const section = digest.split('### Returned search queries with impressions but no clicks')[1]
+      ?.split('## What to do this week')[0] ?? '';
+    const positionlessLine = section.split('\n').find((line) => line.includes('positionless opportunity')) ?? '';
+    assert.match(positionlessLine, /120 impressions, 0 observed clicks/);
+    assert.doesNotMatch(positionlessLine, /average position|position 0|NaN/);
+    assert.match(section, /ranked opportunity.*70 impressions, 0 observed clicks, average position 13\.0/);
+    assert.match(digest, /Returned query-row overlap:\*\* 2 distinct current-week queries/);
+    assert.doesNotMatch(digest, /visible query rows are search-operator checks|without visible query rows/);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest keeps comparable query click gains when position is unavailable', async () => {
+  const restoreFetch = installDigestAnalyticsMock([
+    { keys: ['positionless mover'], clicks: 9, impressions: 130, ctr: 9 / 130 },
+  ], {
+    currentTotals: { clicks: 9, impressions: 130, ctr: 9 / 130, position: 0 },
+    previousTotals: { clicks: 1, impressions: 30, ctr: 1 / 30, position: 0 },
+    previousQueryRows: [
+      { keys: ['positionless mover'], clicks: 1, impressions: 30, ctr: 1 / 30 },
+    ],
+  });
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const section = digest.split('### Searches gaining traction')[1]
+      ?.split('## Your top pages this week')[0] ?? '';
+    assert.match(section, /positionless mover.*9 clicks this week \(was 1 last week\)/);
+    assert.doesNotMatch(section, /Average position|undefined|NaN/);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest excludes diagnostic search operators from zero-click query opportunities', async () => {
+  const restoreFetch = installDigestAnalyticsMock([
+    { keys: ['site:example.com'], clicks: 0, impressions: 300, ctr: 0, position: 1 },
+    { keys: ['inurl:example.com/guides'], clicks: 0, impressions: 220, ctr: 0, position: 3 },
+    { keys: ['seo site:example.com'], clicks: 0, impressions: 180, ctr: 0, position: 2 },
+    { keys: ['seo audit checklist'], clicks: 0, impressions: 80, ctr: 0, position: 12 },
+    { keys: ['best site tools'], clicks: 0, impressions: 55, ctr: 0, position: 14 },
+  ]);
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    const section = digest.split('### Returned search queries with impressions but no clicks')[1]
+      ?.split('## What to do this week')[0] ?? '';
+    assert.match(section, /seo audit checklist.*80 impressions/);
+    assert.match(section, /best site tools.*55 impressions/);
+    assert.doesNotMatch(section, /site:example|inurl:example/);
+    assert.match(section, /search-operator.*excluded/i);
+  } finally {
+    restoreFetch();
+  }
+});
+
+test('weekly digest does not present operator-only diagnostics as zero-click opportunities', async () => {
+  const restoreFetch = installDigestAnalyticsMock([
+    { keys: ['site:example.com'], clicks: 0, impressions: 300, ctr: 0, position: 1 },
+  ]);
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'https://example.com/', '2026-08-10',
+    );
+    assert.doesNotMatch(digest, /### Returned search queries with impressions but no clicks/);
+    assert.match(digest, /visible query rows are search-operator checks/i);
   } finally {
     restoreFetch();
   }
