@@ -269,6 +269,8 @@ Search Console also has dedicated Generative AI performance reports for Search a
 
 Google documented the `webMultimodal` Search Analytics API search type on November 16, 2026. Use `search_type: "webMultimodal"` with `analytics.query` or `analytics.compare` to inspect Google Lens, Circle to Search, and image-upload performance on its own surface, separate from ordinary Web Search. Because these searches are image-led, the text `query` dimension and filters are unavailable: choose page, country, device, date, or aggregate `dimensions: []` in `analytics.query`, and page/country/device for comparisons. `search_type: "multimodal"` is not a valid substitute, and a guessed `searchAppearance` value is not equivalent. Google may omit rows; do not infer zero traffic or sum across surfaces as if they are mutually exclusive.
 
+To review that surface without manually assembling an analysis, use the discoverable `gsc-visual-search-review` MCP prompt with an exact `site_url` and optional `end_date`, `page_contains`, `countries` (ISO alpha-3) or `devices`. It guides two finalized matched-week `analytics.query` aggregate reads, then optionally one `analytics.compare` landing-page read with the same Google-side filters. The guidance does not use unsupported text-query grouping, infer zero traffic from missing rows, or present filtered samples as site totals. Getting the prompt makes no Google request; following it consumes normal read quotas and never authorizes publication or indexing changes.
+
 ## Connect in your AI client
 
 Once you've deployed the server (see **[SETUP.md](SETUP.md)**), connect it by pasting your Worker's `/mcp` URL into your client:
