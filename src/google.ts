@@ -591,6 +591,11 @@ export interface DimensionFilter {
   expression: string;
 }
 
+export interface DimensionFilterList {
+  dimension: 'country' | 'device';
+  expressions: string[];
+}
+
 export function assertSearchAnalyticsFilterCompatible(
   filter: DimensionFilter,
 ): void {
@@ -624,6 +629,7 @@ export function assertSearchAnalyticsFilterCompatible(
 export interface DimensionFilterGroup {
   groupType: 'and';
   filters: DimensionFilter[];
+  filterLists?: DimensionFilterList[];
 }
 
 export interface SearchAnalyticsQuery {
@@ -679,6 +685,34 @@ export function assertSearchAnalyticsQueryCompatible(body: SearchAnalyticsQuery)
   }
 
   const filters = body.dimensionFilterGroups?.flatMap((group) => group.filters) ?? [];
+  const filterLists = body.dimensionFilterGroups?.flatMap((group) => group.filterLists ?? []) ?? [];
+  const listedDimensions = new Set<string>();
+  for (const list of filterLists) {
+    if (list.dimension !== 'country' && list.dimension !== 'device') {
+      throw new Error('Search Analytics filterLists support only country or device.');
+    }
+    if (listedDimensions.has(list.dimension)) {
+      throw new Error(`Search Analytics duplicate filterLists dimension: ${list.dimension}.`);
+    }
+    listedDimensions.add(list.dimension);
+    if (filters.some((filter) => filter.dimension === list.dimension)) {
+      throw new Error(`Search Analytics ${list.dimension} cannot appear in both filters and filterLists.`);
+    }
+    if (!Array.isArray(list.expressions) || list.expressions.length < 1 || list.expressions.length > 50) {
+      throw new Error('Search Analytics filterLists require at least one and at most 50 expressions.');
+    }
+    if (new Set(list.expressions.map((value) => value.toUpperCase())).size !== list.expressions.length) {
+      throw new Error(`Search Analytics duplicate ${list.dimension} filterLists expressions are not allowed.`);
+    }
+    for (const value of list.expressions) {
+      if (list.dimension === 'country' && !/^[A-Z]{3}$/.test(value)) {
+        throw new Error('Search Analytics filterLists country expressions must use uppercase ISO alpha-3 codes.');
+      }
+      if (list.dimension === 'device' && !['DESKTOP', 'MOBILE', 'TABLET'].includes(value)) {
+        throw new Error('Search Analytics filterLists device expressions must be DESKTOP, MOBILE, or TABLET.');
+      }
+    }
+  }
   if ((body.dimensions.includes('brandedClassification') ||
       filters.some((filter) => filter.dimension === 'brandedClassification')) &&
       filters.some((filter) => filter.dimension === 'query')) {
