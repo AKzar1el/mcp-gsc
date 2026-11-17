@@ -4444,6 +4444,7 @@ describe('Worker orchestration', () => {
         comparable_count: 1,
         period_a_only_count: 4,
         period_b_only_count: 1,
+        sample_limit: 3,
       });
       expect(result.structuredContent.observed_dimension_overlap.note).toContain('not zero');
       expect(result.structuredContent.observed_dimension_overlap.period_a_only_samples).toEqual([
@@ -4475,6 +4476,7 @@ describe('Worker orchestration', () => {
         start_date_a: '2026-09-01', end_date_a: '2026-09-07',
         start_date_b: '2026-08-18', end_date_b: '2026-08-31',
         dimension: 'query', search_type: 'image', data_state: 'final',
+        observed_only_sample_limit: 5,
       })) as typeof result;
       expect(unequal.structuredContent.period_comparability).toMatchObject({
         period_a_days: 7,
@@ -4492,6 +4494,12 @@ describe('Worker orchestration', () => {
       expect(normalized.period_b.impressions).toBeCloseTo(100 / 14);
       expect(normalized.diff.impressions).toBeCloseTo(100 / 7 - 100 / 14);
       expect(normalized.note).toContain('not property-wide');
+      expect(unequal.structuredContent.observed_dimension_overlap.period_a_only_samples.map((row) => row.key))
+        .toEqual(['highest only', 'not-comparable', 'recent only', 'small only']);
+      expect(unequal.structuredContent.observed_dimension_overlap.period_b_only_samples.map((row) => row.key))
+        .toEqual(['previous only']);
+      expect(unequal.structuredContent.observed_dimension_overlap.sample_limit).toBe(5);
+      expect(unequal.structuredContent.observed_dimension_overlap.note).toContain('up to 5');
 
       const overlapping = (await tools['analytics.compare'].handler({
         site_url: 'sc-domain:example.com',
