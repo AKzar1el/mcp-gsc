@@ -95,6 +95,44 @@ describe('Worker orchestration', () => {
     })).rejects.toThrow();
   });
 
+  it('offers a property-scoped index-status triage prompt without Google requests', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, string>) => Promise<{
+          messages: Array<{ content: { type: string; text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts;
+    expect(prompts['gsc-index-status-triage']).toBeDefined();
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const result = await prompts['gsc-index-status-triage'].handler({
+        site_url: 'sc-domain:example.com',
+        inspection_url: 'https://blog.example.com/article/',
+      });
+      const guidance = result.messages[0].content.text;
+      expect(guidance).toContain('sc-domain:example.com');
+      expect(guidance).toContain('https://blog.example.com/article/');
+      expect(guidance).toContain('urls.inspect');
+      expect(guidance).toContain('sitemaps.list');
+      expect(guidance).toContain('canonical');
+      expect(guidance).toContain('noindex');
+      expect(guidance).toContain('not a live URL test');
+      expect(guidance).toContain('Never call indexing.request');
+      expect(fetchSpy).not.toHaveBeenCalled();
+      await expect(prompts['gsc-index-status-triage'].handler({
+        site_url: 'sc-domain:example.com',
+        inspection_url: 'https://unrelated.test/',
+      })).rejects.toThrow();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('advertises the existing low-CTR quick-wins filter in capabilities', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
