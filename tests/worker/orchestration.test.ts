@@ -178,7 +178,7 @@ describe('Worker orchestration', () => {
     );
     const prompts = (server as unknown as {
       _registeredPrompts: Record<string, {
-        handler: (args: Record<string, string>) => Promise<{
+        handler: (args: Record<string, unknown>) => Promise<{
           messages: Array<{ content: { type: string; text: string } }>;
         }>;
       }>;
@@ -191,6 +191,8 @@ describe('Worker orchestration', () => {
         site_url: 'sc-domain:example.com',
         end_date: '2026-11-10',
         search_type: 'image',
+        countries: ['deu', 'aut'],
+        devices: ['mobile', 'desktop'],
       });
       const guidance = result.messages[0].content.text;
       for (const value of ['sc-domain:example.com', '2026-11-10', 'image', 'analytics.query', 'brandedClassification', 'BRANDED', 'NON_BRANDED']) {
@@ -199,6 +201,12 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('no rows');
       expect(guidance).toContain('not measured zero traffic');
       expect(guidance).toContain('Do not use a query filter');
+      expect(guidance).toContain('filterLists');
+      expect(guidance).toContain('DEU');
+      expect(guidance).toContain('AUT');
+      expect(guidance).toContain('MOBILE');
+      expect(guidance).toContain('DESKTOP');
+      expect(guidance).toContain('identical regional and device');
       expect(guidance).toContain('Never call indexing.request');
       expect(fetchSpy).not.toHaveBeenCalled();
       await expect(prompts['gsc-brand-traffic-review'].handler({
