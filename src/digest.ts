@@ -270,6 +270,10 @@ export async function generateWeeklyDigest(
       : []),
   ];
   if (missingPeriods.length > 0) {
+    const previousObservedQueries = rowsToQueries(prevQueriesResponse.rows)
+      .filter((row) => row.query.trim() !== '' && !isOperatorQuery(row.query) && row.impressions > 0)
+      .sort((a, b) => b.impressions - a.impressions || a.query.localeCompare(b.query))
+      .slice(0, 3);
     return [
       `# Your weekly site report - ${escapeMarkdownInline(siteDisplayName(siteUrl))}`,
       `### Week of ${dates.currentStart} to ${dates.currentEnd}`,
@@ -297,6 +301,13 @@ export async function generateWeeklyDigest(
         '## Selected returned query rows (not exhaustive)',
         ...rowsToQueries(currentQueriesResponse.rows).slice(0, 3).map((query) =>
           `- ${escapeMarkdownInline(query.query)}: ${formatNumber(query.clicks)} clicks, ${formatNumber(query.impressions)} impressions`),
+      ] : []),
+      ...(previousObservedQueries.length > 0 ? [
+        '',
+        '## Previously returned query rows (not exhaustive)',
+        `> These queries were observed in the previous ${dates.prevStart} to ${dates.prevEnd} sample (up to 25 rows), not necessarily absent from the current week. Missing aggregate data or unreturned current rows are not evidence of lost traffic. Diagnostic search-operator queries are excluded.`,
+        ...previousObservedQueries.map((query) =>
+          `- ${escapeMarkdownInline(query.query)}: ${formatNumber(query.clicks)} ${query.clicks === 1 ? 'click' : 'clicks'}, ${formatNumber(query.impressions)} impressions last week.`),
       ] : []),
       '',
       '## What to check',
