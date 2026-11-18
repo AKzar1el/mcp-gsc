@@ -36,6 +36,7 @@ export const TOOL_RATE_LIMIT_POLICIES = {
       'insights.content_decay',
       'indexing.list_pages',
       'analytics.compare',
+      'diagnostics.incident_timeline',
     ],
     // GSC measures Search Analytics short-term load in 10-minute windows.
     windowMs: 10 * MINUTE_MS,
@@ -105,6 +106,8 @@ const TOOL_RATE_LIMIT_UNITS: Partial<Record<RateLimitedToolName, number>> = {
   'insights.cannibalization': 4,
   'insights.content_decay': 8,
   'analytics.compare': 8,
+  // Registration reserves the actual 1-3 initial requests; this documents the maximum.
+  'diagnostics.incident_timeline': 3,
 };
 
 const POLICY_BY_TOOL = new Map<string, ToolRateLimitPolicy>(
