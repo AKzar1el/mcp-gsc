@@ -71,6 +71,7 @@ test('tool rate-limit policy table assigns the documented categories and limits'
         'insights.content_decay',
         'indexing.list_pages',
         'analytics.compare',
+        'diagnostics.incident_timeline',
       ],
       windowMs: 10 * 60 * 1000,
       userLimit: 30,
@@ -139,6 +140,7 @@ test('Search Analytics helpers reserve their worst-case upstream request fan-out
   assert.equal(getToolRateLimitUnits('insights.cannibalization'), 4);
   assert.equal(getToolRateLimitUnits('insights.content_decay'), 8);
   assert.equal(getToolRateLimitUnits('analytics.compare'), 8);
+  assert.equal(getToolRateLimitUnits('diagnostics.incident_timeline'), 3);
   assert.equal(getToolRateLimitUnits('indexing.status'), 1);
   assert.equal(getToolRateLimitUnits('indexing.remove'), 1);
   assert.equal(getToolRateLimitUnits('sites.list'), 1);
