@@ -62,6 +62,51 @@ function createPendingStateBinding() {
 }
 
 describe('Worker orchestration', () => {
+  it('guides a finalized daily traffic-onset review without provider calls on retrieval', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean }> };
+        handler: (args: Record<string, string>) => Promise<{
+          messages: Array<{ content: { text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-daily-onset-review'];
+    expect(prompt).toBeDefined();
+    const args = {
+      site_url: 'sc-domain:example.com',
+      end_date: '2026-11-10',
+      search_type: 'web',
+      page_contains: '/tools/',
+      country: 'deu',
+      device: 'mobile',
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      expect((await prompt.argsSchema.safeParseAsync(args)).success).toBe(true);
+      expect((await prompt.argsSchema.safeParseAsync({ ...args, site_url: 'javascript:alert(1)' })).success).toBe(false);
+      const guidance = (await prompt.handler(args)).messages[0].content.text;
+      expect(guidance).toContain('2026-10-21');
+      expect(guidance).toContain('2026-11-10');
+      expect(guidance).toContain('dimensions=["date"]');
+      expect(guidance).toContain('analytics.query');
+      expect(guidance).toContain('data_state="final"');
+      expect(guidance).toContain('seven days earlier');
+      expect(guidance).toContain('not measured zero');
+      expect(guidance).toContain('"country":"DEU"');
+      expect(guidance).toContain('"device":"MOBILE"');
+      expect(guidance).toContain('Never call indexing.request');
+      expect(fetchSpy).not.toHaveBeenCalled();
+      const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      await expect(prompt.handler({ ...args, end_date: futureDate })).rejects.toThrow();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a scoped read-only traffic-drop workflow as an MCP prompt', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
