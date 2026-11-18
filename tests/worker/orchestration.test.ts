@@ -151,6 +151,57 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('offers a property-bounded batch index review without requesting Google or hiding errors', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{
+          messages: Array<{ content: { type: string; text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts;
+    expect(prompts['gsc-index-batch-review']).toBeDefined();
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const site_url = 'sc-domain:example.com';
+    const inspection_urls = [
+      'https://example.com/en/',
+      'https://blog.example.com/de/',
+    ];
+    try {
+      const result = await prompts['gsc-index-batch-review'].handler({ site_url, inspection_urls });
+      const guidance = result.messages[0].content.text;
+      expect(guidance).toContain(JSON.stringify({ site_url, inspection_urls }));
+      expect(guidance).toContain('urls.inspect_many');
+      expect(guidance).toContain('20');
+      expect(guidance).toContain('per-URL');
+      expect(guidance).toContain('index_status_counts');
+      expect(guidance).toContain('unknown');
+      expect(guidance).toContain('not_indexed');
+      expect(guidance).toContain('not a live URL test');
+      expect(guidance).toContain('Never call indexing.request');
+      expect(fetchSpy).not.toHaveBeenCalled();
+
+      await expect(prompts['gsc-index-batch-review'].handler({
+        site_url,
+        inspection_urls: ['https://example.com/en/', 'https://unrelated.test/'],
+      })).rejects.toThrow();
+      await expect(prompts['gsc-index-batch-review'].handler({
+        site_url,
+        inspection_urls: [inspection_urls[0], inspection_urls[0]],
+      })).rejects.toThrow();
+      await expect(prompts['gsc-index-batch-review'].handler({
+        site_url,
+        inspection_urls: [inspection_urls[0]],
+      })).rejects.toThrow();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a scoped client-ready weekly report prompt without provider calls or outbound actions', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
