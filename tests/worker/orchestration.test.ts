@@ -113,6 +113,52 @@ describe('Worker orchestration', () => {
     })).rejects.toThrow();
   });
 
+  it('guides a finalized country-movement review without calling Google on prompt retrieval', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean }> };
+        handler: (args: Record<string, string>) => Promise<{
+          messages: Array<{ content: { text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-country-movement-review'];
+    expect(prompt).toBeDefined();
+    const args = {
+      site_url: 'sc-domain:example.com',
+      end_date: '2026-11-10',
+      search_type: 'image',
+      page_contains: '/de/',
+      device: 'mobile',
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      expect((await prompt.argsSchema.safeParseAsync(args)).success).toBe(true);
+      expect((await prompt.argsSchema.safeParseAsync({ ...args, site_url: 'javascript:alert(1)' })).success).toBe(false);
+      const guidance = (await prompt.handler(args)).messages[0].content.text;
+      expect(guidance).toContain('sc-domain:example.com');
+      expect(guidance).toContain('2026-11-04');
+      expect(guidance).toContain('2026-10-28');
+      expect(guidance).toContain('dimension=country');
+      expect(guidance).toContain('analytics.compare');
+      expect(guidance).toContain('"search_type":"image"');
+      expect(guidance).toContain('"page_contains":"/de/"');
+      expect(guidance).toContain('"device":"MOBILE"');
+      expect(guidance).toContain('Searcher country is not page language');
+      expect(guidance).toContain('missing rows are not zero');
+      expect(guidance).toContain('not exhaustive');
+      expect(guidance).toContain('Never call indexing.request');
+      expect(fetchSpy).not.toHaveBeenCalled();
+      const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      await expect(prompt.handler({ ...args, end_date: futureDate })).rejects.toThrow();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a property-scoped index-status triage prompt without Google requests', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
