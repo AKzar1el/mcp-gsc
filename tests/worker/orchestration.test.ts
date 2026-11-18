@@ -90,6 +90,24 @@ describe('Worker orchestration', () => {
     expect(guidance).toContain('urls.inspect');
     expect(guidance).toContain('not zero traffic');
     expect(guidance).toContain('do not submit');
+    const segmented = await prompts['gsc-traffic-drop-triage'].handler({
+      site_url: 'sc-domain:example.com',
+      end_date: '2026-11-10',
+      page_contains: '/de/',
+      search_type: 'image',
+      country: 'deu',
+      device: 'mobile',
+    });
+    const segmentedGuidance = segmented.messages[0].content.text;
+    expect(segmentedGuidance).toContain('"search_type":"image"');
+    expect(segmentedGuidance).toContain('"country":"DEU"');
+    expect(segmentedGuidance).toContain('"device":"MOBILE"');
+    expect(segmentedGuidance).toContain('reports.weekly_digest');
+    expect(segmentedGuidance).toContain('insights.content_decay');
+    expect(segmentedGuidance).toContain('analytics.compare');
+    expect(segmentedGuidance).toContain('identical Google-side filters');
+    expect(segmentedGuidance).toContain('segment-only');
+    expect(segmentedGuidance).toContain('not zero traffic');
     await expect(prompts['gsc-traffic-drop-triage'].handler({
       site_url: 'https://example.com/?unexpected=1',
     })).rejects.toThrow();
