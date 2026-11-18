@@ -217,6 +217,47 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('offers a visual-search page review prompt without provider requests or unsupported query grouping', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{
+          messages: Array<{ content: { type: string; text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts;
+    expect(prompts['gsc-visual-search-review']).toBeDefined();
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const result = await prompts['gsc-visual-search-review'].handler({
+        site_url: 'sc-domain:example.com',
+        end_date: '2026-11-10',
+        page_contains: '/de/',
+        countries: ['deu', 'aut'],
+        devices: ['mobile'],
+      });
+      const guidance = result.messages[0].content.text;
+      for (const value of ['sc-domain:example.com', '2026-11-10', '/de/', 'DEU', 'AUT', 'MOBILE']) {
+        expect(guidance).toContain(value);
+      }
+      expect(guidance).toContain('webMultimodal');
+      expect(guidance).toContain('analytics.query');
+      expect(guidance).toContain('analytics.compare');
+      expect(guidance).toContain('dimension="page"');
+      expect(guidance).toContain('dimensions=[]');
+      expect(guidance).toContain('filterLists');
+      expect(guidance).toContain('text query');
+      expect(guidance).toContain('not measured zero');
+      expect(guidance).toContain('Never call indexing.request');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a quota-aware quick-win review prompt without triggering Google calls', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
