@@ -1226,6 +1226,25 @@ class GscMcpRuntime {
   async init() {
     const accessMode = resolveGscAccessMode(this.env.GSC_ACCESS_MODE);
 
+    // MCP prompts/get arguments are strings, even when a prompt represents a list.
+    // Preserve array inputs for existing SDK-side callers while parsing wire values.
+    const parsePromptList = (value: unknown, separator: RegExp): unknown => {
+      if (typeof value !== 'string') return value;
+      const input = value.trim();
+      if (input.startsWith('[')) {
+        try { return JSON.parse(input) as unknown; } catch { return value; }
+      }
+      return input.split(separator).map((item) => item.trim());
+    };
+    const promptCountries = z.preprocess(
+      (value) => parsePromptList(value, /(?:\r?\n|,)/),
+      z.array(z.string().regex(/^[a-zA-Z]{3}$/)).min(1).max(10),
+    ).optional();
+    const promptDevices = z.preprocess(
+      (value) => parsePromptList(value, /(?:\r?\n|,)/),
+      z.array(z.enum(['desktop', 'mobile', 'tablet'])).min(1).max(3),
+    ).optional();
+
     this.server.registerPrompt(
       'gsc-quick-win-review',
       {
@@ -1318,8 +1337,8 @@ class GscMcpRuntime {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional inclusive end date; omit for a latest usually finalized week.')),
           search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe('Google Search surface to review; keep identical between periods.'),
-          countries: z.array(z.string().trim().regex(/^[a-zA-Z]{3}$/)).min(1).max(10).optional().describe('Optional ISO alpha-3 searcher countries to review together, not page languages.'),
-          devices: z.array(z.enum(['desktop', 'mobile', 'tablet'])).min(1).max(3).optional().describe('Optional searcher devices to review together.'),
+          countries: promptCountries.describe('Optional comma/newline-separated ISO alpha-3 searcher countries (such as DEU,USA), not page languages.'),
+          devices: promptDevices.describe('Optional comma/newline-separated searcher devices (desktop,mobile,tablet).'),
         }),
       },
       ({ site_url, end_date, search_type, countries, devices }) => ({
@@ -1351,8 +1370,8 @@ class GscMcpRuntime {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional inclusive final reporting end date.')),
           page_contains: z.string().trim().min(1).max(120).optional().describe('Optional landing-page URL section, such as /de/.'),
-          countries: z.array(z.string().trim().regex(/^[a-zA-Z]{3}$/)).min(1).max(10).optional().describe('Optional ISO alpha-3 searcher countries, not page languages.'),
-          devices: z.array(z.enum(['desktop', 'mobile', 'tablet'])).min(1).max(3).optional().describe('Optional searcher devices.'),
+          countries: promptCountries.describe('Optional comma/newline-separated ISO alpha-3 searcher countries (such as DEU,USA), not page languages.'),
+          devices: promptDevices.describe('Optional comma/newline-separated searcher devices (desktop,mobile,tablet).'),
         }),
       },
       ({ site_url, end_date, page_contains, countries, devices }) => ({
@@ -1488,11 +1507,13 @@ class GscMcpRuntime {
         description: 'Guide a same-property, read-only 2-10 URL Inspection review. Retrieving the prompt makes no Google API request.',
         argsSchema: z.object({
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
-          inspection_urls: z.array(z.string().url()).min(2).max(10)
-            .refine((urls) => new Set(urls).size === urls.length, {
-              message: 'inspection_urls must not contain duplicate URLs.',
-            })
-            .describe('2-10 unique exact URLs belonging to the same authorized Search Console property.'),
+          inspection_urls: z.preprocess(
+            (value) => parsePromptList(value, /\r?\n/),
+            z.array(z.string().url()).min(2).max(10)
+              .refine((urls) => new Set(urls).size === urls.length, {
+                message: 'inspection_urls must not contain duplicate URLs.',
+              }),
+          ).describe('2-10 unique exact URLs separated by newlines (or a JSON array string), all within one authorized Search Console property.'),
         }),
       },
       async ({ site_url, inspection_urls }) => {
