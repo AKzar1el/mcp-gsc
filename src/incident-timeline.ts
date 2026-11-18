@@ -270,7 +270,7 @@ export const INCIDENT_TIMELINE_OUTPUT_SCHEMA = {
   interpretation_note: z.string(),
 };
 
-type TimelineDay = z.infer<typeof INCIDENT_TIMELINE_OUTPUT_SCHEMA.daily>['0'];
+type TimelineDay = z.infer<typeof INCIDENT_TIMELINE_OUTPUT_SCHEMA.daily>[number];
 // A separate row lookup prevents provider ordering from influencing chronology.
 function indexedRows(rows: SearchAnalyticsRow[], dates: ReadonlySet<string>): Map<string, SearchAnalyticsRow> {
   const result = new Map<string, SearchAnalyticsRow>();
@@ -359,6 +359,9 @@ function abruptChanges(daily: TimelineDay[]): z.infer<typeof INCIDENT_TIMELINE_O
   return selected.sort((a, b) => a.date.localeCompare(b.date));
 }
 
+export const INCIDENT_TIMELINE_RESULT_SCHEMA = z.object(INCIDENT_TIMELINE_OUTPUT_SCHEMA);
+export type IncidentTimelineOutput = z.infer<typeof INCIDENT_TIMELINE_RESULT_SCHEMA>;
+
 export function buildIncidentTimeline(
   plan: IncidentTimelinePlan,
   sources: IncidentTimelineSources,
@@ -367,7 +370,7 @@ export function buildIncidentTimeline(
     analytics_retries: number;
     metadata_retries: number;
   },
-): z.infer<typeof z.object<typeof INCIDENT_TIMELINE_OUTPUT_SCHEMA>> {
+): IncidentTimelineOutput {
   const { input } = plan;
   const knownDates = new Set(plan.dates);
   const rows = indexedRows(sources.daily.rows, knownDates);
