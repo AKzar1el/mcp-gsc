@@ -111,6 +111,49 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves multi-country and multi-device daily-onset scopes without extra provider calls', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-daily-onset-review'];
+    const parsed = await prompt.argsSchema.safeParseAsync({
+      site_url: 'sc-domain:example.com',
+      end_date: '2026-11-10',
+      search_type: 'webMultimodal',
+      page_contains: '/de/',
+      countries: 'deu,aut',
+      devices: 'mobile,desktop',
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.countries).toEqual(['deu', 'aut']);
+    expect(parsed.data?.devices).toEqual(['mobile', 'desktop']);
+    expect((await prompt.argsSchema.safeParseAsync({
+      site_url: 'sc-domain:example.com', countries: 'DEU,invalid-country',
+    })).success).toBe(false);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"countries":["DEU","AUT"]');
+      expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
+      expect(guidance).toContain('dimensions=["date"]');
+      expect(guidance).toContain('filterLists');
+      expect(guidance).toContain('OR within');
+      expect(guidance).toContain('cannot preserve multi-value scopes');
+      expect(guidance).toContain('not measured zero');
+      await expect(prompt.handler({ ...parsed.data, country: 'DEU' })).rejects.toThrow();
+      await expect(prompt.handler({ ...parsed.data, device: 'mobile' })).rejects.toThrow();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides bounded top-query cohort movement without Google calls on prompt retrieval', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
