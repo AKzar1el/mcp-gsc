@@ -341,6 +341,54 @@ describe('Worker orchestration', () => {
     })).rejects.toThrow();
   });
 
+  it('keeps multi-region/device traffic-drop triage within matching finalized Google scopes', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-traffic-drop-triage'];
+    const parsed = await prompt.argsSchema.safeParseAsync({
+      site_url: 'sc-domain:example.com',
+      end_date: '2026-06-20',
+      search_type: 'web',
+      page_contains: '/tools/',
+      countries: 'deu,svn',
+      devices: 'mobile,desktop',
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.countries).toEqual(['deu', 'svn']);
+    expect(parsed.data?.devices).toEqual(['mobile', 'desktop']);
+    expect((await prompt.argsSchema.safeParseAsync({
+      site_url: 'sc-domain:example.com', countries: 'DEU,invalid-country',
+    })).success).toBe(false);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"countries":["DEU","SVN"]');
+      expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
+      expect(guidance).toContain('"start_date_a":"2026-06-14"');
+      expect(guidance).toContain('"start_date_b":"2026-06-07"');
+      expect(guidance).toContain('dimensions=["date"]');
+      expect(guidance).toContain('filterLists');
+      expect(guidance).toContain('OR within');
+      expect(guidance).toContain('cannot preserve multi-value scopes');
+      expect(guidance).toContain('missing days are unknown');
+      expect(guidance).toContain('Never call indexing.request');
+      await expect(prompt.handler({ ...parsed.data, country: 'DEU' })).rejects.toThrow();
+      await expect(prompt.handler({ ...parsed.data, device: 'mobile' })).rejects.toThrow();
+      const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      await expect(prompt.handler({ ...parsed.data, end_date: futureDate })).rejects.toThrow();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides a finalized country-movement review without calling Google on prompt retrieval', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
