@@ -202,6 +202,48 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('offers a quota-bounded sitemap health review without Google requests or indexing claims', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (args: unknown) => Promise<{ success: boolean }> };
+        handler: (args: Record<string, string>) => Promise<{
+          messages: Array<{ content: { text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-sitemap-health-review'];
+    expect(prompt).toBeDefined();
+
+    const args = {
+      site_url: 'sc-domain:example.com',
+      sitemap_index: 'https://sitemaps.example.net/site-index.xml',
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      expect((await prompt.argsSchema.safeParseAsync(args)).success).toBe(true);
+      expect((await prompt.argsSchema.safeParseAsync({
+        ...args,
+        sitemap_index: 'javascript:alert(1)',
+      })).success).toBe(false);
+      const guidance = (await prompt.handler(args)).messages[0].content.text;
+      expect(guidance).toContain(JSON.stringify(args));
+      expect(guidance).toContain('sitemaps.list');
+      expect(guidance).toContain('sitemaps.get');
+      expect(guidance).toContain('result_page.next_start_row');
+      expect(guidance).toContain('lastDownloaded');
+      expect(guidance).toContain('isPending');
+      expect(guidance).toContain('not page indexing');
+      expect(guidance).toContain('cross-site');
+      expect(guidance).toContain('Never call sitemaps.submit');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('accepts protocol string arguments for list-valued MCP prompts', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
