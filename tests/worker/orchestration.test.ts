@@ -202,6 +202,88 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('accepts protocol string arguments for list-valued MCP prompts', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: {
+          safeParseAsync: (value: unknown) => Promise<{
+            success: boolean;
+            data?: Record<string, unknown>;
+          }>;
+        };
+        handler: (args: Record<string, unknown>) => Promise<{
+          messages: Array<{ content: { text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts;
+
+    const cases = [
+      {
+        name: 'gsc-index-batch-review',
+        args: {
+          site_url: 'sc-domain:example.com',
+          inspection_urls: 'https://example.com/en/\nhttps://blog.example.com/de/',
+        },
+        includes: 'urls.inspect_many',
+      },
+      {
+        name: 'gsc-brand-traffic-review',
+        args: {
+          site_url: 'sc-domain:example.com',
+          countries: 'deu, usa',
+          devices: 'mobile,desktop',
+        },
+        includes: '"countries":["DEU","USA"]',
+      },
+      {
+        name: 'gsc-visual-search-review',
+        args: {
+          site_url: 'sc-domain:example.com',
+          countries: 'deu, usa',
+          devices: 'mobile,desktop',
+        },
+        includes: '"devices":["MOBILE","DESKTOP"]',
+      },
+    ];
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      for (const { name, args, includes } of cases) {
+        // MCP prompts/get transmits every argument as a string. Test the SDK
+        // schema boundary, not only the already-parsed callback directly.
+        const parsed = await prompts[name].argsSchema.safeParseAsync(args);
+        expect(parsed.success, `${name} should accept wire-format strings`).toBe(true);
+        if (!parsed.success || !parsed.data) continue;
+        const result = await prompts[name].handler(parsed.data);
+        expect(result.messages[0].content.text).toContain(includes);
+      }
+      const batchSchema = prompts['gsc-index-batch-review'].argsSchema;
+      const site_url = 'sc-domain:example.com';
+      expect((await batchSchema.safeParseAsync({
+        site_url,
+        inspection_urls: '["https://example.com/a/","https://example.com/b/"]',
+      })).success).toBe(true);
+      expect((await batchSchema.safeParseAsync({
+        site_url,
+        inspection_urls: ['https://example.com/a/', 'https://example.com/b/'],
+      })).success).toBe(true);
+      expect((await batchSchema.safeParseAsync({
+        site_url,
+        inspection_urls: 'https://example.com/a/\nhttps://example.com/a/',
+      })).success).toBe(false);
+      expect((await prompts['gsc-brand-traffic-review'].argsSchema.safeParseAsync({
+        site_url,
+        countries: 'DEU,NOT_A_COUNTRY',
+      })).success).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a scoped client-ready weekly report prompt without provider calls or outbound actions', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
