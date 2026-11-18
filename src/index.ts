@@ -115,6 +115,13 @@ import {
   windowSourceRows,
   mapSourceRows,
 } from './result-bounds';
+import {
+  buildIncidentTimeline,
+  fetchIncidentTimelineSources,
+  planIncidentTimeline,
+  INCIDENT_TIMELINE_OUTPUT_SCHEMA,
+  type IncidentTimelineInput,
+} from './incident-timeline';
 
 export interface Env {
   OAUTH_KV: KVNamespace;
@@ -1046,6 +1053,11 @@ const TOOL_CATALOG = [
     name: 'analytics.query',
     description:
       'Query Search Console search analytics over a date range, grouped by query, page, country, device, date, search appearance or Google-native brandedClassification. Branded grouping/filtering requires an eligible top-level property; unavailable classification returns no rows, not zero traffic. Supports filters and pagination. Google may return only top rows. The API does not expose a dedicated Generative AI performance-report selector.',
+  },
+  {
+    name: 'diagnostics.incident_timeline',
+    description:
+      'Build a verified property-scoped daily Search Analytics incident chronology (4-90 days), bounded baseline/incident comparisons, completeness and heuristic change-point evidence. Missing days are not zero. Optional unfiltered control dates and keyless aggregate are quota-accounted; no algorithm-cause attribution.',
   },
   {
     name: 'insights.page_queries',
@@ -2067,6 +2079,71 @@ class GscMcpRuntime {
         // Compact JSON on purpose: analytics responses are the largest this
         // server produces, and pretty-printing them costs ~3x the tokens.
         return toolResponse(JSON.stringify(payload), payload);
+      },
+    );
+
+    this.server.registerTool(
+      'diagnostics.incident_timeline',
+      {
+        title: 'Investigate a Search Visibility Incident Timeline',
+        description: 'Read-only property-verified chronology of observed Search Console daily metrics over 4-90 inclusive Pacific calendar days. Defaults to the first/second halves as baseline/incident; optional explicit nonoverlapping windows override these. Includes pooled CTR, impression-weighted position when supported, missing-versus-real-zero days, incomplete-date metadata and conservative heuristic change-point candidates. If segment filters are set, performs an unfiltered daily control read. An optional property-wide keyless aggregate adds context, not a replacement for segment totals. No causal attribution to Google updates, indexing or penalties.',
+        inputSchema: {
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe('The exact authorized and verified Google Search Console URL-prefix or sc-domain property, not an arbitrary page URL.'),
+          start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive first date; at least 4 and at most 90 days through end_date.')),
+          end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive final date; cannot be in the future.')),
+          baseline_start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('Optional baseline beginning. Supply all four baseline/incident bounds or none.'),
+          baseline_end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('Optional baseline ending; at least two calendar days.'),
+          incident_start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('Optional incident beginning, strictly after the baseline window.'),
+          incident_end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('Optional incident ending; at least two calendar days, within the full date range.'),
+          search_type: z.enum(['web', 'image', 'video', 'news', 'discover', 'googleNews', 'webMultimodal']).default('web')
+            .describe('One Google Search Analytics surface, not all surfaces combined. Discover and Google News have no position; webMultimodal has no text query filter.'),
+          data_state: z.enum(['final', 'all']).default('final')
+            .describe("Finalized-only by default. 'all' includes potentially preliminary days; Google firstIncompleteDate is preserved when returned. Hourly analysis is not performed."),
+          dimension_filter_groups: z.array(SEARCH_ANALYTICS_FILTER_GROUP_SCHEMA).max(3).optional()
+            .describe('Google-side supported query/page/country/device/searchAppearance/brandedClassification filters and country/device filterLists, validated with the existing Search Analytics provider rules. Filters apply to both windows. Filter expressions are not echoed in the output.'),
+          include_property_aggregate: z.boolean().default(false)
+            .describe('Opt in to one additional unfiltered keyless property aggregate request. This is contextual property-wide evidence and is not comparable to a filtered segment.'),
+        },
+        outputSchema: INCIDENT_TIMELINE_OUTPUT_SCHEMA,
+        annotations: READ_ONLY_ANNOTATIONS,
+      },
+      async (args) => {
+        const input: IncidentTimelineInput = args;
+        const plan = planIncidentTimeline(input);
+        assertDateNotInFuture(input.end_date, getSearchConsoleCalendarDate(), 'end_date');
+        const googleId = this.requireGoogleId();
+        // Explicit Google sites.get identity/permission verification consumes
+        // its metadata bucket separately from Search Analytics request units.
+        const siteLimit = await this.rateLimitError(googleId, 'sites.get', 1);
+        if (siteLimit) return siteLimit;
+        const token = await this.getAccessToken(googleId);
+        let metadataRetries = 0;
+        const site = await getSite(token, input.site_url, async () => {
+          await this.reserveMetadataReadRetry(googleId);
+          metadataRetries += 1;
+        });
+        if (site.siteUrl !== input.site_url
+          || !['siteOwner', 'siteFullUser', 'siteRestrictedUser'].includes(site.permissionLevel)) {
+          return toolError('Exact Search Console property is not verified for this connected Google account; no analytics data was requested.');
+        }
+        // One daily read, plus one unfiltered control when segmented, plus one
+        // opt-in keyless aggregate. Reserve the entire initial fan-out before
+        // performing any Search Analytics request; each retry is reserved again.
+        const analyticsLimit = await this.rateLimitError(
+          googleId, 'diagnostics.incident_timeline', plan.search_analytics_request_budget,
+        );
+        if (analyticsLimit) return analyticsLimit;
+        let analyticsRetries = 0;
+        const sources = await fetchIncidentTimelineSources(token, plan, async () => {
+          await this.reserveSearchAnalyticsRetry(googleId);
+          analyticsRetries += 1;
+        });
+        const result = buildIncidentTimeline(plan, sources, {
+          permission_level: site.permissionLevel,
+          analytics_retries: analyticsRetries,
+          metadata_retries: metadataRetries,
+        });
+        return toolResponse(JSON.stringify(result), result);
       },
     );
 
