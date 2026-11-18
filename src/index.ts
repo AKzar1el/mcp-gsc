@@ -1619,9 +1619,13 @@ class GscMcpRuntime {
           query_contains: z.string().trim().min(1).max(120).optional().describe('Optional query topic substring, filtered by Google in both weeks.'),
           country: z.string().trim().regex(/^[a-zA-Z]{3}$/).optional().describe('Optional ISO alpha-3 searcher country.'),
           device: z.enum(['desktop', 'mobile', 'tablet']).optional().describe('Optional searcher device.'),
+          countries: promptCountries.describe('Optional 1-10 ISO alpha-3 searcher countries, comma/newline-separated or a JSON-array string. Use instead of country; values are ORed at Google.'),
+          devices: promptDevices.describe('Optional 1-3 searcher devices, comma/newline-separated or a JSON-array string. Use instead of device; values are ORed at Google.'),
         }),
       },
-      ({ site_url, end_date, search_type, page_contains, query_contains, country, device }) => {
+      ({ site_url, end_date, search_type, page_contains, query_contains, country, device, countries, devices }) => {
+        if (country && countries) throw new Error('Supply either country or countries, not both.');
+        if (device && devices) throw new Error('Supply either device or devices, not both.');
         const today = getSearchConsoleCalendarDate();
         if (end_date) assertDateNotInFuture(end_date, today, 'end_date');
         const latestFinalized = resolveWeeklyDigestEndDate(undefined, today);
@@ -1647,13 +1651,15 @@ class GscMcpRuntime {
                   start_date_b: offset(-13), end_date_b: offset(-7),
                   search_type, page_contains: page_contains ?? null, query_contains: query_contains ?? null,
                   country: country?.toUpperCase() ?? null, device: device?.toUpperCase() ?? null,
+                  countries: countries?.map((value) => value.toUpperCase()) ?? null,
+                  devices: devices?.map((value) => value.toUpperCase()) ?? null,
                 }),
                 '1. Verify read access to this exact Search Console property with server.capabilities and sites.get. Do not access another property or presume stored credentials are accepted.',
-                '2. Call analytics.query exactly twice, once for each seven-day Pacific window, with dimensions=["query"], row_limit=100, start_row=0, data_state="final", aggregation_type="auto" and the same search_type. Apply one AND dimension_filter_groups using identical optional page contains, query contains, country equals and device equals filters in BOTH periods. Use Google-side filters, not local postfiltering; both read requests and any retries consume normal quotas.',
+                '2. Call analytics.query exactly twice, once for each seven-day Pacific window, with dimensions=["query"], row_limit=100, start_row=0, data_state="final", aggregation_type="auto" and the same search_type. Apply one AND dimension_filter_groups identically to BOTH periods. Use ordinary filters for optional page contains, query contains, single country equals and single device equals; for countries or devices lists instead use filterLists with uppercase exact expressions (OR within each list, AND across dimensions and other filters). Never combine a filter and filterLists for the same dimension. Apply all scopes at Google, not by local postfiltering; both reads and any retries consume normal quotas.',
                 '3. Compare exact query keys actually observed in BOTH returned 100-row samples, using actual clicks, impressions and CTR. Report at most five substantial measured declines and three gains with both period metrics. Percent changes need a nonzero measured baseline. News Search has no reliable average-position metric; elsewhere average position is not a live rank.',
                 '4. Separately label up to three baseline-only and latest-only query examples as FOLLOW-UP CANDIDATES, never confirmed lost, gained or zero-click queries. A missing row is not measured zero traffic: Google returns click-sorted, incomplete top-row samples, and ties or cutoffs change cohorts. Even a full response is not an exhaustive census. If a period has no rows, report insufficient evidence, not vanished traffic.',
-                '5. If one exact observed query needs page-level context and quota remains, use insights.query_pages at most once for that query in ONE selected finalized window with the same search_type, country, device and applicable page_contains scope. Disclose any tool filter mismatch and the single-window limitation. Do not infer causality, intent shifts or penalties from query omission.',
-                '6. Suggest one human-reviewable content or internal-link investigation only where observed query/page evidence supports it, with an equal-scope measurement plan. Segmented results are not property-wide or all-device totals; searcher country is not page language.',
+                '5. If one exact observed query needs page-level context and quota remains, inspect at most one selected finalized window. With single country/device scope, insights.query_pages can be used once while retaining its supported filters. With multi-value countries/devices, insights.query_pages cannot preserve the multi-value scope: use one additional analytics.query grouped by page with the exact observed query equals filter and the same filterLists/page scope, or skip the drilldown. Do not compare a mismatched scope or infer causality, intent shifts or penalties from query omission.',
+                '6. Suggest one human-reviewable content or internal-link investigation only where observed query/page evidence supports it, with an equal-scope measurement plan. Segmented results are not property-wide or all-device totals; OR within country or device lists does not imply separately measured country/device trends, and searcher country is not page language.',
                 'Never call indexing.request, indexing.remove, sitemap writes, site membership mutations, content publication or outreach. Prompt retrieval itself makes no Google request. Stop when access, evidence or quotas are insufficient.',
                 'Return exact property, weeks and filters, common-query metrics, separately marked one-period-only samples, limitations and one safe next check. Never claim definitive query disappearance, SEO recovery, adoption or sales.',
               ].join('\n'),
