@@ -32,6 +32,7 @@ const ALL_TOOL_NAMES = [
   'indexing.remove',
   'indexing.list_pages',
   'analytics.compare',
+  'diagnostics.incident_timeline',
   'reports.weekly_digest',
   'server.capabilities',
 ].map((name) => ({ name }));
@@ -116,7 +117,8 @@ test('read-only mode excludes every mutation while readwrite preserves the full 
     'insights.content_decay',
     'indexing.list_pages',
     'analytics.compare',
-    'reports.weekly_digest',
+    'diagnostics.incident_timeline',
+    'reports.weekly_digest'
     'server.capabilities',
   ]);
   for (const writeTool of WRITE_TOOL_NAMES) {
