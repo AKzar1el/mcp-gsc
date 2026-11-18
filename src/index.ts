@@ -115,6 +115,17 @@ import {
   windowSourceRows,
   mapSourceRows,
 } from './result-bounds';
+import {
+  SHIFT_DIMENSIONS,
+  SHIFT_MAX_SOURCE_PAGES,
+  SHIFT_MAX_SOURCE_ROWS_PER_PAGE,
+  QUERY_PAGE_SHIFT_OUTPUT_SCHEMA,
+  assertShiftWindows,
+  buildShiftReport,
+  fetchShiftSource,
+  shiftRequestBudget,
+  type ShiftAnalysisInput,
+} from './query-page-shift';
 
 export interface Env {
   OAUTH_KV: KVNamespace;
@@ -1125,6 +1136,11 @@ const TOOL_CATALOG = [
     name: 'analytics.compare',
     description:
       'Compare only dimension keys observed in both Search Console date ranges; missing rows are not zero traffic. observed_only_sample_limit (default 3, max 10) increases bounded one-period-only query/page examples for follow-up investigation without comparing absent rows. Optional sort_by ranks observed click, relative click-percentage (positive baseline clicks only), impression, CTR or average-position movement; click_change_direction, impression_change_direction, ctr_change_direction, position_change_direction, min_baseline_clicks (period B), min_absolute_click_change (raw clicks) and min_impressions_per_period narrow common rows before pagination. Discover and Google News lack average position. Both periods use the same search type, finalized/all data state and filters; this adds no Google requests.',
+  },
+  {
+    name: 'diagnostics.query_page_shift',
+    description:
+      'Diagnose bounded observed query, page, and optional exact query-page key shifts between two explicit periods. Separates matched-key average-position deterioration from changed returned-key mix, without imputing absent keys as zero or claiming property-wide totals. Uses up to 12 shared-rate-limited Search Analytics requests and no new OAuth scopes.',
   },
   {
     name: 'reports.weekly_digest',
@@ -3349,6 +3365,122 @@ class GscMcpRuntime {
           result_page: bounded.resultPage,
         };
         return toolResponse(JSON.stringify(payload), payload);
+      },
+    );
+
+    this.server.registerTool(
+      'diagnostics.query_page_shift',
+      {
+        title: 'Diagnose Query/Page Visibility Shift',
+        description:
+          'Compare exact returned query, page and (optionally) query-page keys in nonoverlapping earlier/later Search Console windows. Returns measured within-key click, impression and average-position changes separately from observed one-period-only key samples. Missing Google rows are not zero traffic, lost rankings, or deindexing. Only Web/Image/Video/Search News tab have compatible query grouping. Default finalized rows; all may be preliminary. Each API call is row-bounded; requests are charged to the shared Search Analytics quota.',
+        inputSchema: {
+          site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
+          earlier_start: SEARCH_CONSOLE_DATE_SCHEMA.describe('Inclusive start of earlier baseline, Pacific Search Console date.'),
+          earlier_end: SEARCH_CONSOLE_DATE_SCHEMA.describe('Inclusive end of earlier baseline, Pacific Search Console date.'),
+          later_start: SEARCH_CONSOLE_DATE_SCHEMA.describe('Inclusive start of later period, Pacific Search Console date.'),
+          later_end: SEARCH_CONSOLE_DATE_SCHEMA.describe('Inclusive end of later period, Pacific Search Console date.'),
+          search_type: z.enum(['web', 'image', 'video', 'news']).default('web'),
+          data_state: z.enum(['final', 'all']).default('final').describe('Finalized-only by default; all may include preliminary data in both periods.'),
+          country: z.string().regex(/^[A-Za-z]{3}$/).optional().describe('Optional three-letter ISO alpha-3 searcher country.'),
+          device: z.enum(['desktop', 'mobile', 'tablet']).optional(),
+          query_contains: z.string().min(1).max(256).optional().describe('Optional Google-side substring filter on query; applied to both periods.'),
+          page_contains: z.string().min(1).max(2048).optional().describe('Optional Google-side substring filter on page URL; applied to both periods.'),
+          include_query_page: z.boolean().default(true).describe('Include costly query-page tuple observations (default true); false limits to separate query and page views.'),
+          source_rows_per_page: z.number().int().min(10).max(SHIFT_MAX_SOURCE_ROWS_PER_PAGE).default(100),
+          source_pages: z.number().int().min(1).max(SHIFT_MAX_SOURCE_PAGES).default(1).describe('Maximum provider pages per dimension and period; 2 incurs the higher shared request budget.'),
+          min_impressions_per_period: z.number().int().min(0).max(1_000_000).default(10).describe('Minimum impressions in each observed period to enter ranked decline examples.'),
+          result_limit: z.number().int().min(1).max(10).default(5).describe('Maximum examples per ranking per dimension, also bounded by total response bytes.'),
+        },
+        outputSchema: QUERY_PAGE_SHIFT_OUTPUT_SCHEMA,
+        annotations: READ_ONLY_ANNOTATIONS,
+      },
+      async ({
+        site_url,
+        earlier_start, earlier_end, later_start, later_end,
+        search_type, data_state, country, device,
+        query_contains, page_contains, include_query_page,
+        source_rows_per_page, source_pages, min_impressions_per_period, result_limit,
+      }) => {
+        const windows = {
+          earlier: { start: earlier_start, end: earlier_end },
+          later: { start: later_start, end: later_end },
+        };
+        assertShiftWindows(windows);
+        const today = getSearchConsoleCalendarDate();
+        assertDateNotInFuture(earlier_end, today, 'earlier_end');
+        assertDateNotInFuture(later_end, today, 'later_end');
+
+        const filters: Array<{
+          dimension: 'country' | 'device' | 'query' | 'page';
+          operator: 'equals' | 'contains';
+          expression: string;
+        }> = [];
+        if (country) filters.push({ dimension: 'country', operator: 'equals', expression: country.toUpperCase() });
+        if (device) filters.push({ dimension: 'device', operator: 'equals', expression: device.toUpperCase() });
+        if (query_contains) filters.push({ dimension: 'query', operator: 'contains', expression: query_contains });
+        if (page_contains) filters.push({ dimension: 'page', operator: 'contains', expression: page_contains });
+        const dimensionFilterGroups = filters.length > 0
+          ? [{ groupType: 'and' as const, filters }]
+          : undefined;
+        const dimensions = include_query_page ? SHIFT_DIMENSIONS : SHIFT_DIMENSIONS.slice(0, 2);
+        // Validate every scope before requesting credentials or shared quota.
+        for (const dimension of dimensions) {
+          const apiDimensions: Array<'query' | 'page'> =
+            dimension === 'query_page' ? ['query', 'page'] : [dimension];
+          assertSearchAnalyticsQueryCompatible({
+            startDate: earlier_start,
+            endDate: earlier_end,
+            dimensions: apiDimensions,
+            rowLimit: source_rows_per_page,
+            type: search_type,
+            dataState: data_state,
+            ...(dimensionFilterGroups ? { dimensionFilterGroups } : {}),
+          });
+        }
+
+        const googleId = this.requireGoogleId();
+        const budget = shiftRequestBudget(include_query_page, source_pages);
+        const rateLimitError = await this.rateLimitError(
+          googleId, 'diagnostics.query_page_shift', budget,
+        );
+        if (rateLimitError) return rateLimitError;
+        const accessToken = await this.getAccessToken(googleId);
+        const sources: ShiftAnalysisInput[] = [];
+        for (const dimension of dimensions) {
+          const apiDimensions: Array<'query' | 'page'> =
+            dimension === 'query_page' ? ['query', 'page'] : [dimension];
+          const common = {
+            dimensions: apiDimensions,
+            type: search_type,
+            dataState: data_state,
+            ...(dimensionFilterGroups ? { dimensionFilterGroups } : {}),
+          };
+          const earlier = await fetchShiftSource(accessToken, site_url, {
+            ...common, startDate: earlier_start, endDate: earlier_end,
+          }, source_rows_per_page, source_pages,
+          () => this.reserveSearchAnalyticsRetry(googleId));
+          const later = await fetchShiftSource(accessToken, site_url, {
+            ...common, startDate: later_start, endDate: later_end,
+          }, source_rows_per_page, source_pages,
+          () => this.reserveSearchAnalyticsRetry(googleId));
+          sources.push({ dimension, earlier, later });
+        }
+        const result = buildShiftReport({
+          siteUrl: site_url,
+          searchType: search_type,
+          dataState: data_state,
+          filters: {
+            ...(country ? { country: country.toUpperCase() } : {}),
+            ...(device ? { device } : {}),
+            ...(query_contains ? { query_contains } : {}),
+            ...(page_contains ? { page_contains } : {}),
+          },
+          windows, sources, rowsPerPage: source_rows_per_page,
+          sourcePages: source_pages, includeQueryPage: include_query_page,
+          resultLimit: result_limit, minImpressionsPerPeriod: min_impressions_per_period,
+        });
+        return toolResponse(JSON.stringify(result), result);
       },
     );
 
