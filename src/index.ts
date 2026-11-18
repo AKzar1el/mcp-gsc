@@ -2091,10 +2091,10 @@ class GscMcpRuntime {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe('The exact authorized and verified Google Search Console URL-prefix or sc-domain property, not an arbitrary page URL.'),
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive first date; at least 4 and at most 90 days through end_date.')),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive final date; cannot be in the future.')),
-          baseline_start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('Optional baseline beginning. Supply all four baseline/incident bounds or none.'),
-          baseline_end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('Optional baseline ending; at least two calendar days.'),
-          incident_start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('Optional incident beginning, strictly after the baseline window.'),
-          incident_end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe('Optional incident ending; at least two calendar days, within the full date range.'),
+          baseline_start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional baseline beginning. Supply all four baseline/incident bounds or none.')),
+          baseline_end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional baseline ending; at least two calendar days.')),
+          incident_start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional incident beginning, strictly after the baseline window.')),
+          incident_end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional incident ending; at least two calendar days, within the full date range.')),
           search_type: z.enum(['web', 'image', 'video', 'news', 'discover', 'googleNews', 'webMultimodal']).default('web')
             .describe('One Google Search Analytics surface, not all surfaces combined. Discover and Google News have no position; webMultimodal has no text query filter.'),
           data_state: z.enum(['final', 'all']).default('final')
