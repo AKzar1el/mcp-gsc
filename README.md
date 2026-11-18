@@ -326,6 +326,10 @@ npm run test:smoke    # structural smoke tests against a deployment
 
 Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Compare observed landing-page cohorts
+
+**`gsc-page-cohort-review`** is an MCP-discoverable, read-only workflow for examining which *observed top canonical page URLs* changed between two adjacent finalized seven-day Search Console windows. It accepts an exact property, optional end date, Search surface (including Google Lens `webMultimodal`), URL-section substring, and single or multi-value country/device scopes. Country/device lists (1-10 countries, 1-3 devices) use Google-side `filterLists` identically in both windows. A page URL section is not a searcher locale. Compare only pages returned in both click-sorted, incomplete samples: a page absent from one week is **not measured zero traffic** or confirmed deindexed. Optionally inspect one page's query context when supported, preserving all filters; the multimodal surface has no query-dimension drilldown. Retrieving this prompt consumes no Google requests; following it uses ordinary read quotas. No indexing, content, publication or other writes occur, and client prompt support varies.
+
 ## License
 
 [MIT](LICENSE) © 2026 DigestSEO.

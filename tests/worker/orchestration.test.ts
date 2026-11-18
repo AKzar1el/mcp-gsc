@@ -244,6 +244,52 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('guides a finalized page-cohort review with identical multi-segment scopes and no provider calls', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-page-cohort-review'];
+    expect(prompt).toBeDefined();
+    const parsed = await prompt.argsSchema.safeParseAsync({
+      site_url: 'sc-domain:example.com',
+      end_date: '2026-06-20',
+      search_type: 'image',
+      page_contains: '/tools/',
+      countries: 'deu,svn',
+      devices: 'mobile,desktop',
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.countries).toEqual(['deu', 'svn']);
+    expect((await prompt.argsSchema.safeParseAsync({ site_url: 'sc-domain:example.com', countries: 'invalid-value' })).success).toBe(false);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('2026-06-14');
+      expect(guidance).toContain('2026-06-07');
+      expect(guidance).toContain('dimensions=["page"]');
+      expect(guidance).toContain('row_limit=100');
+      expect(guidance).toContain('data_state="final"');
+      expect(guidance).toContain('"countries":["DEU","SVN"]');
+      expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
+      expect(guidance).toContain('filterLists');
+      expect(guidance).toContain('identically to BOTH');
+      expect(guidance).toContain('not measured zero');
+      expect(guidance).toContain('Never call indexing.request');
+      expect(fetchSpy).not.toHaveBeenCalled();
+      await expect(prompt.handler({ ...parsed.data, country: 'DEU' })).rejects.toThrow();
+      await expect(prompt.handler({ ...parsed.data, device: 'mobile' })).rejects.toThrow();
+      expect((await prompt.argsSchema.safeParseAsync({ ...parsed.data, search_type: 'webMultimodal' })).success).toBe(true);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a scoped read-only traffic-drop workflow as an MCP prompt', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
