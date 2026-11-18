@@ -244,6 +244,51 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('guides a bounded read-only Search Appearance comparison using discovered types', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (args: unknown) => Promise<{ success: boolean }> };
+        handler: (args: Record<string, string>) => Promise<{
+          messages: Array<{ content: { text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-search-appearance-review'];
+    expect(prompt).toBeDefined();
+    const args = {
+      site_url: 'sc-domain:example.com',
+      end_date: '2026-11-10',
+      search_type: 'web',
+      country: 'deu',
+      device: 'mobile',
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      expect((await prompt.argsSchema.safeParseAsync(args)).success).toBe(true);
+      expect((await prompt.argsSchema.safeParseAsync({
+        ...args,
+        site_url: 'javascript:alert(1)',
+      })).success).toBe(false);
+      const guidance = (await prompt.handler(args)).messages[0].content.text;
+      expect(guidance).toContain('sc-domain:example.com');
+      expect(guidance).toContain('searchAppearance');
+      expect(guidance).toContain('only grouping dimension');
+      expect(guidance).toContain('two adjacent');
+      expect(guidance).toContain('exact returned');
+      expect(guidance).toContain('final');
+      expect(guidance).toContain('DEU');
+      expect(guidance).toContain('MOBILE');
+      expect(guidance).toContain('not a complete');
+      expect(guidance).toContain('Never call indexing.request');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('accepts protocol string arguments for list-valued MCP prompts', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
