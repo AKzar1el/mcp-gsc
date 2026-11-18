@@ -88,6 +88,7 @@ describe('Worker orchestration', () => {
     try {
       expect((await prompt.argsSchema.safeParseAsync(args)).success).toBe(true);
       expect((await prompt.argsSchema.safeParseAsync({ ...args, site_url: 'javascript:alert(1)' })).success).toBe(false);
+      expect((await prompt.argsSchema.safeParseAsync({ ...args, search_type: 'webMultimodal' })).success).toBe(true);
       const guidance = (await prompt.handler(args)).messages[0].content.text;
       expect(guidance).toContain('2026-10-21');
       expect(guidance).toContain('2026-11-10');
@@ -98,6 +99,9 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('not measured zero');
       expect(guidance).toContain('"country":"DEU"');
       expect(guidance).toContain('"device":"MOBILE"');
+      const multimodal = (await prompt.handler({ ...args, search_type: 'webMultimodal' })).messages[0].content.text;
+      expect(multimodal).toContain('"search_type":"webMultimodal"');
+      expect(multimodal).toContain('Never request the unavailable text-query dimension');
       expect(guidance).toContain('Never call indexing.request');
       expect(fetchSpy).not.toHaveBeenCalled();
       const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -134,6 +138,7 @@ describe('Worker orchestration', () => {
     try {
       expect((await prompt.argsSchema.safeParseAsync(args)).success).toBe(true);
       expect((await prompt.argsSchema.safeParseAsync({ ...args, site_url: 'javascript:bad' })).success).toBe(false);
+      expect((await prompt.argsSchema.safeParseAsync({ ...args, search_type: 'webMultimodal' })).success).toBe(false);
       const guidance = (await prompt.handler(args)).messages[0].content.text;
       expect(guidance).toContain('2026-11-04');
       expect(guidance).toContain('2026-11-10');
@@ -230,6 +235,7 @@ describe('Worker orchestration', () => {
     try {
       expect((await prompt.argsSchema.safeParseAsync(args)).success).toBe(true);
       expect((await prompt.argsSchema.safeParseAsync({ ...args, site_url: 'javascript:alert(1)' })).success).toBe(false);
+      expect((await prompt.argsSchema.safeParseAsync({ ...args, search_type: 'webMultimodal' })).success).toBe(true);
       const guidance = (await prompt.handler(args)).messages[0].content.text;
       expect(guidance).toContain('sc-domain:example.com');
       expect(guidance).toContain('2026-11-04');
@@ -240,6 +246,9 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('"page_contains":"/de/"');
       expect(guidance).toContain('"device":"MOBILE"');
       expect(guidance).toContain('Searcher country is not page language');
+      const multimodal = (await prompt.handler({ ...args, search_type: 'webMultimodal' })).messages[0].content.text;
+      expect(multimodal).toContain('"search_type":"webMultimodal"');
+      expect(multimodal).toContain('Text-query dimensions and filters are unavailable');
       expect(guidance).toContain('missing rows are not zero');
       expect(guidance).toContain('not exhaustive');
       expect(guidance).toContain('Never call indexing.request');
