@@ -1051,6 +1051,52 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves combined country/device scopes in guided quick-win discovery without provider calls', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (args: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-quick-win-review'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const parsed = await prompt.argsSchema.safeParseAsync({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-10-01',
+        end_date: '2026-10-28',
+        page_contains: '/de/',
+        query_contains: 'technical seo',
+        countries: 'deu,usa',
+        devices: '["desktop","mobile"]',
+      });
+      expect(parsed.success).toBe(true);
+      const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"countries":["DEU","USA"]');
+      expect(guidance).toContain('"devices":["DESKTOP","MOBILE"]');
+      expect(guidance).toContain('analytics.query');
+      expect(guidance).toContain('filterLists');
+      expect(guidance).toContain('Do not call insights.quick_wins');
+      expect(guidance).toContain('not separately measured');
+      await expect(prompt.handler({ ...parsed.data!, country: 'DEU' }))
+        .rejects.toThrow('Supply either country or countries');
+      await expect(prompt.handler({ ...parsed.data!, device: 'mobile' }))
+        .rejects.toThrow('Supply either device or devices');
+      await expect(prompt.handler({ ...parsed.data!, countries: ['DEU', 'DEU'] }))
+        .rejects.toThrow('Country list cannot contain duplicates');
+      expect((await prompt.argsSchema.safeParseAsync({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-10-01', end_date: '2026-10-28',
+        countries: 'DEU,USA,FRA,GBR,ESP,ITA,NLD,CAN,AUS,JPN,SWE',
+      })).success).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides a scoped query/page overlap review without asserting cannibalization or making provider calls', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
