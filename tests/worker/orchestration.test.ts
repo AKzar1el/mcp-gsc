@@ -781,6 +781,71 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves multi-country and device scope in guided weekly client reporting', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: {
+          safeParseAsync: (input: unknown) => Promise<{
+            success: boolean;
+            data?: Record<string, unknown>;
+          }>;
+        };
+        handler: (args: Record<string, unknown>) => Promise<{
+          messages: Array<{ content: { text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts;
+    const weekly = prompts['gsc-weekly-client-report'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const parsed = await weekly.argsSchema.safeParseAsync({
+        site_url: 'sc-domain:example.com',
+        end_date: '2026-11-10',
+        search_type: 'web',
+        page_contains: '/de/',
+        countries: 'DEU,AUT',
+        devices: '["mobile","desktop"]',
+      });
+      expect(parsed.success).toBe(true);
+      expect(parsed.data?.countries).toEqual(['DEU', 'AUT']);
+      expect(parsed.data?.devices).toEqual(['mobile', 'desktop']);
+
+      const response = await weekly.handler(parsed.data!);
+      const guidance = response.messages[0].content.text;
+      expect(guidance).toContain('"countries":["DEU","AUT"]');
+      expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
+      expect(guidance).toContain('reports.weekly_digest');
+      expect(guidance).toContain('Google-side filterLists');
+      expect(guidance).toContain('Do not call analytics.compare');
+      expect(guidance).toContain('not property-wide');
+      expect(guidance).toContain('Never email');
+      await expect(weekly.handler({
+        site_url: 'sc-domain:example.com',
+        country: 'DEU',
+        countries: ['AUT'],
+      })).rejects.toThrow('country or countries');
+      await expect(weekly.handler({
+        site_url: 'sc-domain:example.com',
+        device: 'mobile',
+        devices: ['desktop'],
+      })).rejects.toThrow('device or devices');
+      await expect(weekly.handler({
+        site_url: 'sc-domain:example.com',
+        countries: ['deu', 'DEU'],
+      })).rejects.toThrow('duplicates');
+      expect((await weekly.argsSchema.safeParseAsync({
+        site_url: 'sc-domain:example.com',
+        countries: 'DEU,AUT,CHE,SVN,HRV,ITA,FRA,ESP,PRT,NLD,GBR',
+      })).success).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a native brand-segmentation review prompt without provider requests', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
