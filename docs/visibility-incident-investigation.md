@@ -20,7 +20,7 @@ Check `server.capabilities` for access mode, then `sites.get` for the exact prop
 
 ## 2. Find when the change appeared
 
-Use **`gsc-daily-onset-review`** with the fixed `site_url`, a finalized `end_date`, selected `search_type` and optional filters. It guides one date-grouped `analytics.query` across 21 finalized Pacific days, with same-weekday comparisons only where both dates were returned.
+Use **`gsc-daily-onset-review`** with the fixed `site_url`, a finalized `end_date`, selected `search_type` and optional filters. Its optional `lookback_days` chooses 14, 21 (default), or 35 finalized Pacific days for one date-grouped `analytics.query` (one normal read quota unit), with same-weekday comparisons only where both dates were returned.
 
 Record the first *observed* lower day, the last comparable earlier day, the number of returned dates and any gaps. Search Console may omit days and return incomplete data. Missing days are **unknown, not zero**; do not sum incomplete returned days as verified full-week totals or claim an exact onset when the relevant dates are absent.
 
