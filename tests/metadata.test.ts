@@ -38,6 +38,7 @@ const testsReadmeSource = readFileSync(resolve(projectRoot, 'tests/README.md'), 
 const rootMcpConfig = readFileSync(resolve(projectRoot, '.mcp.json'), 'utf8');
 const cursorMcpConfig = readFileSync(resolve(projectRoot, 'mcp.json'), 'utf8');
 const windsurfSource = readFileSync(resolve(projectRoot, 'docs/windsurf.md'), 'utf8');
+const visibilityIncidentSource = readFileSync(resolve(projectRoot, 'docs/visibility-incident-investigation.md'), 'utf8');
 const ciWorkflowSource = readFileSync(resolve(projectRoot, '.github/workflows/ci.yml'), 'utf8');
 const cursorSkills = [
   {
@@ -95,6 +96,25 @@ test('Cursor plugin bundles valid evidence-safe workflow skills', () => {
     /Add to Cursor[\s\S]*installs the MCP connection only/i,
     'README must not imply that the MCP deeplink installs the full Cursor plugin skills',
   );
+});
+test('visibility incident playbook links supported prompts and preserves read-only evidence boundaries', () => {
+  assert.match(readmeSource, /\[read-only visibility incident playbook\]\(docs\/visibility-incident-investigation\.md\)/);
+
+  const documentedPrompts = [...visibilityIncidentSource.matchAll(/`(gsc-[a-z-]+)`/g)]
+    .map((match) => match[1]);
+  assert.ok(documentedPrompts.length >= 6, 'playbook must expose a useful set of existing workflows');
+  for (const prompt of new Set(documentedPrompts)) {
+    assert.ok(indexSource.includes(`'${prompt}'`), `playbook references an unknown prompt: ${prompt}`);
+  }
+
+  for (const guardrail of [
+    'Missing days are **unknown, not zero**',
+    'same property, surface and Google-side filters',
+    'Do not call `indexing.request`, `indexing.remove`',
+    'normal quotas',
+  ]) {
+    assert.ok(visibilityIncidentSource.includes(guardrail), `incident playbook lost guardrail: ${guardrail}`);
+  }
 });
 test('package release versions remain aligned across machine-readable metadata', () => {
   const expectedVersion = packageJson.version;
