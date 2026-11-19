@@ -124,11 +124,11 @@
         },
         {
           "name": "GSC_ACCESS_MODE",
-          "description": "Google/Search Console access mode for the local launcher. Use readonly for least privilege or readwrite for the six mutation tools.",
+          "description": "Google/Search Console access mode. Registry metadata defaults to readonly for least privilege when clients apply this setting. Explicitly use readwrite for the six mutation tools. The launcher retains its legacy readwrite fallback if this variable is omitted.",
           "isRequired": false,
           "isSecret": false,
           "format": "string",
-          "default": "readwrite"
+          "default": "readonly"
         },
         {
           "name": "MCP_GSC_STATE_DIR",

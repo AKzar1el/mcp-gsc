@@ -275,7 +275,11 @@ test('registry package identity remains aligned', () => {
     npmPackage.environmentVariables.map((entry: { name: string }) => [entry.name, entry]),
   );
   assert.equal(environmentVariables.get('PORT')?.default, '8080');
-  assert.equal(environmentVariables.get('GSC_ACCESS_MODE')?.default, 'readwrite');
+  assert.equal(
+    environmentVariables.get('GSC_ACCESS_MODE')?.default,
+    'readonly',
+    'Registry metadata must advertise least-privilege readonly; the legacy implicit launcher fallback remains readwrite',
+  );
   assert.equal(environmentVariables.get('GSC_ACCESS_MODE')?.isSecret, false);
   assert.equal(
     WRITE_TOOL_NAMES.length,
