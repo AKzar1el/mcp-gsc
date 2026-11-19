@@ -499,6 +499,31 @@ test('removal eligibility accepts a robots noindex meta directive in the documen
   }
 });
 
+test('removal eligibility recognizes Googlebot-specific noindex without accepting other agents or inert markup', async () => {
+  for (const html of [
+    '<html><head><meta name="googlebot" content="nofollow, noindex"></head><body>Retired job</body></html>',
+    '<html><head><meta name="GOOGLEBOT" content="NOINDEX"></head><body>Retired job</body></html>',
+  ]) {
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingRemovalEligibility('https://example.com/jobs/old-role'),
+    );
+    assert.deepEqual(result, { eligible: true }, html);
+  }
+
+  for (const html of [
+    '<html><head><meta name="googlebot-news" content="noindex"></head></html>',
+    '<html><head><!-- <meta name="googlebot" content="noindex"> --></head></html>',
+    '<html><head><meta data-name="googlebot" content="noindex"></head></html>',
+  ]) {
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingRemovalEligibility('https://example.com/jobs/old-role'),
+    );
+    assert.equal(result.eligible, false, html);
+  }
+});
+
 test('removal eligibility preserves real noindex after literal comment opener in CSS', async () => {
   const html = '<head><style>.sample::before { content: "<!--"; }</style>' +
     '<meta name="robots" content="noindex"></head><body>Retired</body>' +
