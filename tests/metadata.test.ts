@@ -1093,7 +1093,10 @@ test('weekly digest country scope is discoverable and documented as ISO alpha-3'
   const digestReadmeRow = readmeSource.split('**`reports.weekly_digest`**')[1]?.split('\n')[0] ?? '';
   assert.match(catalog, /country/);
   assert.match(registration, /country:\s*z\.string/);
-  assert.match(indexSource, /device,\s*query_contains,\s*country,\s*\);\s*return toolResponse/);
+  assert.match(indexSource, /device,\s*query_contains,\s*country,\s*countries,\s*devices,\s*\);\s*return toolResponse/);
+  assert.match(registration, /countries:\s*z\.array/);
+  assert.match(registration, /devices:\s*z\.array/);
+  assert.match(readmeSource, /weekly reports, `reports\.weekly_digest` also accepts `countries`/);
   assert.match(digestReadmeRow, /country/);
   assert.match(guide, /ISO 3166-1 alpha-3/);
   assert.match(guide, /country filter/i);
@@ -1111,7 +1114,7 @@ test('capabilities catalog advertises supported insight filters and weekly repor
     ['insights.quick_wins', ['page_contains', 'query_contains', 'country', 'device']],
     ['insights.cannibalization', ['page_contains', 'query_contains', 'country', 'device']],
     ['insights.content_decay', ['page_contains', 'query_contains', 'country', 'device']],
-    ['reports.weekly_digest', ['search_type', 'page_contains', 'device', 'query_contains']],
+    ['reports.weekly_digest', ['search_type', 'page_contains', 'device', 'devices', 'country', 'countries', 'query_contains']],
   ] as const) {
     const entry = catalog.split(`name: '${toolName}'`)[1]?.split('\n  },')[0] ?? '';
     assert.match(entry, /description:/, `${toolName} must have a capabilities description`);

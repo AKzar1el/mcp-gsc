@@ -384,6 +384,7 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('filterLists');
       expect(guidance).toContain('OR within');
       expect(guidance).toContain('cannot preserve multi-value scopes');
+      expect(guidance).toContain('reports.weekly_digest can preserve the same countries/devices arrays');
       expect(guidance).toContain('missing days are unknown');
       expect(guidance).toContain('Never call indexing.request');
       await expect(prompt.handler({ ...parsed.data, country: 'DEU' })).rejects.toThrow();
@@ -6778,6 +6779,29 @@ describe('Worker orchestration', () => {
     ]);
   });
 
+  it('rejects ambiguous weekly digest single/list scopes before any quota or Google request', async () => {
+    const take = vi.fn(async () => ({ allowed: true }));
+    const getAccessToken = vi.fn(async () => 'test-token');
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly', TOOL_RATE_LIMITER: { idFromName: (name: string) => name, get: () => ({ take }) } } as unknown as Env,
+      { google_id: 'digest-conflict-user', email: 'conflict@example.test' },
+      { getAccessToken } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{ isError?: boolean; content: Array<{ text: string }> }>;
+      }>;
+    })._registeredTools['reports.weekly_digest'].handler;
+
+    const countryResult = await handler({ site_url: 'sc-domain:example.com', country: 'SVN', countries: ['DEU'] });
+    const deviceResult = await handler({ site_url: 'sc-domain:example.com', device: 'mobile', devices: ['desktop'] });
+    expect(countryResult.isError).toBe(true);
+    expect(countryResult.content[0]?.text).toContain('Use country or countries, not both');
+    expect(deviceResult.isError).toBe(true);
+    expect(deviceResult.content[0]?.text).toContain('Use device or devices, not both');
+    expect(take).not.toHaveBeenCalled();
+    expect(getAccessToken).not.toHaveBeenCalled();
+  });
   it('charges a weekly digest retry in addition to its five upfront Analytics units', async () => {
     const take = vi.fn(async () => ({ allowed: true }));
     const server = await createGscMcpServer(

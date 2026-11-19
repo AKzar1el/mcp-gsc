@@ -1136,7 +1136,7 @@ const TOOL_CATALOG = [
   {
     name: 'reports.weekly_digest',
     description:
-      'Generate a plain-language weekly Search Console report for Web (default), Image, Video or Google Search News-tab performance using search_type, optionally scoped by page_contains URL section, device (desktop, mobile or tablet), query_contains topic, and country (ISO 3166-1 alpha-3). Scoped reports are not all-device or property-wide totals.',
+      'Generate a plain-language weekly Search Console report for Web (default), Image, Video or Google Search News-tab performance using search_type, optionally scoped by page_contains URL section, query_contains topic, and either country or countries (1-10 ISO alpha-3 searcher codes), plus device or devices (1-3 desktop/mobile/tablet). Plural lists use Google-side OR within a dimension, AND across other filters; do not combine single and plural values for one dimension. Reported figures describe the selected scope, not necessarily property-wide traffic.',
   },
   {
     name: 'server.capabilities',
@@ -1583,7 +1583,7 @@ class GscMcpRuntime {
                 ? '4. If the measured drop merits landing-page investigation and the read quota permits, use the existing gsc-page-cohort-review with the identical property, finalized end date, search surface, URL section, countries and devices. Treat this as a separately authorized read-only follow-up, not an automatic request. Compare only pages returned in both samples; missing rows are not zero traffic or proof of deindexing.'
                 : '4. When a targeted hypothesis remains, use analytics.compare with two equal-length, nonoverlapping finalized Pacific-date periods, dimension=page and the same search_type. Apply identical Google-side filters to both periods via one and dimension_filter_groups: page contains the supplied URL section, country equals its uppercase ISO alpha-3 code, and device equals its uppercase type when provided. Never mix search surfaces, filtered segments or different date lengths. Interpret only keys observed in both returned samples; missing rows are not zero traffic or proof of deindexing.',
               multiScope
-                ? '5. reports.weekly_digest, insights.content_decay and insights.page_queries cannot preserve multi-value scopes; do not call them for this combined segment or silently narrow the country/device set. Any narrower investigation needs explicit new scope and a separate comparison. Searcher country is not page language; these are segment-only metrics, not property-wide totals.'
+                ? '5. If a compact aggregated weekly report would help and the read quota permits, reports.weekly_digest can preserve the same countries/devices arrays through Google-side filterLists, using the identical search type, finalized end date and URL scope. It does not establish day-by-day coverage or causality. insights.content_decay and insights.page_queries cannot preserve multi-value scopes; do not call those for this combined segment or silently narrow it. Any narrower investigation needs an explicit new scope. Searcher country is not page language; these are segment-only metrics, not property-wide totals.'
                 : '5. For a small number of returned exact page URLs, use insights.page_queries with the same search_type, country and device to inspect query-level evidence on comparable dates. Use urls.inspect only when indexed-state evidence would change a decision; it reports Google\'s indexed version, not a live URL test, and consumes the per-user inspection quota.',
               'Never call indexing.request, indexing.remove, sitemap writes, or other mutations; do not submit URLs to Google. Do not claim algorithm updates, penalties, ranking changes, or causal diagnoses from correlation alone.',
               'Report the exact property, date windows, search surface, optional URL section, searcher country and device, observed clicks/impressions, coverage limitations, the most useful next read-only check, and which conclusions remain unverified. Stop when the evidence or quota budget is insufficient.',
@@ -1639,7 +1639,7 @@ class GscMcpRuntime {
                 '5. Identify the earliest plausible observed decline date only when at least two adjacent observed dates corroborate a sustained decrease; otherwise label the onset uncertain. A multi-country or multi-device filter yields one combined segment, not independently measured per-country or per-device series; do not attribute its onset to any member without a separate same-scope check. A filtered/top-row response is not a complete census, and differences can reflect reporting, seasonal or query mix changes. Do not equate impressions with indexed URLs, unique visitors or revenue.',
                 search_type === 'webMultimodal'
                   ? '6. gsc-traffic-drop-triage does not accept webMultimodal; never pass this surface to it or silently recast Lens traffic as Web or Image-tab traffic. If warranted, recommend a separately authorized read-only analytics.query follow-up on webMultimodal with the same exact property, finalized dates, URL section and identical Google-side single or list country/device filters. Do not request the unavailable text-query dimension, invoke tools automatically, expand quotas or treat missing dates as zero.'
-                  : '6. If a sustained decline warrants further diagnosis, recommend gsc-traffic-drop-triage with the same exact property, finalized end date, search surface, URL section and country/device or countries/devices filters without scope narrowing. Its multi-value path preserves lists through identical Google-side filterLists in two adjacent finalized seven-day analytics.query windows; legacy digest and drilldown helpers remain single-value only. Do not automatically invoke the follow-up, expand read quotas or interpret missing dates as zero.',
+                  : '6. If a sustained decline warrants further diagnosis, recommend gsc-traffic-drop-triage with the same exact property, finalized end date, search surface, URL section and country/device or countries/devices filters without scope narrowing. Its multi-value path preserves lists through identical Google-side filterLists in two adjacent finalized seven-day analytics.query windows; reports.weekly_digest also supports these plural filters for aggregated reports, but content-decay and direct drilldown helpers remain single-value only. Do not automatically invoke the follow-up, expand read quotas or interpret missing dates as zero.',
                 'Never call indexing.request, indexing.remove, sitemap writes, configuration changes, external outreach or any other mutation. Retrieving this prompt itself makes no provider request.',
                 'Return the exact property and Google-side scope, date coverage and missing days, up to three evidence-backed daily changes, onset confidence and one next read-only check. Do not assert an algorithm update, penalty, causal explanation, guaranteed recovery, adoption or sales.',
               ].join('\n'),
@@ -3817,7 +3817,7 @@ class GscMcpRuntime {
       {
         title: 'Weekly GSC Performance Digest',
         description:
-          'Generate a plain-language weekly Search Console report for Web (default), Image, Video or Google Search News-tab performance; Discover and Google News app are excluded because query rows are unavailable. Optional search_type is applied to every Google request, and non-Web reports avoid Web-specific SEO advice. Optional page_contains scopes URLs, device selects desktop/mobile/tablet, query_contains scopes query topics, and country selects a three-letter ISO 3166-1 alpha-3 searcher country (not page language). All selected filters apply together at Google to the same five (or three preliminary) requests; scoped results are not property-wide. For finalized weeks, returns the 7-day comparison, top pages and query movers. Defaults end_date to 3 days ago. Passing an explicitly newer end_date includes fresher preliminary data as a clearly labeled snapshot without week-over-week claims or SEO advice.',
+          'Generate a plain-language weekly Search Console report for Web (default), Image, Video or Google Search News-tab performance; Discover and Google News app are excluded because query rows are unavailable. Optional search_type is applied to every Google request, and non-Web reports avoid Web-specific SEO advice. Optional page_contains scopes URLs, device selects desktop/mobile/tablet, query_contains scopes query topics, and country selects an ISO alpha-3 searcher country (not page language). Alternative countries (1-10) and devices (1-3) arrays select multiple values via Google-side OR filterLists; do not combine a list with its singular option. All selected dimensions combine with AND across the same five (or three preliminary) requests; scoped results are not property-wide. Finalized weeks return 7-day comparisons, top pages and query movers. Defaults end_date to 3 days ago; newer explicit dates show preliminary snapshots without week-over-week claims or SEO advice.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe(
@@ -3829,12 +3829,18 @@ class GscMcpRuntime {
           device: z.enum(['desktop', 'mobile', 'tablet']).optional().describe(
             'Optional Search Console device scope. When set, every total, query and page request filters to that device before aggregation; combines with page_contains as Google-side AND. Omit for all devices.',
           ),
+          devices: z.array(z.enum(['desktop', 'mobile', 'tablet'])).min(1).max(3)
+            .refine((values) => new Set(values).size === values.length, 'Device list cannot contain duplicates.')
+            .optional().describe('Optional 1-3 distinct searcher devices, ORed at Google before aggregation. Use instead of device, never both; ANDed with country/page/query scopes.'),
           query_contains: z.string().trim().min(1).max(240).optional().describe(
             'Optional case-insensitive query topic substring, such as technical SEO. Applied to all digest requests before aggregation, alongside URL and device filters in one Google-side AND group. These are topic-scoped, not property-wide totals.',
           ),
           country: z.string().trim().regex(/^[a-zA-Z]{3}$/, 'Use a three-letter ISO 3166-1 alpha-3 country code such as SVN or DEU.').optional().describe(
             'Optional ISO 3166-1 alpha-3 searcher country code, e.g. SVN for Slovenia or DEU for Germany. Case is normalized to upper-case for the Google equals filter. Country is based on searcher location, not site URL language; combines with query, page and device filters.',
           ),
+          countries: z.array(z.string().trim().regex(/^[a-zA-Z]{3}$/, 'Use ISO 3166-1 alpha-3 country codes.')).min(1).max(10)
+            .refine((values) => new Set(values.map((value) => value.toUpperCase())).size === values.length, 'Country list cannot contain duplicates.')
+            .optional().describe('Optional 1-10 distinct searcher countries (ISO alpha-3), ORed at Google before aggregation. Use instead of country, never both; ANDed with device/page/query scopes.'),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA
             .optional()
             .describe(
@@ -3846,7 +3852,9 @@ class GscMcpRuntime {
         outputSchema: WEEKLY_DIGEST_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, end_date, page_contains, search_type = 'web', device, query_contains, country }) => {
+      async ({ site_url, end_date, page_contains, search_type = 'web', device, devices, query_contains, country, countries }) => {
+        if (device && devices) return toolError('Use device or devices, not both.');
+        if (country && countries) return toolError('Use country or countries, not both.');
         const today = getSearchConsoleCalendarDate();
         const resolvedEndDate = resolveWeeklyDigestEndDate(end_date, today);
         assertDateNotInFuture(resolvedEndDate, today, 'end_date');
@@ -3876,6 +3884,8 @@ class GscMcpRuntime {
             device,
             query_contains,
             country,
+            countries,
+            devices,
           );
           return toolResponse(markdown, { markdown });
         } catch (err) {
