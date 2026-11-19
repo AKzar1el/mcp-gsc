@@ -79,7 +79,9 @@ import {
   CONTENT_DECAY_MIN_CLICK_LOSS_SCHEMA,
   CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
   CONTENT_DECAY_COUNTRY_SCHEMA,
+  CONTENT_DECAY_COUNTRIES_SCHEMA,
   CONTENT_DECAY_DEVICE_SCHEMA,
+  CONTENT_DECAY_DEVICES_SCHEMA,
   CONTENT_DECAY_PAGE_CONTAINS_SCHEMA,
   CONTENT_DECAY_QUERY_CONTAINS_SCHEMA,
 } from './content-decay-schema';
@@ -700,6 +702,8 @@ const CONTENT_DECAY_OUTPUT_SCHEMA = {
   query_contains: z.string().nullable(),
   country: z.string().nullable(),
   device: z.enum(['desktop', 'mobile', 'tablet']).nullable(),
+  countries: z.array(z.string()).nullable(),
+  devices: z.array(z.enum(['desktop', 'mobile', 'tablet'])).nullable(),
   scope_note: z.string(),
   comparison_periods: z.object({
     recent: z.object({ start: z.string(), end: z.string() }),
@@ -1109,7 +1113,7 @@ const TOOL_CATALOG = [
   {
     name: 'insights.content_decay',
     description:
-      'Assess observed page-level click declines across two contiguous periods. Optional end_date anchors the comparison to a historical finalized Search Console day (omit for latest finalized); classification_filter narrows likely_decay versus weaker evidence, and min_click_loss focuses observed absolute click losses. These local filters apply before pagination without changing source coverage counts. Optional query_contains topic, page_contains URL section, country (ISO alpha-3 searcher country, not page language), device (desktop/mobile/tablet) and Web/Image/Video/News-tab search scope both Google requests. Only pages returned in both periods are comparable: absent rows are not zero traffic, and observed losses are not property-wide totals.',
+      'Assess observed page-level click declines across two contiguous periods. Optional end_date anchors the comparison to a historical finalized Search Console day (omit for latest finalized); classification_filter narrows likely_decay versus weaker evidence, and min_click_loss focuses observed absolute click losses. These local filters apply before pagination without changing source coverage counts. Optional query_contains topic, page_contains URL section, country or countries (1-10 ISO alpha-3 searcher countries, not page languages), device or devices (1-3 desktop/mobile/tablet), and Web/Image/Video/News-tab search scope both Google requests. Lists use Google-side OR within each dimension, AND across dimensions, and cannot be combined with their singular equivalent. Only pages returned in both periods are comparable: absent rows are not zero traffic, and observed losses are not property-wide totals.',
   },
   {
     name: 'indexing.request',
@@ -1641,7 +1645,7 @@ class GscMcpRuntime {
                 ? '4. If the measured drop merits landing-page investigation and the read quota permits, use the existing gsc-page-cohort-review with the identical property, finalized end date, search surface, URL section, countries and devices. Treat this as a separately authorized read-only follow-up, not an automatic request. Compare only pages returned in both samples; missing rows are not zero traffic or proof of deindexing.'
                 : '4. When a targeted hypothesis remains, use analytics.compare with two equal-length, nonoverlapping finalized Pacific-date periods, dimension=page and the same search_type. Apply identical Google-side filters to both periods via one and dimension_filter_groups: page contains the supplied URL section, country equals its uppercase ISO alpha-3 code, and device equals its uppercase type when provided. Never mix search surfaces, filtered segments or different date lengths. Interpret only keys observed in both returned samples; missing rows are not zero traffic or proof of deindexing.',
               multiScope
-                ? '5. If a compact aggregated weekly report would help and the read quota permits, reports.weekly_digest can preserve the same countries/devices arrays through Google-side filterLists, using the identical search type, finalized end date and URL scope. It does not establish day-by-day coverage or causality. insights.content_decay and insights.page_queries cannot preserve multi-value scopes; do not call those for this combined segment or silently narrow it. Any narrower investigation needs an explicit new scope. Searcher country is not page language; these are segment-only metrics, not property-wide totals.'
+                ? '5. If an aggregated weekly report or observed page-decay follow-up is justified and read quota permits, reports.weekly_digest and insights.content_decay can preserve the same countries/devices arrays through Google-side filterLists. For decay use identical finalized end date, search surface, URL scope, and lists in both periods; it compares only pages returned in both windows and is not a causal diagnosis. insights.page_queries cannot preserve multi-value scopes; do not call it for this combined segment or silently narrow it. Any narrower investigation needs an explicit new scope. Searcher country is not page language; these are segment-only metrics, not property-wide totals.'
                 : '5. For a small number of returned exact page URLs, use insights.page_queries with the same search_type, country and device to inspect query-level evidence on comparable dates. Use urls.inspect only when indexed-state evidence would change a decision; it reports Google\'s indexed version, not a live URL test, and consumes the per-user inspection quota.',
               'Never call indexing.request, indexing.remove, sitemap writes, or other mutations; do not submit URLs to Google. Do not claim algorithm updates, penalties, ranking changes, or causal diagnoses from correlation alone.',
               'Report the exact property, date windows, search surface, optional URL section, searcher country and device, observed clicks/impressions, coverage limitations, the most useful next read-only check, and which conclusions remain unverified. Stop when the evidence or quota budget is insufficient.',
@@ -3147,7 +3151,7 @@ class GscMcpRuntime {
       'insights.content_decay',
       {
         title: 'Detect Content Decay',
-        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Optional end_date anchors a historical comparison to a selected finalized Pacific Search Console date (at least three days before today); omit for the latest finalized date. Compare 1-240 days per period within Search Console\'s rolling 16-month history. Optional search_type selects Web (default), Image, Video or News-tab search consistently for both periods; Discover and Google News are excluded from this position-aware heuristic. Optional page_contains, query_contains, country and device scope both Google Search Analytics requests to a URL section (such as /de/), search topic (such as technical seo), ISO alpha-3 searcher country (such as DEU, not page language) and searcher device (desktop/mobile/tablet) using AND before pagination; this changes the comparison population, not property-wide totals. Optional classification_filter narrows returned assessments locally to likely_decay or either weaker evidence class; optional min_click_loss selects an absolute minimum observed click decline, preserving original unfiltered assessment/decay counts. observed_click_loss summarizes the observed declines over all comparable declining pages and the likely_decay subset, before local filters and output pagination; it is not a property-wide traffic-loss estimate. No additional requests are made, and missing rows are never treated as zero. Only pages returned in both Search Analytics period responses are compared; observed_page_overlap reports how many returned page URLs are common or exclusive to each period. An absent row is not evidence of zero traffic, and Google does not guarantee every data row. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility using deterministic click-volume, impression, and average-position signals. This is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row; source pagination is reported separately.',
+        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Optional end_date anchors a historical comparison to a selected finalized Pacific Search Console date (at least three days before today); omit for the latest finalized date. Compare 1-240 days per period within Search Console\'s rolling 16-month history. Optional search_type selects Web (default), Image, Video or News-tab search consistently for both periods; Discover and Google News are excluded from this position-aware heuristic. Optional page_contains and query_contains filter URL sections/topics. Use country or countries (1-10 ISO alpha-3 searcher countries), and device or devices (1-3 desktop/mobile/tablet); plural lists use Google-side OR within a dimension and AND across dimensions and page/query filters, identically in both periods. Never mix singular and plural selectors. These comparisons concern only the selected segment, not property-wide totals. Optional classification_filter and min_click_loss narrow returned assessments locally without changing unfiltered counts. observed_click_loss sums observed comparable page declines, not property-wide lost traffic. No additional requests are made; missing rows are not zero. Only pages returned in both Search Analytics period responses are compared. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility; this is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row and source pagination.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           compare_days: CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
@@ -3160,14 +3164,18 @@ class GscMcpRuntime {
           page_contains: CONTENT_DECAY_PAGE_CONTAINS_SCHEMA,
           query_contains: CONTENT_DECAY_QUERY_CONTAINS_SCHEMA,
           country: CONTENT_DECAY_COUNTRY_SCHEMA,
+          countries: CONTENT_DECAY_COUNTRIES_SCHEMA,
           device: CONTENT_DECAY_DEVICE_SCHEMA,
+          devices: CONTENT_DECAY_DEVICES_SCHEMA,
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,
         },
         outputSchema: CONTENT_DECAY_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, compare_days, end_date, search_type = 'web', classification_filter = 'all', min_click_loss, page_contains, query_contains, country, device, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+      async ({ site_url, compare_days, end_date, search_type = 'web', classification_filter = 'all', min_click_loss, page_contains, query_contains, country, countries, device, devices, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+        if (country && countries) return toolError('Use country or countries, not both.');
+        if (device && devices) return toolError('Use device or devices, not both.');
         const formatDate = (d: Date) => d.toISOString().split('T')[0];
 
         const today = getSearchConsoleCalendarDate();
@@ -3214,10 +3222,15 @@ class GscMcpRuntime {
           ...(country ? [{ dimension: 'country' as const, operator: 'equals' as const, expression: country.toUpperCase() }] : []),
           ...(device ? [{ dimension: 'device' as const, operator: 'equals' as const, expression: device.toUpperCase() }] : []),
         ];
-        const scopedDimensionFilters = filters.length ? {
+        const filterLists = [
+          ...(countries ? [{ dimension: 'country' as const, expressions: countries.map((value) => value.toUpperCase()) }] : []),
+          ...(devices ? [{ dimension: 'device' as const, expressions: devices.map((value) => value.toUpperCase()) }] : []),
+        ];
+        const scopedDimensionFilters = filters.length || filterLists.length ? {
           dimensionFilterGroups: [{
             groupType: 'and' as const,
             filters,
+            ...(filterLists.length ? { filterLists } : {}),
           }],
         } : {};
 
@@ -3279,8 +3292,10 @@ class GscMcpRuntime {
           query_contains: query_contains ?? null,
           country: country?.toUpperCase() ?? null,
           device: device ?? null,
-          scope_note: (page_contains || query_contains || country || device
-            ? 'Both comparison periods contain only Google-filtered matching page URLs, search query topics, searcher country (not page language) and/or device, not property-wide totals or all-device totals. Missing rows are not zero.'
+          countries: countries?.map((value) => value.toUpperCase()) ?? null,
+          devices: devices ?? null,
+          scope_note: (page_contains || query_contains || country || countries || device || devices
+            ? 'Both comparison periods contain only the same Google-filtered page URLs, search query topics, searcher countries and/or devices, not property-wide totals or all-device totals. Combined country/device lists use OR within each dimension and AND across dimensions; this is not a separate breakdown. Searcher country is not page language. Missing rows are not zero.'
             : 'Both comparison periods use observed property-page rows; missing rows are not zero.')
             + (classification_filter === 'all' && min_click_loss === undefined ? '' : ' Local classification and minimum-click-loss filters narrow returned assessment rows only; assessment_count and decay_count still describe all observed declines before these filters.'),
           comparison_periods: {

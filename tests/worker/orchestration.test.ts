@@ -389,7 +389,7 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('filterLists');
       expect(guidance).toContain('OR within');
       expect(guidance).toContain('cannot preserve multi-value scopes');
-      expect(guidance).toContain('reports.weekly_digest can preserve the same countries/devices arrays');
+      expect(guidance).toContain('reports.weekly_digest and insights.content_decay can preserve the same countries/devices arrays');
       expect(guidance).toContain('missing days are unknown');
       expect(guidance).toContain('Never call indexing.request');
       await expect(prompt.handler({ ...parsed.data, country: 'DEU' })).rejects.toThrow();
@@ -5048,6 +5048,60 @@ describe('Worker orchestration', () => {
       expect(requests[3].type).toBeUndefined();
       expect(web.structuredContent.search_type).toBe('web');
       expect(requests).toHaveLength(4);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('preserves multi-country and multi-device content-decay scope across both periods', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'decay-multimarket-user', email: 'decay-multimarket@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const tool = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{
+          isError?: boolean;
+          content: Array<{ text: string }>;
+          structuredContent: { countries: string[] | null; devices: string[] | null; scope_note: string };
+        }>;
+      }>;
+    })._registeredTools['insights.content_decay'];
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ dimensionFilterGroups?: unknown[] }> = [];
+    try {
+      globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push(JSON.parse(String(init?.body)));
+        return response({ rows: [{
+          keys: ['https://example.com/de/guide'], clicks: requests.length === 1 ? 8 : 35,
+          impressions: requests.length === 1 ? 200 : 500, ctr: 0.04, position: 9,
+        }] });
+      };
+      const result = await tool.handler({
+        site_url: 'sc-domain:example.com', compare_days: 14,
+        page_contains: '/de/', countries: ['deu', 'aut'], devices: ['desktop', 'mobile'],
+      });
+      expect(result.isError).not.toBe(true);
+      expect(result.structuredContent.countries).toEqual(['DEU', 'AUT']);
+      expect(result.structuredContent.devices).toEqual(['desktop', 'mobile']);
+      expect(result.structuredContent.scope_note).toMatch(/combined|OR within/i);
+      expect(requests).toHaveLength(2);
+      const expectedFilters = [{
+        groupType: 'and',
+        filters: [{ dimension: 'page', operator: 'contains', expression: '/de/' }],
+        filterLists: [
+          { dimension: 'country', expressions: ['DEU', 'AUT'] },
+          { dimension: 'device', expressions: ['DESKTOP', 'MOBILE'] },
+        ],
+      }];
+      expect(requests[0].dimensionFilterGroups).toEqual(expectedFilters);
+      expect(requests[1].dimensionFilterGroups).toEqual(expectedFilters);
+      const mixedCountry = await tool.handler({ site_url: 'sc-domain:example.com', country: 'DEU', countries: ['AUT'] });
+      const mixedDevice = await tool.handler({ site_url: 'sc-domain:example.com', device: 'mobile', devices: ['desktop'] });
+      expect(mixedCountry.isError).toBe(true);
+      expect(mixedDevice.isError).toBe(true);
+      expect(requests).toHaveLength(2);
     } finally {
       globalThis.fetch = originalFetch;
     }

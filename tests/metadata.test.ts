@@ -1113,7 +1113,7 @@ test('capabilities catalog advertises supported insight filters and weekly repor
     ['insights.query_pages', ['page_contains', 'country', 'device']],
     ['insights.quick_wins', ['page_contains', 'query_contains', 'country', 'countries', 'device', 'devices']],
     ['insights.cannibalization', ['page_contains', 'query_contains', 'country', 'device']],
-    ['insights.content_decay', ['page_contains', 'query_contains', 'country', 'device']],
+    ['insights.content_decay', ['page_contains', 'query_contains', 'country', 'countries', 'device', 'devices']],
     ['reports.weekly_digest', ['search_type', 'page_contains', 'device', 'devices', 'country', 'countries', 'query_contains']],
   ] as const) {
     const entry = catalog.split(`name: '${toolName}'`)[1]?.split('\n  },')[0] ?? '';
@@ -1196,6 +1196,18 @@ test('content decay device scope is discoverable and consistent between comparis
   assert.match(schema, /CONTENT_DECAY_DEVICE_SCHEMA/);
   assert.match(schema, /desktop.*mobile.*tablet/);
   assert.match(readmeSource, /For `insights\.content_decay`, optional `device` selects/);
+});
+
+test('content decay exposes bounded distinct country/device lists and truthful combined scope', () => {
+  const schema = readFileSync(resolve(projectRoot, 'src/content-decay-schema.ts'), 'utf8');
+  const registration = indexSource.match(/this\.server\.registerTool\(\s*'insights\.content_decay'([\s\S]*?)outputSchema:/)?.[1] ?? '';
+  assert.match(schema, /CONTENT_DECAY_COUNTRIES_SCHEMA[\s\S]*?\.min\(1\)\.max\(10\)/);
+  assert.match(schema, /CONTENT_DECAY_DEVICES_SCHEMA[\s\S]*?\.min\(1\)\.max\(3\)/);
+  assert.match(registration, /countries:\s*CONTENT_DECAY_COUNTRIES_SCHEMA/);
+  assert.match(registration, /devices:\s*CONTENT_DECAY_DEVICES_SCHEMA/);
+  assert.match(indexSource, /const CONTENT_DECAY_OUTPUT_SCHEMA = \{[\s\S]*?countries:\s*z\.array/);
+  assert.match(indexSource, /const CONTENT_DECAY_OUTPUT_SCHEMA = \{[\s\S]*?devices:\s*z\.array/);
+  assert.match(readmeSource, /For `insights\.content_decay`, optional `countries` and `devices`/);
 });
 
 test('content decay advertises an optional finalized historical comparison end date', () => {
