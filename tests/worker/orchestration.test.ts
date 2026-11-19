@@ -535,6 +535,43 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('guides first-use property readiness without provider calls or silently selecting a site', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (args: unknown) => Promise<{ success: boolean }> };
+        handler: (args: Record<string, string>) => Promise<{
+          messages: Array<{ content: { text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-property-readiness-review'];
+    expect(prompt).toBeDefined();
+
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      expect((await prompt.argsSchema.safeParseAsync({})).success).toBe(true);
+      expect((await prompt.argsSchema.safeParseAsync({ site_url: 'sc-domain:example.com' })).success).toBe(true);
+      expect((await prompt.argsSchema.safeParseAsync({ site_url: 'javascript:alert(1)' })).success).toBe(false);
+      for (const args of [{}, { site_url: 'sc-domain:example.com' }]) {
+        const guidance = (await prompt.handler(args)).messages[0].content.text;
+        expect(guidance).toContain('server.capabilities');
+        expect(guidance).toContain('provider_auth_live_verified');
+        expect(guidance).toContain('sites.list');
+        expect(guidance).toContain('sites.get');
+        expect(guidance).toContain('permissionLevel');
+        expect(guidance).toContain('Do not silently select');
+        expect(guidance).toContain('Never call sites.add');
+        expect(guidance).toContain(JSON.stringify({ site_url: args.site_url ?? null }));
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a quota-bounded sitemap health review without Google requests or indexing claims', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
