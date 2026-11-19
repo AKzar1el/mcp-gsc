@@ -455,6 +455,18 @@ test('quick win thresholds require valid impressions and position ranges', () =>
   }
 });
 
+test('quick wins accepts bounded distinct multi-market selectors without mixing singular filters', () => {
+  const schema = createQuickWinsInputSchema();
+  const base = { site_url: 'sc-domain:example.com', start_date: '2026-01-01', end_date: '2026-01-31' };
+  assert.equal(schema.safeParse({ ...base, countries: ['deu', 'usa'], devices: ['mobile', 'desktop'] }).success, true);
+  assert.equal(schema.safeParse({ ...base, countries: ['DEU', 'deu'] }).success, false);
+  assert.equal(schema.safeParse({ ...base, countries: Array(11).fill('DEU') }).success, false);
+  assert.equal(schema.safeParse({ ...base, devices: ['mobile', 'mobile'] }).success, false);
+  assert.equal(schema.safeParse({ ...base, countries: ['DEU'], country: 'USA' }).success, false);
+  assert.equal(schema.safeParse({ ...base, devices: ['mobile'], device: 'tablet' }).success, false);
+  assert.equal(schema.safeParse({ ...base, countries: ['DE'] }).success, false);
+});
+
 function makeKey(byteLength = 32): string {
   const bytes = crypto.getRandomValues(new Uint8Array(byteLength));
   return Buffer.from(bytes).toString('base64');

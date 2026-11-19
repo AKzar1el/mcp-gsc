@@ -1076,9 +1076,10 @@ describe('Worker orchestration', () => {
       const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
       expect(guidance).toContain('"countries":["DEU","USA"]');
       expect(guidance).toContain('"devices":["DESKTOP","MOBILE"]');
+      expect(guidance).toContain('insights.quick_wins once');
       expect(guidance).toContain('analytics.query');
       expect(guidance).toContain('filterLists');
-      expect(guidance).toContain('Do not call insights.quick_wins');
+      expect(guidance).not.toContain('Do not call insights.quick_wins');
       expect(guidance).toContain('not separately measured');
       await expect(prompt.handler({ ...parsed.data!, country: 'DEU' }))
         .rejects.toThrow('Supply either country or countries');
@@ -4430,6 +4431,57 @@ describe('Worker orchestration', () => {
       expect(all.structuredContent.device).toBeNull();
       expect(all.structuredContent.quick_wins).toHaveLength(2);
       expect(requests).toHaveLength(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('preserves combined country/device quick-win scope at Google with one bounded request', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'quick-wins-multimarket-user', email: 'quick-wins-multimarket@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        requests.push(body);
+        return response({ rows: [{
+          keys: ['technical seo', 'https://example.com/de/guide'],
+          clicks: 5, impressions: 240, ctr: 5 / 240, position: 12,
+        }] });
+      };
+      const args = {
+        site_url: 'sc-domain:example.com', start_date: '2026-07-01', end_date: '2026-07-31',
+        min_impressions: 100, min_position: 8, max_position: 20, limit: 20, start_row: 0,
+        page_contains: '/de/', query_contains: 'seo', countries: ['deu', 'usa'], devices: ['mobile', 'desktop'],
+      };
+      const result = (await registered['insights.quick_wins'].handler(args)) as {
+        structuredContent: { countries: string[]; devices: string[]; scope_note: string; quick_wins: unknown[] };
+      };
+      expect(requests).toHaveLength(1);
+      expect(requests[0].dimensionFilterGroups).toEqual([{
+        groupType: 'and',
+        filters: [
+          { dimension: 'page', operator: 'contains', expression: '/de/' },
+          { dimension: 'query', operator: 'contains', expression: 'seo' },
+        ],
+        filterLists: [
+          { dimension: 'country', expressions: ['DEU', 'USA'] },
+          { dimension: 'device', expressions: ['MOBILE', 'DESKTOP'] },
+        ],
+      }]);
+      expect(result.structuredContent.countries).toEqual(['DEU', 'USA']);
+      expect(result.structuredContent.devices).toEqual(['mobile', 'desktop']);
+      expect(result.structuredContent.quick_wins).toHaveLength(1);
+      expect(result.structuredContent.scope_note).toMatch(/one combined segment/i);
+      await registered['insights.quick_wins'].handler({ ...args, country: 'FRA' });
+      expect(requests).toHaveLength(1);
     } finally {
       globalThis.fetch = originalFetch;
     }
