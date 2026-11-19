@@ -3136,6 +3136,79 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves combined country/device scope in exact page and query drilldowns', async () => {
+    await saveUser(workerEnv, 'combined-drilldown-user', 'combined-drilldown@example.test', 'combined-drilldown-refresh');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'combined-drilldown-user', email: 'combined-drilldown@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const tools = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    const input = {
+      site_url: 'sc-domain:example.com',
+      start_date: '2026-08-01',
+      end_date: '2026-08-31',
+      countries: ['deu', 'aut'],
+      devices: ['mobile', 'desktop'],
+    };
+    try {
+      globalThis.fetch = async (request: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(request);
+        if (url === GOOGLE_TOKEN_URL) return response({ access_token: 'combined-drilldown-token', expires_in: 3600 });
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          const isQuery = (body.dimensions as string[])[0] === 'query';
+          return response({ rows: [{
+            keys: [isQuery ? 'seo tools' : 'https://example.com/tools/'],
+            clicks: 5, impressions: 90, ctr: 5 / 90, position: 8,
+          }] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const pageResult = await tools['insights.page_queries'].handler({
+        ...input, page_url: 'https://example.com/tools/', query_contains: 'seo',
+      }) as { structuredContent: Record<string, unknown> };
+      const queryResult = await tools['insights.query_pages'].handler({
+        ...input, query: 'seo tools', page_contains: '/tools/',
+      }) as { structuredContent: Record<string, unknown> };
+      expect(requests).toHaveLength(2);
+      for (const [index, dimension, fixedDimension] of [
+        [0, 'query', 'page'], [1, 'page', 'query'],
+      ] as const) {
+        expect(requests[index]).toMatchObject({
+          dimensions: [dimension],
+          dimensionFilterGroups: [{
+            groupType: 'and',
+            filterLists: [
+              { dimension: 'country', expressions: ['DEU', 'AUT'] },
+              { dimension: 'device', expressions: ['MOBILE', 'DESKTOP'] },
+            ],
+          }],
+        });
+        const filters = (requests[index].dimensionFilterGroups as Array<{ filters: Array<{ dimension: string }> }>)[0].filters;
+        expect(filters.map((filter) => filter.dimension)).toContain(fixedDimension);
+        expect(filters.map((filter) => filter.dimension)).not.toContain('country');
+        expect(filters.map((filter) => filter.dimension)).not.toContain('device');
+      }
+      for (const result of [pageResult, queryResult]) {
+        expect(result.structuredContent).toMatchObject({ countries: ['DEU', 'AUT'], devices: ['mobile', 'desktop'] });
+        expect(String(result.structuredContent.scope_note)).toContain('combined');
+      }
+      const conflicting = await tools['insights.query_pages'].handler({
+        ...input, query: 'seo tools', country: 'deu',
+      }) as { isError?: boolean };
+      expect(conflicting.isError).toBe(true);
+      expect(requests).toHaveLength(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('scopes exact-page query drilldowns by topic at Google before source pagination', async () => {
     await saveUser(workerEnv, 'page-topic-user', 'page-topic@example.test', 'page-topic-refresh');
     const server = await createGscMcpServer(
