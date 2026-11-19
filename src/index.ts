@@ -618,6 +618,8 @@ const PAGE_QUERIES_OUTPUT_SCHEMA = {
   query_contains: z.string().nullable().describe('Optional query topic substring filtered at Google before Search Analytics pagination, or null for no topic filter.'),
   country: z.string().nullable().describe('ISO alpha-3 searcher country filtered at Google, or null when unfiltered; not a page language.'),
   device: z.enum(['desktop', 'mobile', 'tablet']).nullable().describe('Searcher device filtered at Google, or null for all devices.'),
+  countries: z.array(z.string()).nullable().describe('Combined ISO alpha-3 searcher countries ORed at Google; not separate per-country results.'),
+  devices: z.array(z.enum(['desktop', 'mobile', 'tablet'])).nullable().describe('Combined devices ORed at Google; not per-device attribution.'),
   scope_note: z.string(),
   queries: z.array(
     z.object({
@@ -641,6 +643,8 @@ const QUERY_PAGES_OUTPUT_SCHEMA = {
   page_contains: z.string().nullable().describe('Optional URL substring filtered at Google before Search Analytics pagination, or null for no page filter.'),
   country: z.string().nullable().describe('ISO alpha-3 searcher country filtered at Google, or null when unfiltered; not a page language.'),
   device: z.enum(['desktop', 'mobile', 'tablet']).nullable().describe('Searcher device filtered at Google, or null for all devices.'),
+  countries: z.array(z.string()).nullable().describe('Combined ISO alpha-3 searcher countries ORed at Google; not separate per-country results.'),
+  devices: z.array(z.enum(['desktop', 'mobile', 'tablet'])).nullable().describe('Combined devices ORed at Google; not per-device attribution.'),
   scope_note: z.string(),
   pages: z.array(
     z.object({
@@ -1067,12 +1071,12 @@ const TOOL_CATALOG = [
   {
     name: 'insights.page_queries',
     description:
-      'For one exact page URL, list the Search Console queries that produced impressions for it, with optional Google-side query_contains, ISO alpha-3 searcher country and desktop/mobile/tablet device filtering before bounded pagination, clicks, impressions, CTR, average position, search type and opt-in data_state=all for fresh preliminary data (final by default).',
+      'For one exact page URL, list observed Search Console queries with optional query_contains, country/device or combined countries (1-10)/devices (1-3) Google-side filters before bounded pagination. Lists preserve combined searcher scope, not separate market attribution; normal quotas and opt-in data_state=all apply.',
   },
   {
     name: 'insights.query_pages',
     description:
-      'For one exact search query, list the site pages that received impressions for it, with optional Google-side page_contains URL-section, ISO alpha-3 searcher country and desktop/mobile/tablet device filtering before bounded pagination, clicks, impressions, CTR, average position, search type and opt-in data_state=all for fresh preliminary data (final by default).',
+      'For one exact search query, list observed Search Console pages with optional page_contains, country/device or combined countries (1-10)/devices (1-3) Google-side filters before bounded pagination. Lists preserve combined searcher scope, not separate market attribution; normal quotas and opt-in data_state=all apply.',
   },
   {
     name: 'urls.inspect',
@@ -1356,7 +1360,7 @@ class GscMcpRuntime {
                 '2. Call insights.quick_wins once with the exact dates, search_type, and identical optional page_contains, query_contains, country/device or countries/devices arrays. Pass arrays, not JSON string literals; never combine singular and plural forms for a dimension. List selectors use Google-side filterLists (OR within one dimension, AND across dimensions), not separate per-country or per-device measurements. Start with defaults (at least 100 impressions, average position 8-20). Only adjust thresholds for a stated reason; max_ctr is an optional fractional local filter (0.02 = 2%). Preserve original list scope in result interpretation and any continuation cursor; if unsupported, report the limitation instead of narrowing.',
                 '3. Prioritize at most three observed query/page pairs by supported impression, CTR and average-position evidence; report the exact scope, dates and search surface. Selected data is not property-wide when filters are applied. Average position is an aggregate, not a live rank, and low CTR alone does not prove a content or snippet problem.',
                 combinedScope
-                  ? '4. Combined-scope quick wins are observed, bounded, non-exhaustive rows, not separately measured country/device opportunities. If one candidate warrants another permitted read, use analytics.query with the exact same dates, surface and Google-side filterLists plus the observed query/page key, or skip. Do not call single-value insights.page_queries or insights.query_pages as if they retained lists; preserve the scope or explicitly request a separate narrower analysis. Missing rows are not zero traffic.'
+                  ? '4. Combined-scope quick wins are bounded, non-exhaustive rows, not separately measured country/device opportunities. If one candidate warrants another read and quota permits, use insights.page_queries or insights.query_pages with the exact same dates, surface and countries/devices arrays to inspect one observed page/query; their Google-side filterLists preserve the combined scope. Alternatively use analytics.query with the same exact filterLists. Never replace arrays with singular selectors or imply separate-market attribution. Missing rows are not zero traffic.'
                   : '4. If one candidate deserves verification and quota remains, use insights.page_queries or insights.query_pages to inspect its actual related rows with the same date, search surface and available Google-side filters; explicitly state any scope mismatch. Search Analytics may omit rows; absent keys are not zero traffic and the top-row sample is not exhaustive.',
                 '5. Offer a limited, human-reviewed title/snippet/content hypothesis only if supported by the observed page and query intent. Propose an equal-scope finalized before/after measurement plan, without inventing future click gains or asserting that a change caused a ranking movement.',
                 'Never request indexing, change sitemap settings, publish content, or use any other write tool. No Google API calls are made merely by retrieving this prompt; subsequent read tools consume their normal quotas. Stop when access, evidence or quota is insufficient.',
@@ -1578,7 +1582,7 @@ class GscMcpRuntime {
                 ? '3. For a combined multi-country/device segment, the digest uses Google-side filterLists (OR within each list; AND with the other searcher, URL and query filters). Report only actual observed clicks, impressions, CTR, comparison dates and returned movers. These numbers are not property-wide totals and do not provide separate country/device attribution. Country means searcher geography, not page language.'
                 : '3. Report only actual observed clicks, impressions, CTR, comparison dates and top returned query/page movers. All selected segment filters are ANDed at Google; the resulting numbers are not property-wide totals. Country is searcher geography, not page language.',
               multiScope
-                ? '4. Do not call analytics.compare or single-value insights.page_queries, insights.query_pages, insights.quick_wins or insights.content_decay as if they preserved country/device lists. For an explicitly justified additional read, analytics.query can preserve the exact same segment only with matching Google-side filterLists and normal read quotas; state the new dimensions, date coverage and any sampling limitations. Never narrow the market/device scope silently. Missing query/page rows are not measured zero.'
+                ? '4. Do not call analytics.compare or single-value insight tools as if they preserved country/device lists. For one justified additional read, insights.page_queries, insights.query_pages, insights.quick_wins and insights.content_decay now accept the same countries/devices arrays with Google-side filterLists; analytics.query also supports matching lists. Preserve the exact dates, surface and segment, respect each tool quota, and state any sampling limitations. Never silently narrow country/device scope. Missing rows are not measured zero.'
                 : '4. When a reported movement needs corroboration and quota remains, use analytics.compare for two equal-length nonoverlapping Pacific-date periods with the same search_type and equivalent dimension_filter_groups in both. If a filter cannot be carried over, identify the scope mismatch instead of asserting comparability. Search Analytics can omit rows; an absent query/page is not zero traffic.',
               multiScope
                 ? '5. Suggest no more than two next read-only checks supported by observed rows; each must either retain identical plural scopes using a compatible tool or explicitly request a separately authorized narrower scope. Position is aggregated, not a live rank, and correlation does not prove causality. Do not generalize top-row samples to all traffic.'
@@ -2606,7 +2610,9 @@ class GscMcpRuntime {
           page_url: z.string().url().describe('Exact fully-qualified page URL to filter on, e.g. https://example.com/guides/seo/. The URL must belong to site_url; Search Console exact page filters are case-sensitive.'),
           query_contains: z.string().trim().min(1).max(240).optional().describe('Optional case-insensitive query substring (e.g. seo) to filter at Google before pagination. Omit for all query topics.'),
           country: DIRECT_INSIGHT_COUNTRY_SCHEMA,
+          countries: CANNIBALIZATION_COUNTRIES_SCHEMA,
           device: DIRECT_INSIGHT_DEVICE_SCHEMA,
+          devices: CANNIBALIZATION_DEVICES_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
             searchConsoleDateDescription('Start date (inclusive) in YYYY-MM-DD format.'),
           ),
@@ -2634,7 +2640,9 @@ class GscMcpRuntime {
         outputSchema: PAGE_QUERIES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, page_url, query_contains, country, device, start_date, end_date, search_type, data_state, row_limit = 100, start_row = 0 }) => {
+      async ({ site_url, page_url, query_contains, country, countries, device, devices, start_date, end_date, search_type, data_state, row_limit = 100, start_row = 0 }) => {
+        if (country && countries) return toolError('Use country or countries, not both.');
+        if (device && devices) return toolError('Use device or devices, not both.');
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -2663,6 +2671,10 @@ class GscMcpRuntime {
                 ...(country ? [{ dimension: 'country' as const, operator: 'equals' as const, expression: country.toUpperCase() }] : []),
                 ...(device ? [{ dimension: 'device' as const, operator: 'equals' as const, expression: device.toUpperCase() }] : []),
               ],
+              ...(countries || devices ? { filterLists: [
+                ...(countries ? [{ dimension: 'country' as const, expressions: countries.map((value) => value.toUpperCase()) }] : []),
+                ...(devices ? [{ dimension: 'device' as const, expressions: devices.map((value) => value.toUpperCase()) }] : []),
+              ] } : {}),
             },
           ],
         }, {
@@ -2696,7 +2708,11 @@ class GscMcpRuntime {
           query_contains: query_contains ?? null,
           country: country?.toUpperCase() ?? null,
           device: device ?? null,
-          scope_note: country || device
+          countries: countries?.map((value) => value.toUpperCase()) ?? null,
+          devices: devices ?? null,
+          scope_note: countries || devices
+            ? 'Queries reflect one combined Google-side searcher segment (OR within country/device lists, AND across dimensions and exact page/topic filters), not separately measured country/device traffic. Searcher country is not page language; pagination and omitted rows mean this is not exhaustive and missing rows are not zero impressions.'
+            : country || device
             ? `Queries are filtered to the requested ${country ? 'searcher country' : ''}${country && device ? ' and ' : ''}${device ? 'device' : ''} and optional query topic at Google before pagination; these are not all queries for this page${device ? ' or all-device results' : ''}, and missing rows do not mean zero impressions.${country ? ' Searcher country is not page language.' : ''}`
             : query_contains
               ? 'Queries are filtered to the requested case-insensitive topic substring at Google before pagination; these are not all queries for this page, and missing rows do not mean zero impressions.'
@@ -2719,7 +2735,9 @@ class GscMcpRuntime {
           query: z.string().min(1).describe('Exact Search Console query text to filter on. Exact query filters are case-sensitive.'),
           page_contains: z.string().trim().min(1).max(240).optional().describe('Optional case-insensitive substring of page URLs to filter at Google before pagination, such as /de/. Omit for all pages.'),
           country: DIRECT_INSIGHT_COUNTRY_SCHEMA,
+          countries: CANNIBALIZATION_COUNTRIES_SCHEMA,
           device: DIRECT_INSIGHT_DEVICE_SCHEMA,
+          devices: CANNIBALIZATION_DEVICES_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(
             searchConsoleDateDescription('Start date (inclusive) in YYYY-MM-DD format.'),
           ),
@@ -2747,7 +2765,9 @@ class GscMcpRuntime {
         outputSchema: QUERY_PAGES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, query, page_contains, country, device, start_date, end_date, search_type, data_state, row_limit = 100, start_row = 0 }) => {
+      async ({ site_url, query, page_contains, country, countries, device, devices, start_date, end_date, search_type, data_state, row_limit = 100, start_row = 0 }) => {
+        if (country && countries) return toolError('Use country or countries, not both.');
+        if (device && devices) return toolError('Use device or devices, not both.');
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -2775,6 +2795,10 @@ class GscMcpRuntime {
                 ...(country ? [{ dimension: 'country' as const, operator: 'equals' as const, expression: country.toUpperCase() }] : []),
                 ...(device ? [{ dimension: 'device' as const, operator: 'equals' as const, expression: device.toUpperCase() }] : []),
               ],
+              ...(countries || devices ? { filterLists: [
+                ...(countries ? [{ dimension: 'country' as const, expressions: countries.map((value) => value.toUpperCase()) }] : []),
+                ...(devices ? [{ dimension: 'device' as const, expressions: devices.map((value) => value.toUpperCase()) }] : []),
+              ] } : {}),
             },
           ],
         }, {
@@ -2808,7 +2832,11 @@ class GscMcpRuntime {
           page_contains: page_contains ?? null,
           country: country?.toUpperCase() ?? null,
           device: device ?? null,
-          scope_note: country || device
+          countries: countries?.map((value) => value.toUpperCase()) ?? null,
+          devices: devices ?? null,
+          scope_note: countries || devices
+            ? 'Pages reflect one combined Google-side searcher segment (OR within country/device lists, AND across dimensions and exact query/page filters), not separately measured country/device traffic. Searcher country is not page language; these observed rows are not property-wide, and absent rows do not prove zero impressions. Missing position is null, not zero.'
+            : country || device
             ? `Pages are filtered to the requested ${country ? 'searcher country' : ''}${country && device ? ' and ' : ''}${device ? 'device' : ''} and optional URL substring at Google before pagination; observed rows are not property-wide${device ? ' or all-device totals' : ''}, and absent rows are not evidence of zero impressions.${country ? ' Searcher country is not page language.' : ''} Missing average position is null, not zero; observed clicks and impressions are retained.`
             : page_contains
               ? 'Pages are filtered to the requested URL substring at Google before pagination; observed rows are not property-wide, and absent rows are not evidence of zero impressions. Missing average position is null, not zero; observed clicks and impressions are retained.'
