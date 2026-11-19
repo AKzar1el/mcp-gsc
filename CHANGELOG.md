@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Let the read-only daily-onset review select a bounded 14-, 21- or 35-day finalized timeline with one Google-side date query, unchanged quotas and explicit missing-day caveats.
 - Preserve bounded multi-country (1-10) and multi-device (1-3) scopes in both direct page-to-query and query-to-pages drilldowns using one Google-side filtered read; reject ambiguous mixed selectors.
 - Support bounded multi-country and multi-device filters in the direct read-only query/page overlap tool, preserving one Google request and truthful combined-segment impression-share caveats.
 - Extend read-only content-decay comparisons to bounded multi-country and multi-device searcher segments, preserving identical Google-side filters, two-request budgets and observed-page-only evidence.
