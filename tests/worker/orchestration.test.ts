@@ -4946,6 +4946,61 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves combined country/device scope in one cannibalization request without inventing market attribution', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'cannibal-combined-user', email: 'cannibal-combined@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return response({ rows: [
+          { keys: ['seo', 'https://example.com/de/seo'], impressions: 300, clicks: 15, ctr: 0.05, position: 9 },
+          { keys: ['seo', 'https://example.com/en/seo'], impressions: 150, clicks: 6, ctr: 0.04, position: 12 },
+        ] });
+      };
+      const args = {
+        site_url: 'sc-domain:example.com', start_date: '2026-07-01', end_date: '2026-07-31',
+        min_impressions: 1, min_page_percentage: 1, limit: 20, start_row: 0,
+      };
+      const combined = (await registered['insights.cannibalization'].handler({
+        ...args, query_contains: 'seo', countries: ['deu', 'USA'], devices: ['mobile', 'desktop'],
+      })) as { structuredContent: {
+        country: string | null; device: string | null; countries: string[]; devices: string[];
+        scope_note: string; candidates: Array<{ page_count: number }>;
+      } };
+      expect(requests).toHaveLength(1);
+      expect(requests[0].dimensionFilterGroups).toEqual([{
+        groupType: 'and',
+        filters: [{ dimension: 'query', operator: 'contains', expression: 'seo' }],
+        filterLists: [
+          { dimension: 'country', expressions: ['DEU', 'USA'] },
+          { dimension: 'device', expressions: ['MOBILE', 'DESKTOP'] },
+        ],
+      }]);
+      expect(combined.structuredContent.country).toBeNull();
+      expect(combined.structuredContent.device).toBeNull();
+      expect(combined.structuredContent.countries).toEqual(['DEU', 'USA']);
+      expect(combined.structuredContent.devices).toEqual(['mobile', 'desktop']);
+      expect(combined.structuredContent.scope_note).toMatch(/one combined segment/i);
+      expect(combined.structuredContent.scope_note).toMatch(/not independent.*attribution/i);
+      expect(combined.structuredContent.candidates[0].page_count).toBe(2);
+      const mixed = await registered['insights.cannibalization'].handler({
+        ...args, country: 'DEU', countries: ['USA'],
+      }) as { isError?: boolean };
+      expect(mixed.isError).toBe(true);
+      expect(requests).toHaveLength(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('preserves device scope when investigating query/page overlap', async () => {
     const server = await createGscMcpServer(
       workerEnv,

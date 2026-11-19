@@ -61,7 +61,9 @@ import {
   CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
   CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
   CANNIBALIZATION_COUNTRY_SCHEMA,
+  CANNIBALIZATION_COUNTRIES_SCHEMA,
   CANNIBALIZATION_DEVICE_SCHEMA,
+  CANNIBALIZATION_DEVICES_SCHEMA,
   CANNIBALIZATION_SEARCH_TYPE_SCHEMA,
   CANNIBALIZATION_DATA_STATE_SCHEMA,
   CANNIBALIZATION_PAGE_CONTAINS_SCHEMA,
@@ -662,6 +664,8 @@ const CANNIBALIZATION_OUTPUT_SCHEMA = {
   query_contains: z.string().nullable().describe('Query substring passed to Google for the Search Analytics query filter, or null for no query filter.'),
   country: z.string().nullable().describe('ISO alpha-3 searcher country filtered at Google, or null when unfiltered. Not a page language.'),
   device: z.enum(['desktop', 'mobile', 'tablet']).nullable().describe('Searcher device filtered at Google, or null for all devices.'),
+  countries: z.array(z.string()).nullable().describe('Distinct searcher countries ORed at Google, or null when no country list was requested. This is not separate per-country attribution.'),
+  devices: z.array(z.enum(['desktop', 'mobile', 'tablet'])).nullable().describe('Distinct searcher devices ORed at Google, or null when no device list was requested.'),
   scope_note: z.string(),
   candidates: z.array(
     z.object({
@@ -3043,7 +3047,7 @@ class GscMcpRuntime {
       'insights.cannibalization',
       {
         title: 'Detect Keyword Cannibalization',
-        description: 'Analyze query/page Search Analytics to find queries split across multiple pages on Web (default), Image, Video or Search News-tab results via optional search_type. Optional data_state all includes fresh preliminary rows whose observed impression shares may change; omission retains finalized-only results. Discover and the separate Google News service are excluded because query data is unavailable. Optional page_contains, query_contains, country and device filter matching URL sections, query topics, ISO alpha-3 searcher geography and desktop/mobile/tablet searches at Google before pagination and aggregation, combined in one AND group. Query filtering retains returned competing pages for matching queries; page/country/device filtering restricts observed page shares to those scopes, not property-wide or all-search totals or page language. Candidates are ranked by observed impressions and bounded with limit/start_row. Missing optional average position is reported as null without discarding observed clicks or impressions. Google may omit rows; sums can exceed true query-level aggregates. Multiple URLs can reflect legitimate locale or intent differences, not harmful cannibalization.',
+        description: 'Analyze query/page Search Analytics to find queries split across multiple pages on Web (default), Image, Video or Search News-tab results via optional search_type. Optional data_state all includes fresh preliminary rows whose observed impression shares may change; omission retains finalized-only results. Discover and the separate Google News service are excluded because query data is unavailable. Optional page_contains, query_contains, one country or countries (1-10 ISO alpha-3 searcher locations), and one device or devices (1-3 desktop/mobile/tablet) filter at Google before pagination and aggregation. Lists OR within a dimension and AND across dimensions and cannot be mixed with their singular selector. Query filtering retains returned competing pages for matching queries; page/country/device filtering restricts observed page shares to those scopes, not property-wide or all-search totals or page language. Combined lists are one segment, not individual market attribution. Candidates are ranked by observed impressions and bounded with limit/start_row. Missing optional average position is reported as null without discarding observed clicks or impressions. Google may omit rows; sums can exceed true query-level aggregates. Multiple URLs can reflect legitimate locale or intent differences, not harmful cannibalization.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           search_type: CANNIBALIZATION_SEARCH_TYPE_SCHEMA,
@@ -3061,14 +3065,18 @@ class GscMcpRuntime {
           query_contains: CANNIBALIZATION_QUERY_CONTAINS_SCHEMA,
           page_contains: CANNIBALIZATION_PAGE_CONTAINS_SCHEMA,
           country: CANNIBALIZATION_COUNTRY_SCHEMA,
+          countries: CANNIBALIZATION_COUNTRIES_SCHEMA,
           device: CANNIBALIZATION_DEVICE_SCHEMA,
+          devices: CANNIBALIZATION_DEVICES_SCHEMA,
           limit: ANALYSIS_RESULT_LIMIT_SCHEMA,
           start_row: RESULT_START_ROW_SCHEMA,
         },
         outputSchema: CANNIBALIZATION_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, search_type = 'web', data_state, start_date, end_date, min_impressions, min_page_percentage, query_contains, page_contains, country, device, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+      async ({ site_url, search_type = 'web', data_state, start_date, end_date, min_impressions, min_page_percentage, query_contains, page_contains, country, countries, device, devices, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
+        if (country && countries) return toolError('Use country or countries, not both.');
+        if (device && devices) return toolError('Use device or devices, not both.');
         assertDateRange(start_date, end_date);
         assertDateNotInFuture(
           end_date,
@@ -3085,16 +3093,21 @@ class GscMcpRuntime {
           ...(country ? [{ dimension: 'country' as const, operator: 'equals' as const, expression: country.toUpperCase() }] : []),
           ...(device ? [{ dimension: 'device' as const, operator: 'equals' as const, expression: device.toUpperCase() }] : []),
         ];
+        const sourceFilterLists = [
+          ...(countries ? [{ dimension: 'country' as const, expressions: countries.map((value) => value.toUpperCase()) }] : []),
+          ...(devices ? [{ dimension: 'device' as const, expressions: devices.map((value) => value.toUpperCase()) }] : []),
+        ];
         const source = await querySearchAnalyticsPaginated(accessToken, site_url, {
           startDate: start_date,
           endDate: end_date,
           dimensions: ['query', 'page'],
           ...(search_type !== 'web' ? { type: search_type } : {}),
           ...(data_state ? { dataState: data_state } : {}),
-          ...(sourceFilters.length ? {
+          ...(sourceFilters.length || sourceFilterLists.length ? {
             dimensionFilterGroups: [{
               groupType: 'and' as const,
               filters: sourceFilters,
+              ...(sourceFilterLists.length ? { filterLists: sourceFilterLists } : {}),
             }],
           } : {}),
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
@@ -3135,9 +3148,12 @@ class GscMcpRuntime {
           query_contains: query_contains ?? null,
           country: country?.toUpperCase() ?? null,
           device: device ?? null,
-          scope_note: `Selected ${search_type === 'news' ? 'News-tab' : search_type === 'web' ? 'Web' : search_type === 'image' ? 'Image' : 'Video'} search surface only; not property-wide or all-search totals. ` + (page_contains || query_contains || country || device
+          countries: countries?.map((value) => value.toUpperCase()) ?? null,
+          devices: devices ?? null,
+          scope_note: `Selected ${search_type === 'news' ? 'News-tab' : search_type === 'web' ? 'Web' : search_type === 'image' ? 'Image' : 'Video'} search surface only; not property-wide or all-search totals. ` + (page_contains || query_contains || country || device || countries || devices
             ? 'Candidates and observed impression shares are restricted to Google-filtered query/page rows by URL section, query topic, searcher country and/or device, not property-wide or all-device totals; searcher country is not page language. A page filter restricts which competing URLs are included. Missing Search Analytics rows are not zero.'
             : 'Candidates and observed impression shares use returned query/page rows, not true query-level property totals; missing rows are not zero.')
+            + (countries || devices ? ' Selected country/device lists are ORed within each dimension and ANDed across dimensions at Google; this is one combined segment, not independent country/device attribution.' : '')
             + (data_state === 'all' ? ' Preliminary Search Console query/page metrics and impression shares may change as data finalizes.' : ''),
           candidates: bounded.items,
           pagination: paginationMetadata(source),
