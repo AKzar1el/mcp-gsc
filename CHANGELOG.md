@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Support bounded multi-country and multi-device Google-side scopes in the direct read-only `insights.quick_wins` tool and its guided prompt, without additional provider requests or narrowing the combined segment.
 - Let the read-only quick-win review prompt preserve combined country/device scopes using Google-side Search Analytics filterLists, while retaining the existing single-value helper path and explicit sampled-row limits.
 - Let the read-only weekly client-report MCP prompt guide bounded multi-country and multi-device digests without narrowing the combined Search Console segment or implying that single-value drilldowns retain those filters.
 
