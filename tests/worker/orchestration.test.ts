@@ -1107,7 +1107,7 @@ describe('Worker orchestration', () => {
     );
     const prompts = (server as unknown as {
       _registeredPrompts: Record<string, {
-        handler: (args: Record<string, string>) => Promise<{
+        handler: (args: Record<string, string | string[]>) => Promise<{
           messages: Array<{ content: { type: string; text: string } }>;
         }>;
       }>;
@@ -1135,6 +1135,29 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('not proof');
       expect(guidance).toContain('not property-wide');
       expect(guidance).toContain('Never request indexing');
+      const combined = await prompts['gsc-query-overlap-review'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-10-01',
+        end_date: '2026-10-28',
+        search_type: 'web',
+        countries: ['DEU', 'AUT'],
+        devices: ['mobile', 'desktop'],
+      });
+      const combinedGuidance = combined.messages[0].content.text;
+      expect(combinedGuidance).toContain('"countries":["DEU","AUT"]');
+      expect(combinedGuidance).toContain('"devices":["MOBILE","DESKTOP"]');
+      expect(combinedGuidance).toContain('insights.cannibalization');
+      expect(combinedGuidance).toContain('insights.query_pages');
+      expect(combinedGuidance).toContain('combined');
+      expect(combinedGuidance).toContain('same');
+      await expect(prompts['gsc-query-overlap-review'].handler({
+        site_url: 'sc-domain:example.com', start_date: '2026-10-01', end_date: '2026-10-28',
+        country: 'DEU', countries: ['AUT'],
+      })).rejects.toThrow(/country or countries/);
+      await expect(prompts['gsc-query-overlap-review'].handler({
+        site_url: 'sc-domain:example.com', start_date: '2026-10-01', end_date: '2026-10-28',
+        device: 'mobile', devices: ['desktop'],
+      })).rejects.toThrow(/device or devices/);
       expect(fetchSpy).not.toHaveBeenCalled();
       await expect(prompts['gsc-query-overlap-review'].handler({
         site_url: 'sc-domain:example.com', start_date: '2026-10-28', end_date: '2026-10-01',

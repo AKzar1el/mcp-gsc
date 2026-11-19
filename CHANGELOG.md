@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Let the read-only weekly client-report MCP prompt guide bounded multi-country and multi-device digests without narrowing the combined Search Console segment or implying that single-value drilldowns retain those filters.
 
 ### Changed
+- Guide bounded multi-country and multi-device overlap reviews through the existing read-only `insights.cannibalization` and `insights.query_pages` tools without narrowing combined searcher scope.
 - Run multi-URL Search Console inspections sequentially instead of three at a time, preserving per-URL safety-budget accounting and stopping immediately on access revocation.
 
 ### Fixed
