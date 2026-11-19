@@ -897,7 +897,9 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
       expect(guidance).toContain('reports.weekly_digest');
       expect(guidance).toContain('Google-side filterLists');
-      expect(guidance).toContain('Do not call analytics.compare');
+      expect(guidance).toContain('analytics.compare with identical dimension_filter_groups');
+      expect(guidance).toContain('query/page keys observed in both periods');
+      expect(guidance).toContain('two Search Analytics requests');
       expect(guidance).toContain('not property-wide');
       expect(guidance).toContain('Never email');
       await expect(weekly.handler({
@@ -5931,7 +5933,7 @@ describe('Worker orchestration', () => {
     }
   });
 
-  it('applies the same Search Analytics segment to both comparison periods', async () => {
+  it('applies the same Search Analytics segment and list filters to both comparison periods', async () => {
     await saveUser(
       workerEnv,
       'compare-user',
@@ -5963,6 +5965,10 @@ describe('Worker orchestration', () => {
             operator: 'includingRegex',
             expression: 'example|brand',
           },
+        ],
+        filterLists: [
+          { dimension: 'country', expressions: ['DEU', 'AUT'] },
+          { dimension: 'device', expressions: ['MOBILE', 'DESKTOP'] },
         ],
       },
     ];
