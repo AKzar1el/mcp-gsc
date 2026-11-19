@@ -660,6 +660,34 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('rejects future reporting dates in guided client, brand, and visual prompts without Google calls', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (args: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    })._registeredPrompts;
+    const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      for (const name of ['gsc-brand-traffic-review', 'gsc-visual-search-review', 'gsc-weekly-client-report']) {
+        const prompt = prompts[name];
+        expect(prompt, name).toBeDefined();
+        const parsed = await prompt.argsSchema.safeParseAsync({
+          site_url: 'sc-domain:example.com', end_date: futureDate,
+        });
+        expect(parsed.success, name).toBe(true);
+        await expect(prompt.handler(parsed.data!)).rejects.toThrow('end_date must be today or earlier');
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('accepts protocol string arguments for list-valued MCP prompts', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
