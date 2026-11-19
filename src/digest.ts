@@ -789,8 +789,11 @@ function renderMarkdown(data: {
     }
     for (const p of topPages) {
       const path = relativePagePath(p.page);
-      // Keep concise paths unless dropping the host would merge distinct URLs.
-      const displayPage = (pagePathCounts.get(path) ?? 0) > 1 ? p.page : path;
+      // Domain properties span hosts and protocols, even when this top-five
+      // sample happens to contain only one page at a given path.
+      const displayPage = siteUrl.startsWith('sc-domain:') || (pagePathCounts.get(path) ?? 0) > 1
+        ? p.page
+        : path;
       lines.push(
         `- ${topPageMarkdown(p.page, displayPage)} — ${formatNumber(p.clicks)} clicks, ${formatNumber(p.impressions)} times shown.`,
       );

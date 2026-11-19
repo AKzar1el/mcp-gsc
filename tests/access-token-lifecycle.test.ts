@@ -1206,7 +1206,8 @@ test('weekly digest distinguishes the same path across different hosts', async (
     );
     assert.ok(digest.includes('**https://www\\.example\\.com/pricing**'));
     assert.ok(digest.includes('**https://fr\\.example\\.com/pricing**'));
-    assert.match(digest, /\*\*\/blog\*\*/);
+    assert.ok(digest.includes('**https://www\\.example\\.com/blog**'));
+    assert.doesNotMatch(digest, /\*\*\/blog\*\*/);
     assert.doesNotMatch(digest, /\*\*\/pricing\*\*/);
   } finally {
     restoreFetch();
