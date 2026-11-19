@@ -411,8 +411,8 @@ describe('Worker orchestration', () => {
     );
     const prompts = (server as unknown as {
       _registeredPrompts: Record<string, {
-        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean }> };
-        handler: (args: Record<string, string>) => Promise<{
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{
           messages: Array<{ content: { text: string } }>;
         }>;
       }>;
@@ -441,6 +441,25 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('"page_contains":"/de/"');
       expect(guidance).toContain('"device":"MOBILE"');
       expect(guidance).toContain('Searcher country is not page language');
+      const selected = await prompt.argsSchema.safeParseAsync({
+        site_url: 'sc-domain:example.com',
+        end_date: '2026-11-10',
+        search_type: 'image',
+        page_contains: '/de/',
+        devices: 'mobile,tablet',
+      });
+      expect(selected.success).toBe(true);
+      const combined = (await prompt.handler(selected.data!)).messages[0].content.text;
+      expect(combined).toContain('"devices":["MOBILE","TABLET"]');
+      expect(combined).toContain('filterLists');
+      expect(combined).toContain('dimension=country');
+      expect(combined).toContain('same device list');
+      await expect(prompt.handler({ ...args, devices: ['mobile', 'tablet'] })).rejects.toThrow();
+      const repeated = await prompt.argsSchema.safeParseAsync({
+        site_url: args.site_url, devices: 'mobile,mobile',
+      });
+      expect(repeated.success).toBe(true);
+      await expect(prompt.handler(repeated.data!)).rejects.toThrow('duplicates');
       const multimodal = (await prompt.handler({ ...args, search_type: 'webMultimodal' })).messages[0].content.text;
       expect(multimodal).toContain('"search_type":"webMultimodal"');
       expect(multimodal).toContain('Text-query dimensions and filters are unavailable');
