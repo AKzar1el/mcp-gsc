@@ -660,6 +660,48 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves multi-market scopes in Search Appearance discovery and observed-type drilldown', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (args: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-search-appearance-review'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const parsed = await prompt.argsSchema.safeParseAsync({
+        site_url: 'sc-domain:example.com',
+        search_type: 'web',
+        countries: 'deu,usa',
+        devices: '["desktop","mobile"]',
+      });
+      expect(parsed.success).toBe(true);
+      const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"countries":["DEU","USA"]');
+      expect(guidance).toContain('"devices":["DESKTOP","MOBILE"]');
+      expect(guidance).toContain('filterLists');
+      expect(guidance).toContain('same');
+      expect(guidance).toContain('observed');
+      expect(guidance).toContain('not separate');
+      await expect(prompt.handler({
+        ...parsed.data!, country: 'deu',
+      })).rejects.toThrow('Supply either country or countries');
+      await expect(prompt.handler({
+        ...parsed.data!, device: 'mobile',
+      })).rejects.toThrow('Supply either device or devices');
+      await expect(prompt.handler({
+        ...parsed.data!, countries: ['DEU', 'DEU'],
+      })).rejects.toThrow('Country list cannot contain duplicates');
+      expect((await prompt.argsSchema.safeParseAsync({ site_url: 'sc-domain:example.com', countries: 'DEU,USA,FRA,GBR,ESP,ITA,NLD,CAN,AUS,JPN,SWE' })).success).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('rejects future reporting dates in guided client, brand, and visual prompts without Google calls', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
