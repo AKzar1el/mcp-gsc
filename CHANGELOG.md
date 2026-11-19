@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Support bounded multi-country and multi-device filters in the direct read-only query/page overlap tool, preserving one Google request and truthful combined-segment impression-share caveats.
 - Extend read-only content-decay comparisons to bounded multi-country and multi-device searcher segments, preserving identical Google-side filters, two-request budgets and observed-page-only evidence.
 - Support bounded multi-country and multi-device Google-side scopes in the direct read-only `insights.quick_wins` tool and its guided prompt, without additional provider requests or narrowing the combined segment.
 - Let the read-only quick-win review prompt preserve combined country/device scopes using Google-side Search Analytics filterLists, while retaining the existing single-value helper path and explicit sampled-row limits.
