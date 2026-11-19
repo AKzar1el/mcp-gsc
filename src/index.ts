@@ -1587,10 +1587,10 @@ class GscMcpRuntime {
         if (country && countries) throw new Error('Supply either country or countries, not both.');
         if (device && devices) throw new Error('Supply either device or devices, not both.');
         const multiScope = Boolean(countries || devices);
+        const today = getSearchConsoleCalendarDate();
+        if (end_date) assertDateNotInFuture(end_date, today, 'end_date');
         let finalizedWindows: Record<string, string> | null = null;
         if (multiScope) {
-          const today = getSearchConsoleCalendarDate();
-          if (end_date) assertDateNotInFuture(end_date, today, 'end_date');
           const selectedEnd = resolveWeeklyDigestEndDate(end_date, today);
           if (selectedEnd > resolveWeeklyDigestEndDate(undefined, today)) {
             throw new Error('Multi-segment traffic-drop triage requires finalized Search Console dates (at least three Pacific days before today).');
