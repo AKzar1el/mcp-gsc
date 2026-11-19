@@ -49,6 +49,14 @@ For a `/de/` **mobile-only** digest, combine the page and device filters in one 
 
 Omit any filter that the original digest did not use. If none is selected, omit `dimension_filter_groups`. Use `dimensions: []` for the matched-scope totals and `dimension: "query"` for the matched-scope query comparison. Keep the exact dates, search type, and data state aligned with the digest. If a follow-up tool cannot apply equivalent filters, **do not** directly compare its all-device or property-wide values with scoped digest metrics. A filter on full page URLs is not a substitute for verifying the client's actual locale URL patterns, and a country code is not a page-language identifier.
 
+For a combined searcher segment, a digest with `countries: ["DEU", "AUT"]`, `devices: ["mobile", "desktop"]` and `page_contains: "/de/"` can be followed by an **independently justified** `analytics.compare` across two equal-length, nonoverlapping finalized Pacific-date windows using the same `site_url` and `search_type`. Unlike the digest, `analytics.compare` takes the lists inside `dimension_filter_groups`, not as top-level `countries` or `devices` arguments. Pass the following one AND group **identically to both comparison periods**:
+
+```json
+[{"groupType":"and","filters":[{"dimension":"page","operator":"contains","expression":"/de/"}],"filterLists":[{"dimension":"country","expressions":["DEU","AUT"]},{"dimension":"device","expressions":["MOBILE","DESKTOP"]}]}]
+```
+
+Within each list, Google ORs values; across lists and the page filter it ANDs dimensions. Retain any original `query_contains` as an additional query-contains filter and do not combine a singular country/device equals filter with a list for that dimension. Compare only query or page keys observed in **both** bounded period samples; missing rows are not measured zero, and a combined segment cannot be attributed to individual countries or devices. The extra comparison uses its normal two Search Analytics requests plus any charged retries. A preliminary digest does not justify finalized trend claims without independently matched finalized periods.
+
 > For the most important page behind a reported mover, use `insights.page_queries` with its exact URL, and include only the supporting observed query/page rows. Where the question is query-first, `insights.query_pages` may be more suitable. If there are no comparable returned rows, withhold any claim of a measured gain or loss for that row.
 
 The comparison tool covers only keys present in both bounded period responses. **A missing row is not zero**. Google's Search Analytics API may return top rows rather than a complete dataset. Average position is an aggregate metric, not a current SERP rank or an exact page placement. A change in clicks or impressions does not establish that an SEO edit, algorithm change, or competitor caused it.
