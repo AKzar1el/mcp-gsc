@@ -344,6 +344,11 @@ describe('Worker orchestration', () => {
     expect(segmentedGuidance).toContain('segment-only');
     expect(segmentedGuidance).toContain('not zero traffic');
     await expect(prompts['gsc-traffic-drop-triage'].handler({
+      site_url: 'sc-domain:example.com',
+      end_date: '2999-01-01',
+      country: 'deu',
+    })).rejects.toThrow('end_date');
+    await expect(prompts['gsc-traffic-drop-triage'].handler({
       site_url: 'https://example.com/?unexpected=1',
     })).rejects.toThrow();
   });
