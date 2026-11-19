@@ -321,6 +321,13 @@ const CAPABILITIES_OUTPUT_SCHEMA = {
       description: z.string(),
     }),
   ),
+  prompts: z.array(
+    z.object({
+      name: z.string(),
+      description: z.string(),
+    }),
+  ),
+  prompts_note: z.string(),
   provider_limits: z.object({
     generative_ai_performance_report: z.object({
       dedicated_api_supported: z.literal(false),
@@ -1134,8 +1141,28 @@ const TOOL_CATALOG = [
   {
     name: 'server.capabilities',
     description:
-      "List every tool this server exposes and report local Google credential state. A connected status means a stored refresh credential is present; it is not a live Google authorization check.",
+      "List every tool this server exposes, existing read-only prompt names, and local Google credential state. A connected status means a stored refresh credential is present; it is not a live Google authorization check.",
   },
+] as const;
+
+// Surface prompt names to tool-only clients without implying they can execute
+// prompts unless their MCP client supports prompts/list and prompts/get.
+const PROMPT_CATALOG = [
+  { name: 'gsc-property-readiness-review', description: 'Check local connection evidence, accessible properties and permissions before selecting an exact property.' },
+  { name: 'gsc-quick-win-review', description: 'Find observed query/page opportunity candidates within a specified Search Console scope.' },
+  { name: 'gsc-query-overlap-review', description: 'Inspect overlapping query/page visibility without assuming harmful cannibalization.' },
+  { name: 'gsc-brand-traffic-review', description: 'Compare provider-returned branded and non-branded traffic where classification is eligible.' },
+  { name: 'gsc-visual-search-review', description: 'Review Google Lens and Circle to Search visibility on the separate webMultimodal surface.' },
+  { name: 'gsc-search-appearance-review', description: 'Compare observed Search appearance types and optionally investigate one returned type.' },
+  { name: 'gsc-weekly-client-report', description: 'Prepare an evidence-first, property-scoped weekly Search Console client briefing.' },
+  { name: 'gsc-traffic-drop-triage', description: 'Investigate observed search traffic declines while preserving date, surface and segment scope.' },
+  { name: 'gsc-daily-onset-review', description: 'Inspect daily Search Analytics evidence to locate possible visibility decline onset.' },
+  { name: 'gsc-country-movement-review', description: 'Compare observed searcher-country visibility across matched finalized periods.' },
+  { name: 'gsc-query-cohort-review', description: 'Compare observed top-query cohorts without interpreting missing rows as zero.' },
+  { name: 'gsc-page-cohort-review', description: 'Compare observed landing-page cohorts across two finalized periods.' },
+  { name: 'gsc-index-status-triage', description: 'Review one URL using Google-indexed state, canonicals and optional sitemap evidence.' },
+  { name: 'gsc-index-batch-review', description: 'Review a small quota-bounded group of URLs through sequential URL Inspection.' },
+  { name: 'gsc-sitemap-health-review', description: 'Inspect submitted sitemap processing and warnings without assuming indexing status.' },
 ] as const;
 
 class GscMcpRuntime {
@@ -1917,7 +1944,7 @@ class GscMcpRuntime {
       {
         title: 'Get server capabilities and auth status',
         description:
-          "List every tool this server exposes, its configured access mode, and local Google credential state. Call this first if you're unsure what tools are available, whether the deployment is read-only, or whether stored Google credentials are configured. auth_status='connected' means a stored refresh credential is present; this tool does not make a Google token/API request and therefore does not live-verify that Google still accepts it. Takes no arguments.",
+          "List every tool this server exposes, its guided read-only prompt catalog, configured access mode, and local Google credential state. Call this first if you're unsure what tools are available, whether the deployment is read-only, or whether stored Google credentials are configured. auth_status='connected' means a stored refresh credential is present; this tool does not make a Google token/API request and therefore does not live-verify that Google still accepts it. Takes no arguments.",
         inputSchema: {},
         outputSchema: CAPABILITIES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
@@ -1961,6 +1988,8 @@ class GscMcpRuntime {
           provider_auth_live_verified: false as const,
           auth_note: authNote,
           tools: getToolCatalogForAccessMode(TOOL_CATALOG, accessMode),
+          prompts: PROMPT_CATALOG,
+          prompts_note: 'These guided read-only prompts require an MCP client that supports prompts/list and prompts/get; listing them here does not enable unsupported client prompt execution. Retrieving prompt guidance makes no Google request, but following suggested read tools consumes normal quota.',
           provider_limits: {
             generative_ai_performance_report: {
               dedicated_api_supported: false as const,

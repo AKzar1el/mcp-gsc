@@ -132,6 +132,8 @@ For regional or cross-device Search Analytics without stitching together separat
 
 ### Guided read-only investigation
 
+Call `server.capabilities` to see the names and purposes of all existing guided read-only MCP prompts alongside the tool catalog, even when your client does not display a prompt picker. This is discovery metadata only: using a prompt still requires client support for `prompts/list` and `prompts/get`; listing it does not make an unsupported client able to run it. The catalog itself makes no Google API request, and following a prompt's suggested reads consumes the normal quotas.
+
 New to a Search Console connection? **`gsc-property-readiness-review`** is a read-only MCP prompt that checks credential-state evidence and helps identify accessible exact property identifiers and permission levels using `server.capabilities`, `sites.list`, and an optional exact-property `sites.get`. It never silently chooses another property, changes access, or treats a stored refresh token as verified live Google access. Retrieving the prompt makes no Google request; any subsequently followed Google reads consume normal quota. Its availability depends on the MCP client's prompt support.
 
 Investigating a sudden impressions or clicks collapse? Follow the [read-only visibility incident playbook](docs/visibility-incident-investigation.md) to choose the smallest useful sequence of existing daily-onset, traffic-drop, query/page, country and URL Inspection workflows while preserving property scope, finalized dates and quota safeguards. This guide makes no Google API requests by itself and does not claim an SEO cause or recovery.
