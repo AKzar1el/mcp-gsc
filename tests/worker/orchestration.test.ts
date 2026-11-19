@@ -151,6 +151,7 @@ describe('Worker orchestration', () => {
       expect(webFollowUp).toContain('gsc-traffic-drop-triage');
       expect(webFollowUp).toContain('Its multi-value path preserves lists through identical Google-side filterLists');
       expect(webFollowUp).toContain('country/device or countries/devices filters without scope narrowing');
+      expect(webFollowUp).toContain('insights.page_queries and insights.query_pages preserve the same countries/devices lists');
       expect(webFollowUp).not.toContain('Its current arguments cannot preserve multi-value scopes');
       expect(guidance).toContain('not measured zero');
       await expect(prompt.handler({ ...parsed.data, country: 'DEU' })).rejects.toThrow();
@@ -242,7 +243,8 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('filterLists');
       expect(guidance).toContain('OR within');
       expect(guidance).toContain('identically to BOTH');
-      expect(guidance).toContain('cannot preserve the multi-value scope');
+      expect(guidance).toContain('insights.query_pages with the same countries/devices arrays');
+      expect(guidance).not.toContain('cannot preserve the multi-value scope');
       await expect(prompt.handler({ ...parsed.data, country: 'DEU' })).rejects.toThrow();
       await expect(prompt.handler({ ...parsed.data, device: 'mobile' })).rejects.toThrow();
       expect(fetchSpy).not.toHaveBeenCalled();
@@ -388,8 +390,9 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('dimensions=["date"]');
       expect(guidance).toContain('filterLists');
       expect(guidance).toContain('OR within');
-      expect(guidance).toContain('cannot preserve multi-value scopes');
-      expect(guidance).toContain('reports.weekly_digest and insights.content_decay can preserve the same countries/devices arrays');
+      expect(guidance).toContain('insights.page_queries with the same countries/devices arrays');
+      expect(guidance).not.toContain('cannot preserve multi-value scopes');
+      expect(guidance).toContain('reports.weekly_digest and insights.content_decay preserve the same countries/devices arrays');
       expect(guidance).toContain('missing days are unknown');
       expect(guidance).toContain('Never call indexing.request');
       await expect(prompt.handler({ ...parsed.data, country: 'DEU' })).rejects.toThrow();
