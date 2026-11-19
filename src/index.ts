@@ -1398,8 +1398,9 @@ class GscMcpRuntime {
           devices: promptDevices.describe('Optional comma/newline-separated searcher devices (desktop,mobile,tablet).'),
         }),
       },
-      ({ site_url, end_date, search_type, countries, devices }) => ({
-        messages: [{
+      ({ site_url, end_date, search_type, countries, devices }) => {
+        if (end_date) assertDateNotInFuture(end_date, getSearchConsoleCalendarDate(), 'end_date');
+        return { messages: [{
           role: 'user' as const,
           content: {
             type: 'text' as const,
@@ -1414,8 +1415,8 @@ class GscMcpRuntime {
               'Never call indexing.request, indexing.remove, sitemap writes or other mutations. Do not email, publish or send results to others, and never claim traffic improvements, sales or causal SEO effects without evidence.',
             ].join('\n'),
           },
-        }],
-      }),
+        }] };
+      },
     );
 
     this.server.registerPrompt(
@@ -1431,8 +1432,9 @@ class GscMcpRuntime {
           devices: promptDevices.describe('Optional comma/newline-separated searcher devices (desktop,mobile,tablet).'),
         }),
       },
-      ({ site_url, end_date, page_contains, countries, devices }) => ({
-        messages: [{
+      ({ site_url, end_date, page_contains, countries, devices }) => {
+        if (end_date) assertDateNotInFuture(end_date, getSearchConsoleCalendarDate(), 'end_date');
+        return { messages: [{
           role: 'user' as const,
           content: {
             type: 'text' as const,
@@ -1448,8 +1450,8 @@ class GscMcpRuntime {
               'Never call indexing.request, indexing.remove, submit sitemaps, modify properties, email reports or publish content. Do not infer indexing failures, algorithmic causes, new revenue or guaranteed visibility improvements from these samples.',
             ].join('\n'),
           },
-        }],
-      }),
+        }] };
+      },
     );
 
     this.server.registerPrompt(
@@ -1508,6 +1510,7 @@ class GscMcpRuntime {
         }),
       },
       ({ site_url, end_date, search_type, page_contains, query_contains, device, country, countries, devices }) => {
+        if (end_date) assertDateNotInFuture(end_date, getSearchConsoleCalendarDate(), 'end_date');
         if (country && countries) throw new Error('Supply either country or countries, not both.');
         if (device && devices) throw new Error('Supply either device or devices, not both.');
         const selectedCountries = countries?.map((value) => value.toUpperCase());
