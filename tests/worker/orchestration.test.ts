@@ -953,6 +953,40 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('exposes the registered read-only prompt catalog through capabilities without provider calls', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      for (const mode of ['readonly', 'readwrite'] as const) {
+        const server = await createGscMcpServer(
+          { GSC_ACCESS_MODE: mode } as unknown as Env,
+        );
+        const internals = server as unknown as {
+          _registeredPrompts: Record<string, unknown>;
+          _registeredTools: Record<string, {
+            handler: (args: Record<string, never>) => Promise<{
+              structuredContent: {
+                prompts: Array<{ name: string; description: string }>;
+                prompts_note: string;
+              };
+            }>;
+          }>;
+        };
+        const capabilities = await internals._registeredTools['server.capabilities'].handler({});
+        const catalog = capabilities.structuredContent.prompts;
+        expect(catalog.map((prompt) => prompt.name).sort()).toEqual(
+          Object.keys(internals._registeredPrompts).sort(),
+        );
+        expect(new Set(catalog.map((prompt) => prompt.name)).size).toBe(catalog.length);
+        expect(catalog.every((prompt) => prompt.description.trim().length > 10)).toBe(true);
+        expect(capabilities.structuredContent.prompts_note).toContain('prompts/list');
+        expect(capabilities.structuredContent.prompts_note).toContain('client');
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('advertises the existing low-CTR quick-wins filter in capabilities', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
