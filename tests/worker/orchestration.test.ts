@@ -235,6 +235,14 @@ describe('Worker orchestration', () => {
       site_url: 'sc-domain:example.com',
       countries: 'DEU,not-a-country',
     })).success).toBe(false);
+    expect((await prompt.argsSchema.safeParseAsync({
+      site_url: 'sc-domain:example.com',
+      countries: 'DEU,deu',
+    })).success).toBe(false);
+    expect((await prompt.argsSchema.safeParseAsync({
+      site_url: 'sc-domain:example.com',
+      devices: 'mobile,mobile',
+    })).success).toBe(false);
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     try {
       const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
@@ -276,6 +284,8 @@ describe('Worker orchestration', () => {
     expect(parsed.success).toBe(true);
     expect(parsed.data?.countries).toEqual(['deu', 'svn']);
     expect((await prompt.argsSchema.safeParseAsync({ site_url: 'sc-domain:example.com', countries: 'invalid-value' })).success).toBe(false);
+    expect((await prompt.argsSchema.safeParseAsync({ site_url: 'sc-domain:example.com', countries: 'DEU,deu' })).success).toBe(false);
+    expect((await prompt.argsSchema.safeParseAsync({ site_url: 'sc-domain:example.com', devices: 'mobile,mobile' })).success).toBe(false);
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     try {
       const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
@@ -458,8 +468,8 @@ describe('Worker orchestration', () => {
       const repeated = await prompt.argsSchema.safeParseAsync({
         site_url: args.site_url, devices: 'mobile,mobile',
       });
-      expect(repeated.success).toBe(true);
-      await expect(prompt.handler(repeated.data!)).rejects.toThrow('duplicates');
+      expect(repeated.success).toBe(false);
+      await expect(prompt.handler({ site_url: args.site_url, devices: ['mobile', 'mobile'] })).rejects.toThrow('duplicates');
       const multimodal = (await prompt.handler({ ...args, search_type: 'webMultimodal' })).messages[0].content.text;
       expect(multimodal).toContain('"search_type":"webMultimodal"');
       expect(multimodal).toContain('Text-query dimensions and filters are unavailable');

@@ -1279,11 +1279,15 @@ class GscMcpRuntime {
     };
     const promptCountries = z.preprocess(
       (value) => parsePromptList(value, /(?:\r?\n|,)/),
-      z.array(z.string().regex(/^[a-zA-Z]{3}$/)).min(1).max(10),
+      z.array(z.string().regex(/^[a-zA-Z]{3}$/)).min(1).max(10)
+        .refine((values) => new Set(values.map((value) => value.toUpperCase())).size === values.length,
+          'Country list cannot contain duplicates.'),
     ).optional();
     const promptDevices = z.preprocess(
       (value) => parsePromptList(value, /(?:\r?\n|,)/),
-      z.array(z.enum(['desktop', 'mobile', 'tablet'])).min(1).max(3),
+      z.array(z.enum(['desktop', 'mobile', 'tablet'])).min(1).max(3)
+        .refine((values) => new Set(values).size === values.length,
+          'Device list cannot contain duplicates.'),
     ).optional();
 
     this.server.registerPrompt(
