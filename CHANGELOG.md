@@ -7,10 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Add `gsc-url-index-visibility-review`, a property-validated, exact-page, read-only workflow that cross-checks finalized Search Analytics traffic and optional Google-indexed URL evidence while preserving query/searcher scopes, independent quotas, missing-data caveats and non-causal interpretation.
+- Let `gsc-country-movement-review` compare searcher-country changes for one property-validated exact `page_url`, applying Google's case-sensitive page equality to both finalized weeks and any optional same-scope page drilldown, without broadening to sibling URLs or increasing read quotas.
+- Allow `gsc-query-cohort-review` to compare top queries for one property-validated exact `page_url` using Google-side case-sensitive page equality in both finalized weeks, without widening exact-page follow-ups or changing read quotas.
+- Support a property-validated exact `page_url` in `reports.weekly_digest` and the guided weekly client report, using Google-side case-sensitive page equality on every read to exclude sibling URLs without extra requests; preserve existing URL-substring and multi-market modes.
+- Let `gsc-traffic-drop-triage` accept one property-validated exact `page_url` for a finalized two-week decline investigation, retaining the same Google-side page equality, query topic, and single/plural searcher scopes without including sibling URLs.
+- Allow `gsc-brand-traffic-review` to compare Google's native branded/non-branded categories within an optional Google-side URL section, preserving page, country and device scopes across both finalized weeks without additional reads.
+- Let `gsc-search-appearance-review` retain optional Google-side URL-section (`page_contains`) and query-topic (`query_contains`) filters across both finalized appearance-discovery weeks and its observed-type page drilldown, with unchanged read quotas and explicit scoped-sample caveats.
+- Let `gsc-daily-onset-review` preserve an optional Google-side `query_contains` topic across its finalized 14/21/35-day date series and supported same-scope drilldowns; fail closed on unsupported `webMultimodal` text-query filtering.
+- Let `gsc-country-movement-review` keep an optional Google-side `query_contains` topic through two finalized country comparisons and any justified page drilldown; reject topic filters on `webMultimodal` rather than silently broadening scope.
+- Allow `gsc-page-cohort-review` to preserve an optional Google-side `query_contains` topic across finalized landing-page comparisons and supported query drilldowns, and guide scoped traffic-drop follow-ups without manual page-query construction; reject query topics on `webMultimodal`.
+- Allow `gsc-traffic-drop-triage` to scope incident comparisons to an optional Google-side `query_contains` topic, preserving that filter across single- or multi-country/device reporting and rejecting follow-ups that would silently drop it.
+- Allow `gsc-daily-onset-review` to scope its single finalized daily query to one property-validated exact `page_url` rather than a potentially broader `page_contains`; retain exact equality through safe optional follow-ups and existing quotas.
+- Provide a copyable, least-privilege weekly agency reporting walkthrough using existing Search Console MCP tools, exact-property confirmation, normal read quotas and human review before sharing.
+- Let the read-only daily-onset review select a bounded 14-, 21- or 35-day finalized timeline with one Google-side date query, unchanged quotas and explicit missing-day caveats.
+- Preserve bounded multi-country (1-10) and multi-device (1-3) scopes in both direct page-to-query and query-to-pages drilldowns using one Google-side filtered read; reject ambiguous mixed selectors.
+- Support bounded multi-country and multi-device filters in the direct read-only query/page overlap tool, preserving one Google request and truthful combined-segment impression-share caveats.
+- Extend read-only content-decay comparisons to bounded multi-country and multi-device searcher segments, preserving identical Google-side filters, two-request budgets and observed-page-only evidence.
+- Support bounded multi-country and multi-device Google-side scopes in the direct read-only `insights.quick_wins` tool and its guided prompt, without additional provider requests or narrowing the combined segment.
+- Let the read-only quick-win review prompt preserve combined country/device scopes using Google-side Search Analytics filterLists, while retaining the existing single-value helper path and explicit sampled-row limits.
+- Let the read-only weekly client-report MCP prompt guide bounded multi-country and multi-device digests without narrowing the combined Search Console segment or implying that single-value drilldowns retain those filters.
+
 ### Changed
+- Keep the selected `query_contains` topic and `page_contains` URL section in `gsc-quick-win-review` follow-up guidance: exact-page `insights.page_queries` retains the topic, while exact-query `insights.query_pages` retains the URL-section filter and original country/device scope.
+- Reject repeated searcher-country or device values in every bounded MCP prompt list, including country codes duplicated with different case; prevent ambiguous repeated Google-side filter expressions before any provider call.
+- Let the country-movement review retain up to three combined searcher devices across both finalized comparison periods and the optional page drilldown using existing Google-side filterLists, without expanding API requests.
+- Guide multi-country/device weekly client reports to reuse existing `analytics.compare` country/device `filterLists` for matched finalized-period movers, retaining the same URL/query filters and observed-common-key caveats without adding API calls on prompt retrieval.
+- Guide bounded multi-country and multi-device overlap reviews through the existing read-only `insights.cannibalization` and `insights.query_pages` tools without narrowing combined searcher scope.
 - Run multi-URL Search Console inspections sequentially instead of three at a time, preserving per-URL safety-budget accounting and stopping immediately on access revocation.
 
 ### Fixed
+- Preserve optional `query_contains` when single-country/device traffic-drop guidance recommends a read-only content-decay follow-up, avoiding a broader unrelated query sample.
+- Anchor guided branded-classification and visual-search reviews to explicit, adjacent finalized Pacific weeks, rejecting recent nonfinal reporting end dates before any provider call.
+- Anchor guided Search Appearance comparisons to two explicit finalized Pacific weeks (latest usually finalized end date by default), rejecting nonfinal explicit end dates before any provider read instead of asking the client to infer dates.
+- Correct outdated multi-country/device drilldown restrictions in guided traffic-drop, daily-onset and query-cohort MCP prompts and incident documentation; direct page/query follow-ups now preserve their existing Google-side combined-scope filters, dates and quota boundaries.
 - Keep known-result pagination moving when the first insight or property-list item exceeds the structured response byte ceiling, without inventing cursors for genuinely empty pages.
 - Ensure byte-limited Search Analytics pages can continue past an oversized first source row instead of repeatedly returning an unusable cursor; preserve source-row offsets and truncation metadata.
 - Scope cached Google access tokens to their originating Worker environment so separate binding sets cannot reuse each other's OAuth credentials for the same Google account.

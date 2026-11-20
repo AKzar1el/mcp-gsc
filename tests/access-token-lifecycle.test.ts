@@ -682,6 +682,80 @@ test('weekly digest scopes all finalized requests to one country with topic, pag
   }
 });
 
+test('weekly digest uses page equality in every read for one exact landing page', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ dimensionFilterGroups?: unknown }> = [];
+  globalThis.fetch = async (_input, init) => {
+    requests.push(JSON.parse(String(init?.body)) as { dimensionFilterGroups?: unknown });
+    return new Response(JSON.stringify({ rows: [] }), { headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const exactUrl = 'https://example.com/de/pricing/';
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'sc-domain:example.com',
+      '2026-08-10', undefined, '2026-08-15', undefined, 'web', undefined,
+      'technical seo', undefined, ['DEU', 'AUT'], ['mobile', 'desktop'], exactUrl,
+    );
+    assert.equal(requests.length, 5);
+    for (const request of requests) {
+      assert.deepEqual(request.dimensionFilterGroups, [{
+        groupType: 'and',
+        filters: [
+          { dimension: 'page', operator: 'equals', expression: exactUrl },
+          { dimension: 'query', operator: 'contains', expression: 'technical seo' },
+        ],
+        filterLists: [
+          { dimension: 'country', expressions: ['DEU', 'AUT'] },
+          { dimension: 'device', expressions: ['MOBILE', 'DESKTOP'] },
+        ],
+      }]);
+    }
+    assert.match(digest, /exact page URL filter/i);
+    assert.match(digest, /case-sensitive/i);
+    assert.match(digest, /not property-wide/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('weekly digest preserves multi-country and multi-device OR filters across all finalized sections', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ dimensionFilterGroups?: unknown; dataState?: string }> = [];
+  globalThis.fetch = async (_input, init) => {
+    requests.push(JSON.parse(String(init?.body)) as { dimensionFilterGroups?: unknown; dataState?: string });
+    return new Response(JSON.stringify({ rows: [] }), {
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  try {
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'sc-domain:example.com',
+      '2026-08-10', undefined, '2026-08-15', '/de/', 'web', undefined, 'technical seo',
+      undefined, ['svn', 'deu'], ['desktop', 'mobile'],
+    );
+    assert.equal(requests.length, 5);
+    for (const request of requests) {
+      assert.equal(request.dataState, 'final');
+      assert.deepEqual(request.dimensionFilterGroups, [{
+        groupType: 'and',
+        filters: [
+          { dimension: 'page', operator: 'contains', expression: '/de/' },
+          { dimension: 'query', operator: 'contains', expression: 'technical seo' },
+        ],
+        filterLists: [
+          { dimension: 'country', expressions: ['SVN', 'DEU'] },
+          { dimension: 'device', expressions: ['DESKTOP', 'MOBILE'] },
+        ],
+      }]);
+    }
+    assert.match(digest, /Country filters.*SVN, DEU/);
+    assert.match(digest, /Device filters.*Desktop, Mobile/);
+    assert.match(digest, /not property-wide/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('weekly digest applies a country filter to preliminary requests without trend claims', async () => {
   const originalFetch = globalThis.fetch;
   const requests: Array<{ dataState?: string; dimensionFilterGroups?: unknown }> = [];
@@ -707,6 +781,42 @@ test('weekly digest applies a country filter to preliminary requests without tre
     }
     assert.match(digest, /Country filter.*DEU/i);
     assert.match(digest, /Preliminary snapshot/i);
+    assert.doesNotMatch(digest, /## What changed this week|## What to do this week/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('weekly digest keeps multi-value scopes and three-request limit in preliminary snapshots', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ dataState?: string; dimensionFilterGroups?: unknown }> = [];
+  globalThis.fetch = async (_input, init) => {
+    requests.push(JSON.parse(String(init?.body)) as { dataState?: string; dimensionFilterGroups?: unknown });
+    return new Response(JSON.stringify({ rows: [] }), {
+      headers: { 'content-type': 'application/json' },
+    });
+  };
+  try {
+    const today = getSearchConsoleCalendarDate();
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'sc-domain:example.com',
+      today, undefined, today, undefined, 'web', undefined, undefined,
+      undefined, ['USA', 'deu'], ['mobile', 'tablet'],
+    );
+    assert.equal(requests.length, 3);
+    for (const request of requests) {
+      assert.equal(request.dataState, 'all');
+      assert.deepEqual(request.dimensionFilterGroups, [{
+        groupType: 'and',
+        filters: [],
+        filterLists: [
+          { dimension: 'country', expressions: ['USA', 'DEU'] },
+          { dimension: 'device', expressions: ['MOBILE', 'TABLET'] },
+        ],
+      }]);
+    }
+    assert.match(digest, /Preliminary snapshot/);
+    assert.match(digest, /Country filters.*USA, DEU/);
     assert.doesNotMatch(digest, /## What changed this week|## What to do this week/i);
   } finally {
     globalThis.fetch = originalFetch;
@@ -1206,7 +1316,8 @@ test('weekly digest distinguishes the same path across different hosts', async (
     );
     assert.ok(digest.includes('**https://www\\.example\\.com/pricing**'));
     assert.ok(digest.includes('**https://fr\\.example\\.com/pricing**'));
-    assert.match(digest, /\*\*\/blog\*\*/);
+    assert.ok(digest.includes('**https://www\\.example\\.com/blog**'));
+    assert.doesNotMatch(digest, /\*\*\/blog\*\*/);
     assert.doesNotMatch(digest, /\*\*\/pricing\*\*/);
   } finally {
     restoreFetch();

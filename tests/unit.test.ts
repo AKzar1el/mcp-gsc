@@ -38,6 +38,8 @@ import {
   CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
   CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
   CANNIBALIZATION_COUNTRY_SCHEMA,
+  CANNIBALIZATION_COUNTRIES_SCHEMA,
+  CANNIBALIZATION_DEVICES_SCHEMA,
   CANNIBALIZATION_QUERY_CONTAINS_SCHEMA,
 } from '../src/cannibalization-schema';
 import {
@@ -419,6 +421,19 @@ test('cannibalization searcher-country scope is optional, trimmed, and limited t
   }
 });
 
+test('cannibalization combined-market selectors are bounded, distinct and keep single scope optional', () => {
+  assert.deepEqual(CANNIBALIZATION_COUNTRIES_SCHEMA.parse([' deu ', 'USA']), ['deu', 'USA']);
+  assert.deepEqual(CANNIBALIZATION_DEVICES_SCHEMA.parse(['mobile', 'desktop']), ['mobile', 'desktop']);
+  assert.equal(CANNIBALIZATION_COUNTRIES_SCHEMA.safeParse(undefined).success, true);
+  assert.equal(CANNIBALIZATION_DEVICES_SCHEMA.safeParse(undefined).success, true);
+  for (const invalid of [[], ['DEU', 'deu'], ['DE'], Array(11).fill('USA')]) {
+    assert.equal(CANNIBALIZATION_COUNTRIES_SCHEMA.safeParse(invalid).success, false);
+  }
+  for (const invalid of [[], ['desktop', 'desktop'], ['watch'], Array(4).fill('mobile')]) {
+    assert.equal(CANNIBALIZATION_DEVICES_SCHEMA.safeParse(invalid).success, false);
+  }
+});
+
 test('quick win thresholds require valid impressions and position ranges', () => {
   const schema = createQuickWinsInputSchema();
   const baseInput = {
@@ -453,6 +468,18 @@ test('quick win thresholds require valid impressions and position ranges', () =>
   for (const country of ['DE', 'DEUT', '123', 'D-E']) {
     assert.equal(schema.safeParse({ ...baseInput, country }).success, false);
   }
+});
+
+test('quick wins accepts bounded distinct multi-market selectors without mixing singular filters', () => {
+  const schema = createQuickWinsInputSchema();
+  const base = { site_url: 'sc-domain:example.com', start_date: '2026-01-01', end_date: '2026-01-31' };
+  assert.equal(schema.safeParse({ ...base, countries: ['deu', 'usa'], devices: ['mobile', 'desktop'] }).success, true);
+  assert.equal(schema.safeParse({ ...base, countries: ['DEU', 'deu'] }).success, false);
+  assert.equal(schema.safeParse({ ...base, countries: Array(11).fill('DEU') }).success, false);
+  assert.equal(schema.safeParse({ ...base, devices: ['mobile', 'mobile'] }).success, false);
+  assert.equal(schema.safeParse({ ...base, countries: ['DEU'], country: 'USA' }).success, false);
+  assert.equal(schema.safeParse({ ...base, devices: ['mobile'], device: 'tablet' }).success, false);
+  assert.equal(schema.safeParse({ ...base, countries: ['DE'] }).success, false);
 });
 
 function makeKey(byteLength = 32): string {

@@ -37,10 +37,23 @@ export const CANNIBALIZATION_COUNTRY_SCHEMA = z
   .optional()
   .describe('Optional ISO 3166-1 alpha-3 searcher country, e.g. DEU for Germany, not the page language. Google filters this geography alongside page_contains and query_contains before source pagination.');
 
+export const CANNIBALIZATION_COUNTRIES_SCHEMA = z.array(
+  z.string().trim().regex(/^[a-zA-Z]{3}$/, 'Use ISO 3166-1 alpha-3 searcher country codes.'),
+).min(1).max(10)
+  .refine((values) => new Set(values.map((value) => value.toUpperCase())).size === values.length, 'Country list cannot contain duplicates.')
+  .optional()
+  .describe('Optional 1-10 distinct searcher countries ORed at Google before pagination; not page languages or separate country reports. Use instead of country.');
+
 export const CANNIBALIZATION_DEVICE_SCHEMA = z
   .enum(['desktop', 'mobile', 'tablet'])
   .optional()
   .describe('Optional searcher device: desktop, mobile, or tablet. Google applies it with page_contains, query_contains, and country before pagination; omitting it preserves all-device behavior.');
+
+export const CANNIBALIZATION_DEVICES_SCHEMA = z.array(z.enum(['desktop', 'mobile', 'tablet']))
+  .min(1).max(3)
+  .refine((values) => new Set(values).size === values.length, 'Device list cannot contain duplicates.')
+  .optional()
+  .describe('Optional 1-3 distinct searcher devices ORed at Google before pagination. This is one combined segment, not per-device results. Use instead of device.');
 
 export const CANNIBALIZATION_SEARCH_TYPE_SCHEMA = z
   .enum(['web', 'image', 'video', 'news'])

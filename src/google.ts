@@ -2365,7 +2365,9 @@ function hasRobotsNoindexMeta(html: string): boolean {
   let match: RegExpExecArray | null;
   while ((match = metaPattern.exec(head)) !== null) {
     const name = htmlAttribute(match[1], 'name')?.trim().toLowerCase();
-    if (name !== 'robots') continue;
+    // Googlebot-specific noindex also blocks ordinary Google web results;
+    // googlebot-news alone does not establish that removal precondition.
+    if (name !== 'robots' && name !== 'googlebot') continue;
     const content = htmlAttribute(match[1], 'content')?.trim().toLowerCase();
     if (!content) continue;
     const directives = content.split(/[\s,]+/).filter(Boolean);

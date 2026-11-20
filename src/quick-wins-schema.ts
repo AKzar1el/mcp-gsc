@@ -49,9 +49,15 @@ export function createQuickWinsInputSchema() {
       country: z.string().trim().regex(/^[a-zA-Z]{3}$/, 'Use a three-letter ISO 3166-1 alpha-3 country code such as SVN or DEU.').optional().describe(
         'Optional searcher country (ISO 3166-1 alpha-3, e.g. DEU for Germany), not URL language. Combined with page_contains and query_contains as Google-side AND filters before pagination; the result is not property-wide.',
       ),
+      countries: z.array(z.string().trim().regex(/^[a-zA-Z]{3}$/, 'Use ISO 3166-1 alpha-3 country codes.')).min(1).max(10)
+        .refine((values) => new Set(values.map((value) => value.toUpperCase())).size === values.length, 'Country list cannot contain duplicates.')
+        .optional().describe('Optional 1-10 distinct searcher countries ORed at Google via filterLists, not page languages. Use instead of country, never both.'),
       device: z.enum(['desktop', 'mobile', 'tablet']).optional().describe(
         'Optional Search Console searcher device. Combined with page_contains, query_contains and country as Google-side AND filters before pagination. Omit for all devices; filtered results are not property-wide.',
       ),
+      devices: z.array(z.enum(['desktop', 'mobile', 'tablet'])).min(1).max(3)
+        .refine((values) => new Set(values).size === values.length, 'Device list cannot contain duplicates.')
+        .optional().describe('Optional 1-3 distinct searcher devices ORed at Google via filterLists. Use instead of device, never both.'),
       limit: z
         .number()
         .int()
@@ -69,5 +75,9 @@ export function createQuickWinsInputSchema() {
     .refine(
       ({ min_position, max_position }) => min_position <= max_position,
       POSITION_RANGE_ERROR,
-    );
+    )
+    .superRefine(({ country, countries, device, devices }, ctx) => {
+      if (country && countries) ctx.addIssue({ code: 'custom', path: ['countries'], message: 'Use country or countries, not both.' });
+      if (device && devices) ctx.addIssue({ code: 'custom', path: ['devices'], message: 'Use device or devices, not both.' });
+    });
 }
