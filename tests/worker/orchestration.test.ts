@@ -472,6 +472,55 @@ describe('Worker orchestration', () => {
     })).rejects.toThrow();
   });
 
+  it('keeps an exact-page traffic decline isolated from sibling URLs', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-traffic-drop-triage'];
+    const input = {
+      site_url: 'sc-domain:example.com',
+      page_url: 'https://example.com/de/tools/sitemap-checker',
+      end_date: '2026-06-20',
+      query_contains: 'seo',
+      countries: 'deu,svn',
+      devices: 'mobile,desktop',
+    };
+    const parsed = await prompt.argsSchema.safeParseAsync(input);
+    expect(parsed.success).toBe(true);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"page_url":"https://example.com/de/tools/sitemap-checker"');
+      expect(guidance).toContain('"start_date_a":"2026-06-14"');
+      expect(guidance).toContain('"countries":["DEU","SVN"]');
+      expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
+      expect(guidance).toContain('dimensions=["date"]');
+      expect(guidance).toContain('dimension="page", operator="equals"');
+      expect(guidance).toContain('query contains');
+      expect(guidance).toContain('filterLists');
+      expect(guidance).not.toContain('2. Start with reports.weekly_digest');
+      expect(guidance).toContain('missing days are unknown');
+      expect(fetchSpy).not.toHaveBeenCalled();
+      await expect(prompt.handler({ ...parsed.data, page_contains: '/de/' })).rejects.toThrow();
+      await expect(prompt.handler({ ...parsed.data, page_url: 'https://other.example.net/private' })).rejects.toThrow();
+      const single = (await prompt.handler({
+        site_url: 'sc-domain:example.com', page_url: input.page_url,
+        end_date: input.end_date, country: 'deu', device: 'mobile',
+      })).messages[0].content.text;
+      expect(single).toContain('dimension="page", operator="equals"');
+      expect(single).toContain('"country":"DEU"');
+      expect(single).toContain('"device":"MOBILE"');
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('keeps multi-region/device traffic-drop triage within matching finalized Google scopes', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
