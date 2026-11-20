@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Let `gsc-traffic-drop-triage` accept one property-validated exact `page_url` for a finalized two-week decline investigation, retaining the same Google-side page equality, query topic, and single/plural searcher scopes without including sibling URLs.
 - Allow `gsc-brand-traffic-review` to compare Google's native branded/non-branded categories within an optional Google-side URL section, preserving page, country and device scopes across both finalized weeks without additional reads.
 - Let `gsc-search-appearance-review` retain optional Google-side URL-section (`page_contains`) and query-topic (`query_contains`) filters across both finalized appearance-discovery weeks and its observed-type page drilldown, with unchanged read quotas and explicit scoped-sample caveats.
 - Let `gsc-daily-onset-review` preserve an optional Google-side `query_contains` topic across its finalized 14/21/35-day date series and supported same-scope drilldowns; fail closed on unsupported `webMultimodal` text-query filtering.
