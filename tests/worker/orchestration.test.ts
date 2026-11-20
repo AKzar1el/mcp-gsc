@@ -121,6 +121,45 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('keeps a single exact page URL during daily-onset analysis and safe follow-ups', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean }> };
+        handler: (args: Record<string, string>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-daily-onset-review'];
+    const args = {
+      site_url: 'sc-domain:example.com',
+      end_date: '2026-11-10',
+      search_type: 'web',
+      page_url: 'https://blog.example.com/posts/launch',
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      expect((await prompt.argsSchema.safeParseAsync(args)).success).toBe(true);
+      const guidance = (await prompt.handler(args)).messages[0].content.text;
+      expect(guidance).toContain('"page_url":"https://blog.example.com/posts/launch"');
+      expect(guidance).toContain('page equals the exact page_url');
+      expect(guidance).not.toContain('page contains the exact page_contains');
+      expect(guidance).toContain('insights.page_queries');
+      expect(guidance).toContain('not gsc-traffic-drop-triage');
+      expect(guidance).toContain('row_limit=21');
+      const multimodal = (await prompt.handler({ ...args, search_type: 'webMultimodal' })).messages[0].content.text;
+      expect(multimodal).toContain('page equals the exact page_url');
+      expect(multimodal).toContain('same webMultimodal surface');
+      expect(multimodal).not.toContain('insights.page_queries');
+      await expect(prompt.handler({ ...args, page_contains: '/posts/' })).rejects.toThrow();
+      await expect(prompt.handler({ ...args, page_url: 'https://elsewhere.example/posts/launch' })).rejects.toThrow();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('preserves multi-country and multi-device daily-onset scopes without extra provider calls', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,

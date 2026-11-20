@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Allow `gsc-daily-onset-review` to scope its single finalized daily query to one property-validated exact `page_url` rather than a potentially broader `page_contains`; retain exact equality through safe optional follow-ups and existing quotas.
 - Provide a copyable, least-privilege weekly agency reporting walkthrough using existing Search Console MCP tools, exact-property confirmation, normal read quotas and human review before sharing.
 - Let the read-only daily-onset review select a bounded 14-, 21- or 35-day finalized timeline with one Google-side date query, unchanged quotas and explicit missing-day caveats.
 - Preserve bounded multi-country (1-10) and multi-device (1-3) scopes in both direct page-to-query and query-to-pages drilldowns using one Google-side filtered read; reject ambiguous mixed selectors.
