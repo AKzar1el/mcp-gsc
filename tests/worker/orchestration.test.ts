@@ -390,6 +390,7 @@ describe('Worker orchestration', () => {
       site_url: 'sc-domain:example.com',
       end_date: '2026-11-10',
       page_contains: '/de/',
+      query_contains: 'technical seo',
       search_type: 'image',
       country: 'deu',
       device: 'mobile',
@@ -398,6 +399,8 @@ describe('Worker orchestration', () => {
     expect(segmentedGuidance).toContain('"search_type":"image"');
     expect(segmentedGuidance).toContain('"country":"DEU"');
     expect(segmentedGuidance).toContain('"device":"MOBILE"');
+    expect(segmentedGuidance).toContain('"query_contains":"technical seo"');
+    expect(segmentedGuidance).toContain('query contains');
     expect(segmentedGuidance).toContain('reports.weekly_digest');
     expect(segmentedGuidance).toContain('insights.content_decay');
     expect(segmentedGuidance).toContain('analytics.compare');
@@ -430,6 +433,7 @@ describe('Worker orchestration', () => {
       end_date: '2026-06-20',
       search_type: 'web',
       page_contains: '/tools/',
+      query_contains: 'technical seo',
       countries: 'deu,svn',
       devices: 'mobile,desktop',
     });
@@ -444,12 +448,15 @@ describe('Worker orchestration', () => {
       const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
       expect(guidance).toContain('"countries":["DEU","SVN"]');
       expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
+      expect(guidance).toContain('"query_contains":"technical seo"');
+      expect(guidance).toContain('query contains');
       expect(guidance).toContain('"start_date_a":"2026-06-14"');
       expect(guidance).toContain('"start_date_b":"2026-06-07"');
       expect(guidance).toContain('dimensions=["date"]');
       expect(guidance).toContain('filterLists');
       expect(guidance).toContain('OR within');
-      expect(guidance).toContain('insights.page_queries with the same countries/devices arrays');
+      expect(guidance).toContain('insights.page_queries preserves the query_contains topic');
+      expect(guidance).toContain('do not use gsc-page-cohort-review');
       expect(guidance).not.toContain('cannot preserve multi-value scopes');
       expect(guidance).toContain('reports.weekly_digest and insights.content_decay preserve the same countries/devices arrays');
       expect(guidance).toContain('missing days are unknown');
