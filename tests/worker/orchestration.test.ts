@@ -146,12 +146,16 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('page equals the exact page_url');
       expect(guidance).not.toContain('page contains the exact page_contains');
       expect(guidance).toContain('insights.page_queries');
-      expect(guidance).toContain('not gsc-traffic-drop-triage');
+      expect(guidance).toContain('use gsc-traffic-drop-triage with the same page_url');
+      expect(guidance).toContain('same query_contains topic');
+      expect(guidance).toContain('country/device or countries/devices');
+      expect(guidance).not.toContain('only accepts page_contains');
       expect(guidance).toContain('row_limit=21');
       const multimodal = (await prompt.handler({ ...args, search_type: 'webMultimodal' })).messages[0].content.text;
       expect(multimodal).toContain('page equals the exact page_url');
       expect(multimodal).toContain('same webMultimodal surface');
       expect(multimodal).not.toContain('insights.page_queries');
+      expect(multimodal).toContain('gsc-traffic-drop-triage does not accept webMultimodal');
       await expect(prompt.handler({ ...args, page_contains: '/posts/' })).rejects.toThrow();
       await expect(prompt.handler({ ...args, page_url: 'https://elsewhere.example/posts/launch' })).rejects.toThrow();
       expect(fetchSpy).not.toHaveBeenCalled();
