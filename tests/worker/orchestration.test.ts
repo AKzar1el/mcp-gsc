@@ -692,6 +692,46 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves exact-page scope when comparing observed searcher-country movement', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-country-movement-review'];
+    const input = {
+      site_url: 'sc-domain:example.com',
+      page_url: 'https://example.com/de/tools/sitemap-checker',
+      end_date: '2026-06-20',
+      query_contains: 'technical seo',
+      devices: 'mobile,desktop',
+    };
+    const parsed = await prompt.argsSchema.safeParseAsync(input);
+    expect(parsed.success).toBe(true);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"page_url":"https://example.com/de/tools/sitemap-checker"');
+      expect(guidance).toContain('"start_date_a":"2026-06-14"');
+      expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
+      expect(guidance).toContain('dimension=country');
+      expect(guidance).toContain('dimension="page", operator="equals"');
+      expect(guidance).toContain('case-sensitive');
+      expect(guidance).toContain('query contains');
+      expect(guidance).toContain('same device list');
+      expect(guidance).not.toContain('page contains the exact page_contains');
+      expect(fetchSpy).not.toHaveBeenCalled();
+      await expect(prompt.handler({ ...parsed.data, page_contains: '/de/' })).rejects.toThrow();
+      await expect(prompt.handler({ ...parsed.data, page_url: 'https://outside.example.net/tools/sitemap-checker' })).rejects.toThrow();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a property-scoped index-status triage prompt without Google requests', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
