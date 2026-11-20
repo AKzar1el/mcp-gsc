@@ -1870,6 +1870,7 @@ class GscMcpRuntime {
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional inclusive finalized Pacific end date.')),
           search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe('Use the same Search surface for both weeks.'),
           page_contains: z.string().trim().min(1).max(120).optional().describe('Optional page URL substring; limits the query cohort to that section.'),
+          page_url: z.string().trim().url().max(2048).optional().describe('Optional exact URL within the authorized property; use instead of page_contains to avoid sibling pages.'),
           query_contains: z.string().trim().min(1).max(120).optional().describe('Optional query topic substring, filtered by Google in both weeks.'),
           country: z.string().trim().regex(/^[a-zA-Z]{3}$/).optional().describe('Optional ISO alpha-3 searcher country.'),
           device: z.enum(['desktop', 'mobile', 'tablet']).optional().describe('Optional searcher device.'),
@@ -1877,7 +1878,9 @@ class GscMcpRuntime {
           devices: promptDevices.describe('Optional 1-3 searcher devices, comma/newline-separated or a JSON-array string. Use instead of device; values are ORed at Google.'),
         }),
       },
-      ({ site_url, end_date, search_type, page_contains, query_contains, country, device, countries, devices }) => {
+      ({ site_url, end_date, search_type, page_contains, page_url, query_contains, country, device, countries, devices }) => {
+        if (page_contains && page_url) throw new Error('Supply either page_contains or page_url, not both.');
+        if (page_url) assertUrlWithinSearchConsoleProperty(page_url, site_url, 'page_url');
         if (country && countries) throw new Error('Supply either country or countries, not both.');
         if (device && devices) throw new Error('Supply either device or devices, not both.');
         const today = getSearchConsoleCalendarDate();
@@ -1903,16 +1906,18 @@ class GscMcpRuntime {
                   site_url,
                   start_date_a: offset(-6), end_date_a: selectedEnd,
                   start_date_b: offset(-13), end_date_b: offset(-7),
-                  search_type, page_contains: page_contains ?? null, query_contains: query_contains ?? null,
+                  search_type, page_contains: page_contains ?? null, page_url: page_url ?? null, query_contains: query_contains ?? null,
                   country: country?.toUpperCase() ?? null, device: device?.toUpperCase() ?? null,
                   countries: countries?.map((value) => value.toUpperCase()) ?? null,
                   devices: devices?.map((value) => value.toUpperCase()) ?? null,
                 }),
                 '1. Verify read access to this exact Search Console property with server.capabilities and sites.get. Do not access another property or presume stored credentials are accepted.',
-                '2. Call analytics.query exactly twice, once for each seven-day Pacific window, with dimensions=["query"], row_limit=100, start_row=0, data_state="final", aggregation_type="auto" and the same search_type. Apply one AND dimension_filter_groups identically to BOTH periods. Use ordinary filters for optional page contains, query contains, single country equals and single device equals; for countries or devices lists instead use filterLists with uppercase exact expressions (OR within each list, AND across dimensions and other filters). Never combine a filter and filterLists for the same dimension. Apply all scopes at Google, not by local postfiltering; both reads and any retries consume normal quotas.',
+                `2. Call analytics.query exactly twice, once for each seven-day Pacific window, with dimensions=["query"], row_limit=100, start_row=0, data_state="final", aggregation_type="auto" and the same search_type. Apply one AND dimension_filter_groups identically to BOTH periods. For the page dimension, ${page_url ? 'page equals the exact page_url (Google-side case-sensitive equality, not a substring)' : page_contains ? 'page contains the supplied page_contains URL section' : 'omit any page filter'}. Use ordinary filters for optional query contains, single country equals and single device equals; for countries or devices lists instead use filterLists with uppercase exact expressions (OR within each list, AND across dimensions and other filters). Never combine a filter and filterLists for the same dimension. Apply all scopes at Google, not by local postfiltering; both reads and any retries consume normal quotas.`,
                 '3. Compare exact query keys actually observed in BOTH returned 100-row samples, using actual clicks, impressions and CTR. Report at most five substantial measured declines and three gains with both period metrics. Percent changes need a nonzero measured baseline. News Search has no reliable average-position metric; elsewhere average position is not a live rank.',
                 '4. Separately label up to three baseline-only and latest-only query examples as FOLLOW-UP CANDIDATES, never confirmed lost, gained or zero-click queries. A missing row is not measured zero traffic: Google returns click-sorted, incomplete top-row samples, and ties or cutoffs change cohorts. Even a full response is not an exhaustive census. If a period has no rows, report insufficient evidence, not vanished traffic.',
-                '5. If one exact observed query needs page-level context and quota remains, inspect at most one selected finalized window. Use insights.query_pages with the same countries/devices arrays (or matching singular selectors), exact observed query, dates, search surface and optional page_contains; its existing Google-side filterLists preserve the combined segment in one normal-quota request. A matching analytics.query is also valid when needed. Do not change the scope between calls, treat omitted pages as zero, or infer causality, intent shifts or penalties from query omission.',
+                page_url
+                  ? '5. If an observed query merits one justified follow-up and quota remains, use insights.page_queries for this exact page_url with the same finalized window, search surface, optional query_contains topic and singular or list country/device filters; alternatively use analytics.query with Google-side page equals the exact page_url and the exact observed query, retaining the original searcher segment. Do not use insights.query_pages with only a page substring or omit the page equality. Do not broaden the exact-page scope, treat missing rows as zero, or infer causality from incomplete results.'
+                  : '5. If one exact observed query needs page-level context and quota remains, inspect at most one selected finalized window. Use insights.query_pages with the same countries/devices arrays (or matching singular selectors), exact observed query, dates, search surface and optional page_contains; its existing Google-side filterLists preserve the combined segment in one normal-quota request. A matching analytics.query is also valid when needed. Do not change the scope between calls, treat omitted pages as zero, or infer causality, intent shifts or penalties from query omission.',
                 '6. Suggest one human-reviewable content or internal-link investigation only where observed query/page evidence supports it, with an equal-scope measurement plan. Segmented results are not property-wide or all-device totals; OR within country or device lists does not imply separately measured country/device trends, and searcher country is not page language.',
                 'Never call indexing.request, indexing.remove, sitemap writes, site membership mutations, content publication or outreach. Prompt retrieval itself makes no Google request. Stop when access, evidence or quotas are insufficient.',
                 'Return exact property, weeks and filters, common-query metrics, separately marked one-period-only samples, limitations and one safe next check. Never claim definitive query disappearance, SEO recovery, adoption or sales.',

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Allow `gsc-query-cohort-review` to compare top queries for one property-validated exact `page_url` using Google-side case-sensitive page equality in both finalized weeks, without widening exact-page follow-ups or changing read quotas.
 - Support a property-validated exact `page_url` in `reports.weekly_digest` and the guided weekly client report, using Google-side case-sensitive page equality on every read to exclude sibling URLs without extra requests; preserve existing URL-substring and multi-market modes.
 - Let `gsc-traffic-drop-triage` accept one property-validated exact `page_url` for a finalized two-week decline investigation, retaining the same Google-side page equality, query topic, and single/plural searcher scopes without including sibling URLs.
 - Allow `gsc-brand-traffic-review` to compare Google's native branded/non-branded categories within an optional Google-side URL section, preserving page, country and device scopes across both finalized weeks without additional reads.
