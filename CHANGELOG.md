@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Run multi-URL Search Console inspections sequentially instead of three at a time, preserving per-URL safety-budget accounting and stopping immediately on access revocation.
 
 ### Fixed
+- Preserve optional `query_contains` when single-country/device traffic-drop guidance recommends a read-only content-decay follow-up, avoiding a broader unrelated query sample.
 - Anchor guided branded-classification and visual-search reviews to explicit, adjacent finalized Pacific weeks, rejecting recent nonfinal reporting end dates before any provider call.
 - Anchor guided Search Appearance comparisons to two explicit finalized Pacific weeks (latest usually finalized end date by default), rejecting nonfinal explicit end dates before any provider read instead of asking the client to infer dates.
 - Correct outdated multi-country/device drilldown restrictions in guided traffic-drop, daily-onset and query-cohort MCP prompts and incident documentation; direct page/query follow-ups now preserve their existing Google-side combined-scope filters, dates and quota boundaries.

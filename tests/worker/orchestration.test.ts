@@ -456,6 +456,8 @@ describe('Worker orchestration', () => {
     expect(segmentedGuidance).toContain('query contains');
     expect(segmentedGuidance).toContain('reports.weekly_digest');
     expect(segmentedGuidance).toContain('insights.content_decay');
+    const decayFollowUp = segmentedGuidance.split('\n').find((line) => line.includes('3. Use insights.content_decay with compare_days=28'));
+    expect(decayFollowUp).toContain('query_contains');
     expect(segmentedGuidance).toContain('analytics.compare');
     expect(segmentedGuidance).toContain('identical Google-side filters');
     expect(segmentedGuidance).toContain('segment-only');
