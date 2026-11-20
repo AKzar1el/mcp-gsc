@@ -1352,6 +1352,42 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves query topic and URL-section scope in guided quick-win follow-ups', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-quick-win-review'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const base = {
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-10-01',
+        end_date: '2026-10-28',
+        search_type: 'web',
+        query_contains: 'technical seo',
+        page_contains: '/de/',
+      };
+      for (const scope of [
+        { country: 'DEU', device: 'mobile' },
+        { countries: ['DEU', 'USA'], devices: ['desktop', 'mobile'] },
+      ]) {
+        const guidance = (await prompt.handler({ ...base, ...scope })).messages[0].content.text;
+        expect(guidance).toContain('insights.page_queries');
+        expect(guidance).toContain('same query_contains topic');
+        expect(guidance).toContain('insights.query_pages');
+        expect(guidance).toContain('same page_contains URL-section');
+        expect(guidance).toContain('exact observed query');
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides a scoped query/page overlap review without asserting cannibalization or making provider calls', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
