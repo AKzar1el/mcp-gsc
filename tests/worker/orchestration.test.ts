@@ -497,6 +497,7 @@ describe('Worker orchestration', () => {
       end_date: '2026-11-10',
       search_type: 'image',
       page_contains: '/de/',
+      query_contains: 'technical seo',
       device: 'mobile',
     };
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
@@ -512,6 +513,8 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('analytics.compare');
       expect(guidance).toContain('"search_type":"image"');
       expect(guidance).toContain('"page_contains":"/de/"');
+      expect(guidance).toContain('"query_contains":"technical seo"');
+      expect(guidance).toContain('query contains');
       expect(guidance).toContain('"device":"MOBILE"');
       expect(guidance).toContain('Searcher country is not page language');
       const selected = await prompt.argsSchema.safeParseAsync({
@@ -533,7 +536,8 @@ describe('Worker orchestration', () => {
       });
       expect(repeated.success).toBe(false);
       await expect(prompt.handler({ site_url: args.site_url, devices: ['mobile', 'mobile'] })).rejects.toThrow('duplicates');
-      const multimodal = (await prompt.handler({ ...args, search_type: 'webMultimodal' })).messages[0].content.text;
+      await expect(prompt.handler({ ...args, search_type: 'webMultimodal' })).rejects.toThrow();
+      const multimodal = (await prompt.handler({ ...args, query_contains: undefined, search_type: 'webMultimodal' })).messages[0].content.text;
       expect(multimodal).toContain('"search_type":"webMultimodal"');
       expect(multimodal).toContain('Text-query dimensions and filters are unavailable');
       expect(guidance).toContain('missing rows are not zero');

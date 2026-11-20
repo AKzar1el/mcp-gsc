@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Let `gsc-country-movement-review` keep an optional Google-side `query_contains` topic through two finalized country comparisons and any justified page drilldown; reject topic filters on `webMultimodal` rather than silently broadening scope.
 - Allow `gsc-page-cohort-review` to preserve an optional Google-side `query_contains` topic across finalized landing-page comparisons and supported query drilldowns, and guide scoped traffic-drop follow-ups without manual page-query construction; reject query topics on `webMultimodal`.
 - Allow `gsc-traffic-drop-triage` to scope incident comparisons to an optional Google-side `query_contains` topic, preserving that filter across single- or multi-country/device reporting and rejecting follow-ups that would silently drop it.
 - Allow `gsc-daily-onset-review` to scope its single finalized daily query to one property-validated exact `page_url` rather than a potentially broader `page_contains`; retain exact equality through safe optional follow-ups and existing quotas.
