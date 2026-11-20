@@ -746,6 +746,37 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('anchors Search Appearance comparisons to finalized, explicit Pacific weeks', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-search-appearance-review'];
+    const today = getSearchConsoleCalendarDate();
+    const dayOffset = (days: number): string => {
+      const date = new Date(`${today}T00:00:00Z`);
+      date.setUTCDate(date.getUTCDate() + days);
+      return date.toISOString().slice(0, 10);
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const guidance = (await prompt.handler({ site_url: 'sc-domain:example.com' })).messages[0].content.text;
+      expect(guidance).toContain(`"end_date":"${dayOffset(-3)}"`);
+      expect(guidance).toContain(`"start_date_a":"${dayOffset(-9)}"`);
+      expect(guidance).toContain(`"end_date_a":"${dayOffset(-3)}"`);
+      expect(guidance).toContain(`"start_date_b":"${dayOffset(-16)}"`);
+      expect(guidance).toContain(`"end_date_b":"${dayOffset(-10)}"`);
+      await expect(prompt.handler({ site_url: 'sc-domain:example.com', end_date: today }))
+        .rejects.toThrow('require finalized Search Console dates');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('preserves multi-market scopes in Search Appearance discovery and observed-type drilldown', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
