@@ -682,6 +682,42 @@ test('weekly digest scopes all finalized requests to one country with topic, pag
   }
 });
 
+test('weekly digest uses page equality in every read for one exact landing page', async () => {
+  const originalFetch = globalThis.fetch;
+  const requests: Array<{ dimensionFilterGroups?: unknown }> = [];
+  globalThis.fetch = async (_input, init) => {
+    requests.push(JSON.parse(String(init?.body)) as { dimensionFilterGroups?: unknown });
+    return new Response(JSON.stringify({ rows: [] }), { headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const exactUrl = 'https://example.com/de/pricing/';
+    const digest = await generateWeeklyDigest(
+      createLifecycle().lifecycle, 'user-a', 'sc-domain:example.com',
+      '2026-08-10', undefined, '2026-08-15', undefined, 'web', undefined,
+      'technical seo', undefined, ['DEU', 'AUT'], ['mobile', 'desktop'], exactUrl,
+    );
+    assert.equal(requests.length, 5);
+    for (const request of requests) {
+      assert.deepEqual(request.dimensionFilterGroups, [{
+        groupType: 'and',
+        filters: [
+          { dimension: 'page', operator: 'equals', expression: exactUrl },
+          { dimension: 'query', operator: 'contains', expression: 'technical seo' },
+        ],
+        filterLists: [
+          { dimension: 'country', expressions: ['DEU', 'AUT'] },
+          { dimension: 'device', expressions: ['MOBILE', 'DESKTOP'] },
+        ],
+      }]);
+    }
+    assert.match(digest, /exact page URL filter/i);
+    assert.match(digest, /case-sensitive/i);
+    assert.match(digest, /not property-wide/i);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('weekly digest preserves multi-country and multi-device OR filters across all finalized sections', async () => {
   const originalFetch = globalThis.fetch;
   const requests: Array<{ dimensionFilterGroups?: unknown; dataState?: string }> = [];
