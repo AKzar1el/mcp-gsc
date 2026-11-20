@@ -1178,6 +1178,11 @@ describe('Worker orchestration', () => {
       }>;
     })._registeredPrompts;
     expect(prompts['gsc-brand-traffic-review']).toBeDefined();
+    const brandSchema = (prompts['gsc-brand-traffic-review'] as unknown as {
+      argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean }> };
+    }).argsSchema;
+    expect((await brandSchema.safeParseAsync({ site_url: 'sc-domain:example.com', page_contains: '/de/' })).success).toBe(true);
+    expect((await brandSchema.safeParseAsync({ site_url: 'sc-domain:example.com', page_contains: 'x'.repeat(121) })).success).toBe(false);
 
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     try {
@@ -1185,6 +1190,7 @@ describe('Worker orchestration', () => {
         site_url: 'sc-domain:example.com',
         end_date: '2026-11-10',
         search_type: 'image',
+        page_contains: '/de/',
         countries: ['deu', 'aut'],
         devices: ['mobile', 'desktop'],
       });
@@ -1200,6 +1206,9 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('AUT');
       expect(guidance).toContain('MOBILE');
       expect(guidance).toContain('DESKTOP');
+      expect(guidance).toContain('"page_contains":"/de/"');
+      expect(guidance).toContain('page contains the exact page_contains');
+      expect(guidance).toContain('same URL-section');
       expect(guidance).toContain('identical regional and device');
       expect(guidance).toContain('Never call indexing.request');
       expect(fetchSpy).not.toHaveBeenCalled();

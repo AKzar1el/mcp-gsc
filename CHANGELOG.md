@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Allow `gsc-brand-traffic-review` to compare Google's native branded/non-branded categories within an optional Google-side URL section, preserving page, country and device scopes across both finalized weeks without additional reads.
 - Let `gsc-search-appearance-review` retain optional Google-side URL-section (`page_contains`) and query-topic (`query_contains`) filters across both finalized appearance-discovery weeks and its observed-type page drilldown, with unchanged read quotas and explicit scoped-sample caveats.
 - Let `gsc-daily-onset-review` preserve an optional Google-side `query_contains` topic across its finalized 14/21/35-day date series and supported same-scope drilldowns; fail closed on unsupported `webMultimodal` text-query filtering.
 - Let `gsc-country-movement-review` keep an optional Google-side `query_contains` topic through two finalized country comparisons and any justified page drilldown; reject topic filters on `webMultimodal` rather than silently broadening scope.
