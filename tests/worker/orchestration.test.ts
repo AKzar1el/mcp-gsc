@@ -1219,6 +1219,40 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('guides exact-page weekly client reporting without broadening to sibling URLs', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const weekly = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (input: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-weekly-client-report'];
+    const pageUrl = 'https://example.com/de/pricing/';
+    const parsed = await weekly.argsSchema.safeParseAsync({
+      site_url: 'sc-domain:example.com', page_url: pageUrl, query_contains: 'technical seo',
+      countries: 'DEU,AUT', devices: 'mobile,desktop',
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.page_url).toBe(pageUrl);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const guidance = (await weekly.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"page_url":"https://example.com/de/pricing/"');
+      expect(guidance).toContain('page equals');
+      expect(guidance).toContain('reports.weekly_digest');
+      expect(guidance).toContain('analytics.compare');
+      expect(guidance).toContain('case-sensitive');
+      expect(guidance).not.toContain('page contains the exact page_url');
+      await expect(weekly.handler({ site_url: 'sc-domain:example.com', page_url: 'https://other.test/de/' }))
+        .rejects.toThrow('must belong to the site_url');
+      await expect(weekly.handler({ site_url: 'sc-domain:example.com', page_url: pageUrl, page_contains: '/de/' }))
+        .rejects.toThrow('page_contains or page_url');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a native brand-segmentation review prompt without provider requests', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
