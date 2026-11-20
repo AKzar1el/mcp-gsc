@@ -770,6 +770,42 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('guides exact-page index versus traffic evidence without equating missing rows to zero', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (args: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-url-index-visibility-review'];
+    expect(prompt).toBeDefined();
+    const parsed = await prompt.argsSchema.safeParseAsync({
+      site_url: 'sc-domain:example.com', page_url: 'https://example.com/de/tool/',
+      end_date: '2026-11-10', query_contains: 'seo', search_type: 'image',
+      countries: 'DEU,AUT', devices: 'mobile,desktop',
+    });
+    expect(parsed.success).toBe(true);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const text = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      for (const required of [
+        '"page_url":"https://example.com/de/tool/"', '2026-11-04', '2026-10-28',
+        'analytics.query', 'urls.inspect', 'case-sensitive', 'operator="equals"',
+        'query contains', 'countries', 'devices', 'normal Search Analytics',
+        'one URL Inspection', 'missing', 'not measured zero', 'not a live URL test',
+        'cannot establish causation', 'Never call indexing.request',
+      ]) expect(text).toContain(required);
+      expect(text).not.toContain('page contains page_url');
+      expect(fetchSpy).not.toHaveBeenCalled();
+      await expect(prompt.handler({ site_url: 'sc-domain:example.com', page_url: 'https://elsewhere.test/' }))
+        .rejects.toThrow('must belong to the site_url');
+      await expect(prompt.handler({ site_url: 'sc-domain:example.com', page_url: 'https://example.com/', end_date: '2099-01-01' }))
+        .rejects.toThrow();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a property-bounded batch index review without requesting Google or hiding errors', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
