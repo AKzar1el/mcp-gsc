@@ -861,6 +861,40 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('pins branded and visual search reviews to explicit finalized Pacific weeks', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{
+          messages: Array<{ content: { text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts;
+    const nonfinalDate = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      for (const name of ['gsc-brand-traffic-review', 'gsc-visual-search-review']) {
+        const prompt = prompts[name];
+        const result = await prompt.handler({ site_url: 'sc-domain:example.com', end_date: '2026-11-10' });
+        const guidance = result.messages[0].content.text;
+        for (const window of [
+          '"start_date_a":"2026-11-04"', '"end_date_a":"2026-11-10"',
+          '"start_date_b":"2026-10-28"', '"end_date_b":"2026-11-03"',
+        ]) {
+          expect(guidance, name).toContain(window);
+        }
+        await expect(prompt.handler({
+          site_url: 'sc-domain:example.com', end_date: nonfinalDate,
+        })).rejects.toThrow(/finalized/i);
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('accepts protocol string arguments for list-valued MCP prompts', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
