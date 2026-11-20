@@ -886,6 +886,36 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('keeps URL-section and query-topic filters in Search Appearance discovery and drilldown', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (args: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-search-appearance-review'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      for (const scope of [{ country: 'deu', device: 'mobile' }, { countries: 'deu,usa', devices: 'desktop,mobile' }]) {
+        const parsed = await prompt.argsSchema.safeParseAsync({
+          site_url: 'sc-domain:example.com', end_date: '2026-11-10',
+          page_contains: '/guides/', query_contains: 'seo audit', ...scope,
+        });
+        expect(parsed.success).toBe(true);
+        const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+        expect(guidance).toContain('"page_contains":"/guides/"');
+        expect(guidance).toContain('"query_contains":"seo audit"');
+        expect(guidance).toContain('page contains');
+        expect(guidance).toContain('query contains');
+        expect(guidance).toContain('same page and query filters');
+      }
+      expect((await prompt.argsSchema.safeParseAsync({ site_url: 'sc-domain:example.com', query_contains: '  ' })).success).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('rejects future reporting dates in guided client, brand, and visual prompts without Google calls', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,

@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Let `gsc-search-appearance-review` retain optional Google-side URL-section (`page_contains`) and query-topic (`query_contains`) filters across both finalized appearance-discovery weeks and its observed-type page drilldown, with unchanged read quotas and explicit scoped-sample caveats.
 - Let `gsc-daily-onset-review` preserve an optional Google-side `query_contains` topic across its finalized 14/21/35-day date series and supported same-scope drilldowns; fail closed on unsupported `webMultimodal` text-query filtering.
 - Let `gsc-country-movement-review` keep an optional Google-side `query_contains` topic through two finalized country comparisons and any justified page drilldown; reject topic filters on `webMultimodal` rather than silently broadening scope.
 - Allow `gsc-page-cohort-review` to preserve an optional Google-side `query_contains` topic across finalized landing-page comparisons and supported query drilldowns, and guide scoped traffic-drop follow-ups without manual page-query construction; reject query topics on `webMultimodal`.
