@@ -361,6 +361,45 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('isolates one property-authorized exact page in both query-cohort weeks', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-query-cohort-review'];
+    const args = {
+      site_url: 'sc-domain:example.com',
+      end_date: '2026-11-10',
+      page_url: 'https://example.com/de/guide/',
+      query_contains: 'analytics',
+      countries: 'deu,svn',
+      devices: 'mobile,desktop',
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const parsed = await prompt.argsSchema.safeParseAsync(args);
+      expect(parsed.success).toBe(true);
+      expect(parsed.data?.page_url).toBe(args.page_url);
+      const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"page_url":"https://example.com/de/guide/"');
+      expect(guidance).toContain('page equals the exact page_url');
+      expect(guidance).toContain('identically to BOTH periods');
+      expect(guidance).toContain('"countries":["DEU","SVN"]');
+      expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
+      expect(guidance).toContain('Do not broaden');
+      await expect(prompt.handler({ ...parsed.data, page_contains: '/de/' })).rejects.toThrow();
+      await expect(prompt.handler({ ...parsed.data, page_url: 'https://outsider.example.net/' })).rejects.toThrow();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides a finalized page-cohort review with identical multi-segment scopes and no provider calls', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
