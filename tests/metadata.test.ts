@@ -39,6 +39,7 @@ const rootMcpConfig = readFileSync(resolve(projectRoot, '.mcp.json'), 'utf8');
 const cursorMcpConfig = readFileSync(resolve(projectRoot, 'mcp.json'), 'utf8');
 const windsurfSource = readFileSync(resolve(projectRoot, 'docs/windsurf.md'), 'utf8');
 const visibilityIncidentSource = readFileSync(resolve(projectRoot, 'docs/visibility-incident-investigation.md'), 'utf8');
+const agencyWorkflowSource = readFileSync(resolve(projectRoot, 'docs/agency-weekly-report-example.md'), 'utf8');
 const ciWorkflowSource = readFileSync(resolve(projectRoot, '.github/workflows/ci.yml'), 'utf8');
 const cursorSkills = [
   {
@@ -115,6 +116,22 @@ test('visibility incident playbook links supported prompts and preserves read-on
   ]) {
     assert.ok(visibilityIncidentSource.includes(guardrail), `incident playbook lost guardrail: ${guardrail}`);
   }
+});
+test('agency reporting walkthrough uses existing read-only tools and keeps client data in review', () => {
+  assert.match(readmeSource, /\[Copy a read-only weekly client-brief workflow\]\(docs\/agency-weekly-report-example\.md\)/);
+  for (const toolName of ['server.capabilities', 'sites.list', 'reports.weekly_digest', 'analytics.query']) {
+    assert.ok(indexSource.includes(`'${toolName}'`), `agency walkthrough references missing tool: ${toolName}`);
+    assert.ok(agencyWorkflowSource.includes(`\`${toolName}\``) || agencyWorkflowSource.includes(toolName),
+      `agency walkthrough omits ${toolName}`);
+  }
+  for (const guardrail of [
+    'GSC_ACCESS_MODE=readonly', 'exact', 'Pacific Time', 'missing rows',
+    'human review', 'Do not email, share, publish', 'same', 'normal',
+  ]) {
+    assert.ok(agencyWorkflowSource.includes(guardrail), `agency walkthrough lost safeguard: ${guardrail}`);
+  }
+  assert.ok(!agencyWorkflowSource.includes('sample clicks:'),
+    'agency walkthrough must not fabricate an observed client metric');
 });
 test('package release versions remain aligned across machine-readable metadata', () => {
   const expectedVersion = packageJson.version;
