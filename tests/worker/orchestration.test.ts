@@ -211,6 +211,53 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('keeps a query-topic filter throughout daily onset and rejects unsupported multimodal filtering', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-daily-onset-review'];
+    const parsed = await prompt.argsSchema.safeParseAsync({
+      site_url: 'sc-domain:example.com',
+      end_date: '2026-11-10',
+      search_type: 'web',
+      page_contains: '/tools/',
+      query_contains: ' technical seo ',
+      countries: 'deu,aut',
+      devices: 'mobile,desktop',
+    });
+    expect(parsed.success).toBe(true);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"query_contains":"technical seo"');
+      expect(guidance).toContain('query contains the exact query_contains');
+      expect(guidance).toContain('same query_contains topic');
+      expect(guidance).toContain('filterLists');
+      const topicOnly = (await prompt.handler({
+        site_url: 'sc-domain:example.com',
+        end_date: '2026-11-10',
+        search_type: 'web',
+        query_contains: 'technical seo',
+      })).messages[0].content.text;
+      expect(topicOnly).toContain('omit page filtering');
+      expect(topicOnly).toContain('query contains the exact query_contains topic');
+      expect(topicOnly).not.toContain('page contains the exact page_contains');
+      expect((await prompt.argsSchema.safeParseAsync({
+        site_url: 'sc-domain:example.com', query_contains: '  ',
+      })).success).toBe(false);
+      await expect(prompt.handler({ ...parsed.data, search_type: 'webMultimodal' })).rejects.toThrow(/webMultimodal/);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides bounded top-query cohort movement without Google calls on prompt retrieval', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
