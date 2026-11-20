@@ -39,6 +39,7 @@ const rootMcpConfig = readFileSync(resolve(projectRoot, '.mcp.json'), 'utf8');
 const cursorMcpConfig = readFileSync(resolve(projectRoot, 'mcp.json'), 'utf8');
 const windsurfSource = readFileSync(resolve(projectRoot, 'docs/windsurf.md'), 'utf8');
 const visibilityIncidentSource = readFileSync(resolve(projectRoot, 'docs/visibility-incident-investigation.md'), 'utf8');
+const agencyWorkflowSource = readFileSync(resolve(projectRoot, 'docs/agency-weekly-report-example.md'), 'utf8');
 const ciWorkflowSource = readFileSync(resolve(projectRoot, '.github/workflows/ci.yml'), 'utf8');
 const cursorSkills = [
   {
@@ -115,6 +116,22 @@ test('visibility incident playbook links supported prompts and preserves read-on
   ]) {
     assert.ok(visibilityIncidentSource.includes(guardrail), `incident playbook lost guardrail: ${guardrail}`);
   }
+});
+test('agency reporting walkthrough uses existing read-only tools and keeps client data in review', () => {
+  assert.match(readmeSource, /\[Copy a read-only weekly client-brief workflow\]\(docs\/agency-weekly-report-example\.md\)/);
+  for (const toolName of ['server.capabilities', 'sites.list', 'reports.weekly_digest', 'analytics.query']) {
+    assert.ok(indexSource.includes(`'${toolName}'`), `agency walkthrough references missing tool: ${toolName}`);
+    assert.ok(agencyWorkflowSource.includes(`\`${toolName}\``) || agencyWorkflowSource.includes(toolName),
+      `agency walkthrough omits ${toolName}`);
+  }
+  for (const guardrail of [
+    'GSC_ACCESS_MODE=readonly', 'exact', 'Pacific Time', 'missing rows',
+    'human review', 'Do not email, share, publish', 'same', 'normal',
+  ]) {
+    assert.ok(agencyWorkflowSource.includes(guardrail), `agency walkthrough lost safeguard: ${guardrail}`);
+  }
+  assert.ok(!agencyWorkflowSource.includes('sample clicks:'),
+    'agency walkthrough must not fabricate an observed client metric');
 });
 test('package release versions remain aligned across machine-readable metadata', () => {
   const expectedVersion = packageJson.version;
@@ -1097,7 +1114,7 @@ test('weekly digest country scope is discoverable and documented as ISO alpha-3'
   const digestReadmeRow = readmeSource.split('**`reports.weekly_digest`**')[1]?.split('\n')[0] ?? '';
   assert.match(catalog, /country/);
   assert.match(registration, /country:\s*z\.string/);
-  assert.match(indexSource, /device,\s*query_contains,\s*country,\s*countries,\s*devices,\s*\);\s*return toolResponse/);
+  assert.match(indexSource, /device,\s*query_contains,\s*country,\s*countries,\s*devices,\s*page_url,\s*\);\s*return toolResponse/);
   assert.match(registration, /countries:\s*z\.array/);
   assert.match(registration, /devices:\s*z\.array/);
   assert.match(readmeSource, /weekly reports, `reports\.weekly_digest` also accepts `countries`/);
@@ -1117,7 +1134,7 @@ test('capabilities catalog advertises supported insight filters and weekly repor
     ['insights.query_pages', ['page_contains', 'country', 'device']],
     ['insights.quick_wins', ['page_contains', 'query_contains', 'country', 'countries', 'device', 'devices']],
     ['insights.cannibalization', ['page_contains', 'query_contains', 'country', 'device']],
-    ['insights.content_decay', ['page_contains', 'query_contains', 'country', 'device']],
+    ['insights.content_decay', ['page_contains', 'query_contains', 'country', 'countries', 'device', 'devices']],
     ['reports.weekly_digest', ['search_type', 'page_contains', 'device', 'devices', 'country', 'countries', 'query_contains']],
   ] as const) {
     const entry = catalog.split(`name: '${toolName}'`)[1]?.split('\n  },')[0] ?? '';
@@ -1200,6 +1217,18 @@ test('content decay device scope is discoverable and consistent between comparis
   assert.match(schema, /CONTENT_DECAY_DEVICE_SCHEMA/);
   assert.match(schema, /desktop.*mobile.*tablet/);
   assert.match(readmeSource, /For `insights\.content_decay`, optional `device` selects/);
+});
+
+test('content decay exposes bounded distinct country/device lists and truthful combined scope', () => {
+  const schema = readFileSync(resolve(projectRoot, 'src/content-decay-schema.ts'), 'utf8');
+  const registration = indexSource.match(/this\.server\.registerTool\(\s*'insights\.content_decay'([\s\S]*?)outputSchema:/)?.[1] ?? '';
+  assert.match(schema, /CONTENT_DECAY_COUNTRIES_SCHEMA[\s\S]*?\.min\(1\)\.max\(10\)/);
+  assert.match(schema, /CONTENT_DECAY_DEVICES_SCHEMA[\s\S]*?\.min\(1\)\.max\(3\)/);
+  assert.match(registration, /countries:\s*CONTENT_DECAY_COUNTRIES_SCHEMA/);
+  assert.match(registration, /devices:\s*CONTENT_DECAY_DEVICES_SCHEMA/);
+  assert.match(indexSource, /const CONTENT_DECAY_OUTPUT_SCHEMA = \{[\s\S]*?countries:\s*z\.array/);
+  assert.match(indexSource, /const CONTENT_DECAY_OUTPUT_SCHEMA = \{[\s\S]*?devices:\s*z\.array/);
+  assert.match(readmeSource, /For `insights\.content_decay`, optional `countries` and `devices`/);
 });
 
 test('content decay advertises an optional finalized historical comparison end date', () => {

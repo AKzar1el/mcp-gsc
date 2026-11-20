@@ -5,6 +5,7 @@ import {
 } from './google';
 import type { GoogleAccessTokenProvider } from './access-token-lifecycle';
 import { getSearchConsoleCalendarDate } from './date-validation';
+import { assertUrlWithinSearchConsoleProperty } from './indexing-property-authorization';
 
 interface DateRanges {
   currentStart: string;
@@ -105,7 +106,12 @@ export async function generateWeeklyDigest(
   country?: string,
   countries?: string[],
   devices?: Array<'desktop' | 'mobile' | 'tablet'>,
+  pageUrl?: string,
 ): Promise<string> {
+  if (pageContains && pageUrl) {
+    throw new Error('Use page_contains or page_url, not both.');
+  }
+  if (pageUrl) assertUrlWithinSearchConsoleProperty(pageUrl, siteUrl, 'page_url');
   if (country && countries?.length) {
     throw new Error('Use country or countries, not both.');
   }
@@ -117,7 +123,9 @@ export async function generateWeeklyDigest(
   // Explicit recent dates opt into Google's fresh rows; historical/default dates remain finalized-only.
   const requestedDataState = isPreliminary ? 'all' : 'final';
   const filters: DimensionFilterGroup['filters'] = [];
-  if (pageContains) {
+  if (pageUrl) {
+    filters.push({ dimension: 'page', operator: 'equals', expression: pageUrl });
+  } else if (pageContains) {
     filters.push({ dimension: 'page', operator: 'contains', expression: pageContains });
   }
   if (device) {
@@ -139,9 +147,11 @@ export async function generateWeeklyDigest(
   const dimensionFilterGroups: DimensionFilterGroup[] | undefined = filters.length > 0 || filterLists.length > 0
     ? [{ groupType: 'and', filters, ...(filterLists.length ? { filterLists } : {}) }]
     : undefined;
-  const pageScopeNotice = pageContains
-    ? `> **Page URL filter:** Metrics, queries and pages include only URLs containing ${escapeMarkdownInline(pageContains)} (case-insensitive); this is not property-wide traffic.`
-    : undefined;
+  const pageScopeNotice = pageUrl
+    ? `> **Exact page URL filter:** Metrics, queries and pages are restricted to ${escapeMarkdownInline(pageUrl)} using Google's case-sensitive page equals filter; this is not property-wide traffic or sibling-page traffic.`
+    : pageContains
+      ? `> **Page URL filter:** Metrics, queries and pages include only URLs containing ${escapeMarkdownInline(pageContains)} (case-insensitive); this is not property-wide traffic.`
+      : undefined;
   const deviceScopeNotice = devices?.length
     ? `> **Device filters:** ${devices.map((value) => value[0].toUpperCase() + value.slice(1)).join(', ')} (OR within selected devices). All figures are limited to those devices and are not property-wide totals.`
     : device

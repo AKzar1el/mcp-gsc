@@ -20,7 +20,7 @@ Check `server.capabilities` for access mode, then `sites.get` for the exact prop
 
 ## 2. Find when the change appeared
 
-Use **`gsc-daily-onset-review`** with the fixed `site_url`, a finalized `end_date`, selected `search_type` and optional filters. It guides one date-grouped `analytics.query` across 21 finalized Pacific days, with same-weekday comparisons only where both dates were returned.
+Use **`gsc-daily-onset-review`** with the fixed `site_url`, a finalized `end_date`, selected `search_type` and optional filters. Its optional `lookback_days` chooses 14, 21 (default), or 35 finalized Pacific days for one date-grouped `analytics.query` (one normal read quota unit), with same-weekday comparisons only where both dates were returned.
 
 Record the first *observed* lower day, the last comparable earlier day, the number of returned dates and any gaps. Search Console may omit days and return incomplete data. Missing days are **unknown, not zero**; do not sum incomplete returned days as verified full-week totals or claim an exact onset when the relevant dates are absent.
 
@@ -32,7 +32,7 @@ Choose the first relevant branch below rather than invoking every prompt:
 
 | Question | Read-only workflow | What it can establish |
 | --- | --- | --- |
-| Is this a general Web/Image/Video/News-tab decline or one scoped segment? | `gsc-traffic-drop-triage` | Matched-period observations and a prioritized follow-up. Country/device lists use identical Google-side `filterLists`; single-value legacy helpers cannot substitute for a multi-value scope. |
+| Is this a general Web/Image/Video/News-tab decline or one scoped segment? | `gsc-traffic-drop-triage` | Matched-period observations and a prioritized follow-up. Country/device lists use identical Google-side `filterLists`; direct page/query drilldowns can preserve lists when exact date, search surface and filters match. |
 | Which observed search queries changed? | `gsc-query-cohort-review` | Changes only for query rows returned in both finalized seven-day samples. Do **not** use a query workflow for Discover, Google News app or `webMultimodal`. |
 | Which observed landing pages changed? | `gsc-page-cohort-review` | Changes only for returned common page URLs; supports `webMultimodal` page analysis without a text-query drilldown. |
 | Is the change concentrated in searcher geography? | `gsc-country-movement-review` | An observed country breakdown, **not** URL-language attribution or a complete country census. |

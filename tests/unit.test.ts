@@ -38,6 +38,8 @@ import {
   CANNIBALIZATION_MIN_IMPRESSIONS_SCHEMA,
   CANNIBALIZATION_MIN_PAGE_PERCENTAGE_SCHEMA,
   CANNIBALIZATION_COUNTRY_SCHEMA,
+  CANNIBALIZATION_COUNTRIES_SCHEMA,
+  CANNIBALIZATION_DEVICES_SCHEMA,
   CANNIBALIZATION_QUERY_CONTAINS_SCHEMA,
 } from '../src/cannibalization-schema';
 import {
@@ -416,6 +418,19 @@ test('cannibalization searcher-country scope is optional, trimmed, and limited t
   assert.equal(CANNIBALIZATION_COUNTRY_SCHEMA.safeParse('  deu  ').data, 'deu');
   for (const value of ['DE', 'DEUT', '12A', 'D-E', '']) {
     assert.equal(CANNIBALIZATION_COUNTRY_SCHEMA.safeParse(value).success, false);
+  }
+});
+
+test('cannibalization combined-market selectors are bounded, distinct and keep single scope optional', () => {
+  assert.deepEqual(CANNIBALIZATION_COUNTRIES_SCHEMA.parse([' deu ', 'USA']), ['deu', 'USA']);
+  assert.deepEqual(CANNIBALIZATION_DEVICES_SCHEMA.parse(['mobile', 'desktop']), ['mobile', 'desktop']);
+  assert.equal(CANNIBALIZATION_COUNTRIES_SCHEMA.safeParse(undefined).success, true);
+  assert.equal(CANNIBALIZATION_DEVICES_SCHEMA.safeParse(undefined).success, true);
+  for (const invalid of [[], ['DEU', 'deu'], ['DE'], Array(11).fill('USA')]) {
+    assert.equal(CANNIBALIZATION_COUNTRIES_SCHEMA.safeParse(invalid).success, false);
+  }
+  for (const invalid of [[], ['desktop', 'desktop'], ['watch'], Array(4).fill('mobile')]) {
+    assert.equal(CANNIBALIZATION_DEVICES_SCHEMA.safeParse(invalid).success, false);
   }
 });
 
