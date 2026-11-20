@@ -1376,6 +1376,7 @@ describe('Worker orchestration', () => {
       }
       expect(guidance).toContain('not proof');
       expect(guidance).toContain('not property-wide');
+      expect(guidance).toContain('pass the same page_contains URL-section filter');
       expect(guidance).toContain('Never request indexing');
       const combined = await prompts['gsc-query-overlap-review'].handler({
         site_url: 'sc-domain:example.com',
