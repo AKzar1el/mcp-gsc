@@ -327,6 +327,7 @@ describe('Worker orchestration', () => {
       end_date: '2026-06-20',
       search_type: 'image',
       page_contains: '/tools/',
+      query_contains: 'technical seo',
       countries: 'deu,svn',
       devices: 'mobile,desktop',
     });
@@ -345,6 +346,9 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('data_state="final"');
       expect(guidance).toContain('"countries":["DEU","SVN"]');
       expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
+      expect(guidance).toContain('"query_contains":"technical seo"');
+      expect(guidance).toContain('query contains');
+      expect(guidance).toContain('same query topic');
       expect(guidance).toContain('filterLists');
       expect(guidance).toContain('identically to BOTH');
       expect(guidance).toContain('not measured zero');
@@ -352,7 +356,9 @@ describe('Worker orchestration', () => {
       expect(fetchSpy).not.toHaveBeenCalled();
       await expect(prompt.handler({ ...parsed.data, country: 'DEU' })).rejects.toThrow();
       await expect(prompt.handler({ ...parsed.data, device: 'mobile' })).rejects.toThrow();
-      expect((await prompt.argsSchema.safeParseAsync({ ...parsed.data, search_type: 'webMultimodal' })).success).toBe(true);
+      expect((await prompt.argsSchema.safeParseAsync({ ...parsed.data, query_contains: '   ' })).success).toBe(false);
+      await expect(prompt.handler({ ...parsed.data, search_type: 'webMultimodal' })).rejects.toThrow('Query topic filtering is not available for webMultimodal');
+      expect((await prompt.argsSchema.safeParseAsync({ ...parsed.data, search_type: 'webMultimodal', query_contains: undefined })).success).toBe(true);
     } finally {
       fetchSpy.mockRestore();
     }
@@ -456,7 +462,8 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('filterLists');
       expect(guidance).toContain('OR within');
       expect(guidance).toContain('insights.page_queries preserves the query_contains topic');
-      expect(guidance).toContain('do not use gsc-page-cohort-review');
+      expect(guidance).toContain('gsc-page-cohort-review with the same query_contains topic');
+      expect(guidance).not.toContain('do not use gsc-page-cohort-review');
       expect(guidance).not.toContain('cannot preserve multi-value scopes');
       expect(guidance).toContain('reports.weekly_digest and insights.content_decay preserve the same countries/devices arrays');
       expect(guidance).toContain('missing days are unknown');
