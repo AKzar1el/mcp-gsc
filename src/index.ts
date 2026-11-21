@@ -1940,6 +1940,17 @@ class GscMcpRuntime {
           date.setUTCDate(date.getUTCDate() + days);
           return date.toISOString().slice(0, 10);
         };
+        const comparisonFilters = [
+          page_url
+            ? 'page equals the exact page_url (case-sensitive Google-side equality, not a substring)'
+            : page_contains ? 'page contains the exact page_contains' : null,
+          selectedCountries
+            ? 'Google-side country filterLists with uppercase exact expressions for the supplied countries (OR within the country dimension, AND with page and other dimensions)'
+            : country ? 'country equals the uppercase singular ISO alpha-3 code' : null,
+        ].filter((value): value is string => value !== null);
+        const comparisonFilterGuidance = comparisonFilters.length > 0
+          ? `Use one AND dimension_filter_groups group with ${comparisonFilters.join(' and ')}.`
+          : 'No optional page or country scope was supplied: omit dimension_filter_groups entirely in both periods.';
         return {
           messages: [{
             role: 'user' as const,
@@ -1954,7 +1965,7 @@ class GscMcpRuntime {
                   countries: selectedCountries ?? null,
                 }),
                 '1. Confirm read access to exactly this Search Console property with server.capabilities and sites.get. Do not read another property or assume credentials alone imply authorization.',
-                `2. Call analytics.compare once with these adjacent nonoverlapping seven-day Pacific windows, dimension=device, data_state=final, the identical search_type, sort_by=absolute_impression_change, limit=10, start_row=0. Use one AND dimension_filter_groups with ${page_url ? 'page equals the exact page_url (case-sensitive Google-side equality, not a substring)' : 'page contains the exact page_contains when supplied'}. For country scope use either country equals the uppercase singular ISO alpha-3 code or Google-side filterLists with uppercase exact expressions for the supplied countries (OR within the country dimension, AND with page and other dimensions). Apply the same country list or singular country and page scope identically to both weeks, never postfilter the rows or narrow a list to one country. Do not filter device while grouping by device. This costs two normal Search Analytics requests plus any charged retries.`,
+                `2. Call analytics.compare once with these adjacent nonoverlapping seven-day Pacific windows, dimension=device, data_state=final, the identical search_type, sort_by=absolute_impression_change, limit=10, start_row=0. ${comparisonFilterGuidance} Apply the same country list or singular country and page scope identically to both weeks when supplied; never narrow a list to one country. Do not postfilter rows or filter device while grouping by device. This costs two normal Search Analytics requests plus any charged retries.`,
                 '3. Show only observed DESKTOP, MOBILE and TABLET keys present in both returned periods, including real clicks, impressions and CTR. Separate observed impression losses from gains, with percentage changes only when the observed baseline is positive. If a device appears in one response only, it is a follow-up lead, not a confirmed lost or new device segment: missing rows are not zero. An empty result is insufficient evidence, not zero traffic. Returned rows may be incomplete, so do not call the device sum a property-wide total.',
                 '4. Searcher device describes Google\'s reported search context, not the device of a crawler, mobile-friendliness of the page, or a proven mobile indexing problem. A page_contains filter gives section-only numbers; a page_url filter gives exact-page-only numbers, not sibling URLs or property totals. Country and countries select searcher geography rather than URL locale. A multi-country filter is one combined searcher-country scope, not separate country-by-country device measurements. Do not claim rankings, indexing, algorithm penalties, or technical causality from these comparisons alone.',
                 '5. For search_type="webMultimodal", compare image-initiated Google Lens/Circle to Search device observations only, with no text-query dimension or filter; do not add these figures to normal Web or Image-tab totals as though disjoint. For discover or googleNews, average position is unavailable and must remain null rather than an invented zero or rank.',
