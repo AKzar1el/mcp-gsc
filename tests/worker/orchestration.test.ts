@@ -696,6 +696,33 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('omits absent page and query filters from country-movement guidance', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-country-movement-review'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const unscoped = (await prompt.handler({ site_url: 'sc-domain:example.com', search_type: 'web' })).messages[0].content.text;
+      expect(unscoped).toContain('omit dimension_filter_groups entirely');
+      expect(unscoped).not.toContain('page contains the exact page_contains');
+      expect(unscoped).not.toContain('query contains the exact query_contains topic');
+
+      const deviceOnly = (await prompt.handler({ site_url: 'sc-domain:example.com', search_type: 'web', device: 'mobile' })).messages[0].content.text;
+      expect(deviceOnly).toContain('device equals the uppercase singular device');
+      expect(deviceOnly).not.toContain('page contains the exact page_contains');
+      expect(deviceOnly).not.toContain('query contains the exact query_contains topic');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('preserves exact-page scope when comparing observed searcher-country movement', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
