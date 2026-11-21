@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Let `gsc-visual-search-review` compare finalized Google Lens/Circle to Search traffic for a property-validated exact `page_url`, excluding sibling pages and avoiding redundant page-grouped reads without increasing quota.
 - Allow `insights.content_decay` to assess one property-validated exact landing page across both finalized comparison periods with Google's case-sensitive page equality, excluding sibling URLs while retaining all existing searcher/query scopes and read quotas.
 - Allow `insights.quick_wins` and `gsc-quick-win-review` to isolate one property-validated `page_url` with Google-side case-sensitive page equality before pagination, preserving searcher/topic filters, read quotas, default behavior and missing-row caveats while excluding sibling pages.
 - Let `gsc-brand-traffic-review` compare native branded and non-branded Search results for one property-validated `page_url`, applying Google-side case-sensitive page equality across both finalized weeks while preserving country/device lists, existing URL-section mode and read quotas.
