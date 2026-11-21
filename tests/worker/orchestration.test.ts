@@ -1638,6 +1638,33 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('omits absent Google-side filters in unscoped and list-only weekly client reports', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const weekly = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-weekly-client-report'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const unscoped = (await weekly.handler({
+        site_url: 'sc-domain:example.com', search_type: 'web',
+      })).messages[0].content.text;
+      expect(unscoped).toContain('omit dimension_filter_groups entirely in both periods');
+
+      const listOnly = (await weekly.handler({
+        site_url: 'sc-domain:example.com', search_type: 'web',
+        countries: ['DEU', 'AUT'], devices: ['mobile', 'desktop'],
+      })).messages[0].content.text;
+      expect(listOnly).toContain('omit absent page and query filters');
+      expect(listOnly).toContain('Google-side filterLists');
+      expect(listOnly).toContain('identical dimension_filter_groups');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides exact-page weekly client reporting without broadening to sibling URLs', async () => {
     const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
     const weekly = (server as unknown as {
