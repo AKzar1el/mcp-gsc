@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Let the read-only weekly client-report MCP prompt guide bounded multi-country and multi-device digests without narrowing the combined Search Console segment or implying that single-value drilldowns retain those filters.
 
 ### Changed
+- Advertise a read-only default for clients honoring MCP Registry environment metadata without changing the legacy implicit launcher fallback or existing privileged configurations.
 - Keep the selected `query_contains` topic and `page_contains` URL section in `gsc-quick-win-review` follow-up guidance: exact-page `insights.page_queries` retains the topic, while exact-query `insights.query_pages` retains the URL-section filter and original country/device scope.
 - Reject repeated searcher-country or device values in every bounded MCP prompt list, including country codes duplicated with different case; prevent ambiguous repeated Google-side filter expressions before any provider call.
 - Let the country-movement review retain up to three combined searcher devices across both finalized comparison periods and the optional page drilldown using existing Google-side filterLists, without expanding API requests.
