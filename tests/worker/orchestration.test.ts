@@ -1125,6 +1125,9 @@ describe('Worker orchestration', () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     try {
       const guidance = (await prompt.handler({ site_url: 'sc-domain:example.com' })).messages[0].content.text;
+      expect(guidance).toContain('omit the page filter');
+      expect(guidance).not.toContain('page contains page_contains');
+      expect(guidance).toContain('omit dimension_filter_groups entirely');
       expect(guidance).toContain(`"end_date":"${dayOffset(-3)}"`);
       expect(guidance).toContain(`"start_date_a":"${dayOffset(-9)}"`);
       expect(guidance).toContain(`"end_date_a":"${dayOffset(-3)}"`);
@@ -1158,6 +1161,8 @@ describe('Worker orchestration', () => {
       });
       expect(parsed.success).toBe(true);
       const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('omit the page filter');
+      expect(guidance).not.toContain('page contains page_contains');
       expect(guidance).toContain('"countries":["DEU","USA"]');
       expect(guidance).toContain('"devices":["DESKTOP","MOBILE"]');
       expect(guidance).toContain('filterLists');
