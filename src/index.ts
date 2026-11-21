@@ -1172,6 +1172,7 @@ const PROMPT_CATALOG = [
   { name: 'gsc-traffic-drop-triage', description: 'Investigate observed search traffic declines while preserving date, surface and segment scope.' },
   { name: 'gsc-daily-onset-review', description: 'Inspect daily Search Analytics evidence to locate possible visibility decline onset.' },
   { name: 'gsc-country-movement-review', description: 'Compare observed searcher-country visibility across matched finalized periods.' },
+  { name: 'gsc-device-movement-review', description: 'Compare observed desktop, mobile and tablet visibility across matched finalized periods.' },
   { name: 'gsc-query-cohort-review', description: 'Compare observed top-query cohorts without interpreting missing rows as zero.' },
   { name: 'gsc-page-cohort-review', description: 'Compare observed landing-page cohorts across two finalized periods.' },
   { name: 'gsc-url-index-visibility-review', description: 'Cross-check one exact page\'s finalized Search Analytics visibility against optional Google-indexed URL evidence without inventing causation.' },
