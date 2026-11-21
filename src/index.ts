@@ -2016,6 +2016,17 @@ class GscMcpRuntime {
           date.setUTCDate(date.getUTCDate() + days);
           return date.toISOString().slice(0, 10);
         };
+        const queryCohortFilters: string[] = [];
+        if (page_url) queryCohortFilters.push('page equals the exact page_url (Google-side case-sensitive equality, not a substring)');
+        else if (page_contains) queryCohortFilters.push('page contains the supplied page_contains URL section');
+        if (query_contains) queryCohortFilters.push('query contains the supplied query_contains topic');
+        if (country) queryCohortFilters.push(`country equals ${country.toUpperCase()}`);
+        if (device) queryCohortFilters.push(`device equals ${device.toUpperCase()}`);
+        if (countries) queryCohortFilters.push('countries filterLists with uppercase exact expressions');
+        if (devices) queryCohortFilters.push('devices filterLists with uppercase exact expressions');
+        const queryCohortFilterGuidance = queryCohortFilters.length
+          ? `Apply one AND dimension_filter_groups identically to BOTH periods using only these supplied Google-side filters: ${queryCohortFilters.join(', ')}.`
+          : 'No optional page, query, country or device scope was supplied: omit dimension_filter_groups entirely in BOTH periods.';
         return {
           messages: [{
             role: 'user' as const,
@@ -2033,7 +2044,7 @@ class GscMcpRuntime {
                   devices: devices?.map((value) => value.toUpperCase()) ?? null,
                 }),
                 '1. Verify read access to this exact Search Console property with server.capabilities and sites.get. Do not access another property or presume stored credentials are accepted.',
-                `2. Call analytics.query exactly twice, once for each seven-day Pacific window, with dimensions=["query"], row_limit=100, start_row=0, data_state="final", aggregation_type="auto" and the same search_type. Apply one AND dimension_filter_groups identically to BOTH periods. For the page dimension, ${page_url ? 'page equals the exact page_url (Google-side case-sensitive equality, not a substring)' : page_contains ? 'page contains the supplied page_contains URL section' : 'omit any page filter'}. Use ordinary filters for optional query contains, single country equals and single device equals; for countries or devices lists instead use filterLists with uppercase exact expressions (OR within each list, AND across dimensions and other filters). Never combine a filter and filterLists for the same dimension. Apply all scopes at Google, not by local postfiltering; both reads and any retries consume normal quotas.`,
+                `2. Call analytics.query exactly twice, once for each seven-day Pacific window, with dimensions=["query"], row_limit=100, start_row=0, data_state="final", aggregation_type="auto" and the same search_type. ${queryCohortFilterGuidance} Use ordinary filters for supplied singular dimensions; for supplied countries or devices lists instead use Google-side filterLists with uppercase exact expressions (OR within each list, AND across dimensions and other filters). Never combine a filter and filterLists for the same dimension. Apply all scopes at Google, not by local postfiltering; both reads and any retries consume normal quotas.`,
                 '3. Compare exact query keys actually observed in BOTH returned 100-row samples, using actual clicks, impressions and CTR. Report at most five substantial measured declines and three gains with both period metrics. Percent changes need a nonzero measured baseline. News Search has no reliable average-position metric; elsewhere average position is not a live rank.',
                 '4. Separately label up to three baseline-only and latest-only query examples as FOLLOW-UP CANDIDATES, never confirmed lost, gained or zero-click queries. A missing row is not measured zero traffic: Google returns click-sorted, incomplete top-row samples, and ties or cutoffs change cohorts. Even a full response is not an exhaustive census. If a period has no rows, report insufficient evidence, not vanished traffic.',
                 page_url
