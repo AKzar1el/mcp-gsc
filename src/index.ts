@@ -1714,6 +1714,15 @@ class GscMcpRuntime {
         if (device && devices) throw new Error('Supply either device or devices, not both.');
         const multiScope = Boolean(countries || devices);
         const directDateCompare = multiScope || Boolean(page_url);
+        const singleScopeFilters = [
+          page_contains ? 'page contains the supplied URL section' : null,
+          query_contains ? 'query contains the optional search topic' : null,
+          country ? 'country equals its uppercase ISO alpha-3 code' : null,
+          device ? 'device equals its uppercase type' : null,
+        ].filter((filter): filter is string => filter !== null);
+        const singleScopeCompareGuidance = singleScopeFilters.length
+          ? `Apply the same AND dimension_filter_groups in both periods using only the supplied selectors: ${singleScopeFilters.join(', ')}.`
+          : 'No optional selectors were supplied: omit dimension_filter_groups entirely in both periods.';
         const today = getSearchConsoleCalendarDate();
         if (end_date) assertDateNotInFuture(end_date, today, 'end_date');
         let finalizedWindows: Record<string, string> | null = null;
@@ -1753,7 +1762,7 @@ class GscMcpRuntime {
                 ? '4. If a measured exact-page decline needs a longer timeline, recommend a separately justified gsc-daily-onset-review with the same page_url, query_contains (if any), search_type, country/device or countries/devices arrays and finalized end date. Its page equals filter preserves this same URL without merging sibling traffic; it is not an automatic provider call. Do not pass page_url to gsc-page-cohort-review or convert it to page_contains.'
                 : multiScope
                 ? '4. If the measured drop merits landing-page investigation and quota permits, use gsc-page-cohort-review with the same query_contains topic (if any), exact property, finalized end date, search_type, page_contains URL section and countries/devices arrays or singular selectors. That prompt preserves Google-side query contains, page and searcher-segment filters identically in two adjacent finalized seven-day page queries. This is an independently justified read-only follow-up, not an automatic call; missing sampled pages are not measured zero traffic.'
-                : '4. When a targeted hypothesis remains, use analytics.compare with two equal-length, nonoverlapping finalized Pacific-date periods, dimension=page and the same search_type. Apply identical Google-side filters to both periods via one AND dimension_filter_groups: page contains the supplied URL section, query contains the optional search topic, country equals its uppercase ISO alpha-3 code, and device equals its uppercase type when provided. Never mix search surfaces, filtered segments or different date lengths. Interpret only keys observed in both returned samples; missing rows are not zero traffic or proof of deindexing.',
+                : `4. When a targeted hypothesis remains, use analytics.compare with two equal-length, nonoverlapping finalized Pacific-date periods, dimension=page and the same search_type. ${singleScopeCompareGuidance} Never mix search surfaces, filtered segments or different date lengths. Interpret only keys observed in both returned samples; missing rows are not zero traffic or proof of deindexing.`,
               page_url
                 ? '5. If more evidence would change a decision and normal read quota remains, choose at most one optional read-only follow-up: insights.content_decay with compare_days=28, the original site_url, page_url (Google-side case-sensitive equals in both periods), same query_contains topic (if any), search_type, finalized end_date, and identical singular or plural country/device scopes for longer-window page decline evidence; OR insights.page_queries with the same exact page_url, query_contains topic, selected finalized window, search_type and searcher scopes for query context. Never replace page_url with page_contains, expand to property-wide traffic or treat absent rows as measured zero. Each request and retry consumes normal quota; prompt retrieval alone makes no Google request.'
                 : multiScope
