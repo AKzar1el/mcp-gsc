@@ -9,6 +9,9 @@ test('sitemap URL validation rejects raw whitespace, controls, and backslashes',
     'https://example.com/sitemap.xml\n',
     'https://example.com/sitemap.xml\t',
     'https://example.com/news sitemap.xml',
+    'https://example.com/news\u00a0sitemap.xml',
+    'https://example.com/news\u2003sitemap.xml',
+    'https://example.com/news\u0085sitemap.xml',
     'https://example.com\\sitemap.xml',
     'https://example.com/sitemap\u007f.xml',
   ]) {
@@ -19,6 +22,7 @@ test('sitemap URL validation rejects raw whitespace, controls, and backslashes',
 test('percent-encoded URL path characters remain valid', () => {
   for (const url of [
     'https://example.com/news%20sitemap.xml',
+    'https://example.com/news%C2%A0sitemap.xml',
     'https://example.com/path%5Csegment.xml',
     'https://example.com/sitemap.xml?part=1',
   ]) {

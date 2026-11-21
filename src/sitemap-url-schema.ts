@@ -2,9 +2,9 @@ import { z } from 'zod';
 
 export const SITEMAP_URL_SCHEMA = z
   .string()
-  // Check raw bytes before Zod URL parsing normalizes whitespace and backslashes.
+  // Check the original string before URL parsing normalizes whitespace and backslashes.
   .refine(
-    (value) => value === value.trim() && !/[\x00-\x20\x7f\\]/.test(value),
+    (value) => value === value.trim() && !/[\p{White_Space}\p{Cc}\\]/u.test(value),
     'Sitemap URL must not contain raw whitespace, control characters, or backslashes.',
   )
   .url()
