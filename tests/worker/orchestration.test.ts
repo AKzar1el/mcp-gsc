@@ -547,6 +547,10 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('dimension="page", operator="equals"');
       expect(guidance).toContain('query contains');
       expect(guidance).toContain('filterLists');
+      expect(guidance).toContain('insights.content_decay with compare_days=28');
+      expect(guidance).toContain('page_url (Google-side case-sensitive equals in both periods)');
+      expect(guidance).toContain('same query_contains');
+      expect(guidance).not.toContain('both accept URL substrings rather than this exact page');
       expect(guidance).not.toContain('2. Start with reports.weekly_digest');
       expect(guidance).toContain('missing days are unknown');
       expect(fetchSpy).not.toHaveBeenCalled();
