@@ -808,6 +808,34 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('omits absent page and country filters from device-movement guidance', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-device-movement-review'];
+    const base = { site_url: 'sc-domain:example.com', end_date: '2026-06-20', search_type: 'web' };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const compareStep = (args: Record<string, unknown>): Promise<string> =>
+        prompt.handler(args).then(({ messages }) => messages[0].content.text.split('2. Call analytics.compare')[1].split('\n3. Show only')[0]);
+      const unscoped = await compareStep(base);
+      expect(unscoped).toContain('omit dimension_filter_groups entirely');
+      expect(unscoped).not.toContain('page contains the exact page_contains');
+      const countryOnly = await compareStep({ ...base, country: 'deu' });
+      expect(countryOnly).toContain('country equals');
+      expect(countryOnly).not.toContain('page contains the exact page_contains');
+      const pageOnly = await compareStep({ ...base, page_contains: '/de/' });
+      expect(pageOnly).toContain('page contains the exact page_contains');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('keeps combined searcher-country scope in device movement and its optional follow-up', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
