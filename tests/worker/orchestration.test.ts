@@ -567,6 +567,38 @@ describe('Worker orchestration', () => {
     })).rejects.toThrow();
   });
 
+  it('omits phantom Google filters in unscoped and country-only traffic-drop comparisons', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, string>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const unscoped = (await prompts['gsc-traffic-drop-triage'].handler({
+        site_url: 'sc-domain:example.com', end_date: '2026-06-20',
+      })).messages[0].content.text;
+      const unscopedCompare = unscoped.split('\n').find((line) => line.startsWith('4. When a targeted hypothesis'));
+      expect(unscopedCompare).toContain('omit dimension_filter_groups entirely');
+      expect(unscopedCompare).not.toContain('page contains the supplied URL section');
+
+      const countryOnly = (await prompts['gsc-traffic-drop-triage'].handler({
+        site_url: 'sc-domain:example.com', end_date: '2026-06-20', country: 'deu',
+      })).messages[0].content.text;
+      const countryCompare = countryOnly.split('\n').find((line) => line.startsWith('4. When a targeted hypothesis'));
+      expect(countryCompare).toContain('country equals its uppercase ISO alpha-3 code');
+      expect(countryCompare).not.toContain('page contains the supplied URL section');
+      expect(countryCompare).not.toContain('query contains the optional search topic');
+      expect(countryCompare).not.toContain('omit dimension_filter_groups entirely');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('keeps an exact-page traffic decline isolated from sibling URLs', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
