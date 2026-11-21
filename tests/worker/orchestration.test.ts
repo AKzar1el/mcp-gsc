@@ -5963,6 +5963,55 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('uses one property-validated exact page in both content-decay periods', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'decay-exact-user', email: 'decay-exact@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const tool = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools['insights.content_decay'];
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ dimensionFilterGroups?: unknown[] }> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        expect(requestUrl(input)).toContain('/searchAnalytics/query');
+        requests.push(JSON.parse(String(init?.body)));
+        return response({ rows: [{
+          keys: ['https://example.com/Guide'],
+          clicks: requests.length === 1 ? 6 : 40,
+          impressions: requests.length === 1 ? 100 : 500,
+          ctr: 0.06, position: 8,
+        }] });
+      };
+      const result = await tool.handler({
+        site_url: 'sc-domain:example.com', compare_days: 14,
+        page_url: 'https://example.com/Guide', query_contains: 'SEO',
+        countries: ['deu', 'aut'],
+      }) as { structuredContent: { page_url: string; page_contains: string | null; scope_note: string } };
+      expect(result.structuredContent.page_url).toBe('https://example.com/Guide');
+      expect(result.structuredContent.page_contains).toBeNull();
+      expect(result.structuredContent.scope_note).toContain('exact page');
+      expect(requests).toHaveLength(2);
+      for (const body of requests) {
+        expect(body.dimensionFilterGroups).toEqual([{
+          groupType: 'and',
+          filters: [
+            { dimension: 'page', operator: 'equals', expression: 'https://example.com/Guide' },
+            { dimension: 'query', operator: 'contains', expression: 'SEO' },
+          ],
+          filterLists: [{ dimension: 'country', expressions: ['DEU', 'AUT'] }],
+        }]);
+      }
+      await expect(tool.handler({ site_url: 'sc-domain:example.com', page_url: 'https://example.com/Guide', page_contains: '/Guide' })).rejects.toThrow(/page_contains|page_url/);
+      await expect(tool.handler({ site_url: 'https://example.com/de/', page_url: 'https://example.com/fr/Guide' })).rejects.toThrow();
+      expect(requests).toHaveLength(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('focuses content decay on one locale without treating other pages as missing data', async () => {
     const server = await createGscMcpServer(
       workerEnv,
