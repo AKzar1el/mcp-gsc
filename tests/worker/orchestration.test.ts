@@ -817,6 +817,43 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('keeps an exact landing page in both device periods and its read-only drilldown', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-device-movement-review'];
+    const input = {
+      site_url: 'sc-domain:example.com', end_date: '2026-06-20', search_type: 'web',
+      page_url: 'https://example.com/de/tool', countries: 'deu,usa',
+    };
+    const parsed = await prompt.argsSchema.safeParseAsync(input);
+    expect(parsed.success).toBe(true);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"page_url":"https://example.com/de/tool"');
+      expect(guidance).toContain('page equals the exact page_url');
+      expect(guidance).toContain('case-sensitive');
+      expect(guidance).toContain('both weeks');
+      expect(guidance).toContain('dimension=query');
+      expect(guidance).toContain('same country list');
+      expect(guidance).not.toContain('page contains the exact page_contains');
+      expect(fetchSpy).not.toHaveBeenCalled();
+      await expect(prompt.handler({ ...parsed.data, page_contains: '/de/' })).rejects.toThrow();
+      await expect(prompt.handler({ ...parsed.data, page_url: 'https://outside.example.net/tool' })).rejects.toThrow();
+      const visual = (await prompt.handler({ ...parsed.data, search_type: 'webMultimodal' })).messages[0].content.text;
+      expect(visual).toContain('no query drilldown');
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a property-scoped index-status triage prompt without Google requests', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
