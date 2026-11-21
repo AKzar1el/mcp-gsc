@@ -454,6 +454,33 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('omits nonexistent page-cohort filters when unscoped and preserves device-only scope', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-page-cohort-review'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const base = { site_url: 'sc-domain:example.com', end_date: '2026-11-10', search_type: 'web' };
+      const unscoped = (await prompt.handler(base)).messages[0].content.text;
+      expect(unscoped).toContain('omit dimension_filter_groups entirely');
+      expect(unscoped).not.toContain('Apply an identical AND dimension_filter_groups');
+
+      const deviceOnly = (await prompt.handler({ ...base, device: 'mobile' })).messages[0].content.text;
+      expect(deviceOnly).toContain('device equals');
+      expect(deviceOnly).not.toContain('omit dimension_filter_groups entirely');
+      expect(deviceOnly).not.toContain('page contains the exact page_contains');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a scoped read-only traffic-drop workflow as an MCP prompt', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,

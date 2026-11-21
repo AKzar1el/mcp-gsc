@@ -2084,6 +2084,17 @@ class GscMcpRuntime {
           date.setUTCDate(date.getUTCDate() + days);
           return date.toISOString().slice(0, 10);
         };
+        const cohortFilters = [
+          page_contains ? 'page contains the supplied page_contains URL section' : null,
+          query_contains ? 'query contains the same query topic' : null,
+          country ? 'country equals the uppercase country code' : null,
+          device ? 'device equals the uppercase device code' : null,
+          countries ? 'countries filterLists with uppercase exact expressions (OR within the list)' : null,
+          devices ? 'devices filterLists with uppercase exact expressions (OR within the list)' : null,
+        ].filter(Boolean);
+        const cohortFilterGuidance = cohortFilters.length
+          ? `Apply an identical AND dimension_filter_groups to both windows using only these supplied filters: ${cohortFilters.join(', ')}.`
+          : 'No optional page, query, country or device scope was supplied: omit dimension_filter_groups entirely in both windows.';
         return {
           messages: [{
             role: 'user' as const,
@@ -2101,7 +2112,7 @@ class GscMcpRuntime {
                   devices: devices?.map((value) => value.toUpperCase()) ?? null,
                 }),
                 '1. Confirm the exact property and read access with server.capabilities and sites.get. Never switch properties or assume credentials authorize another site.',
-                '2. Call analytics.query exactly twice with dimensions=["page"], row_limit=100, start_row=0, data_state="final", aggregation_type="auto" and the same search_type, one request for EACH stated seven-day Pacific window. Apply an identical AND dimension_filter_groups to both windows: optional page contains, query contains for the same query topic, country equals and device equals; for countries/devices lists use Google-side filterLists with exact uppercase expressions (OR within a list, AND across dimensions and page/query scopes). Do not mix singular and list filters for one dimension. Apply all filters at Google identically to BOTH windows, never by local postfiltering; each call or retry consumes read quota.',
+                `2. Call analytics.query exactly twice with dimensions=["page"], row_limit=100, start_row=0, data_state="final", aggregation_type="auto" and the same search_type, one request for EACH stated seven-day Pacific window. ${cohortFilterGuidance} For countries/devices lists use Google-side filterLists with exact uppercase expressions (OR within a list, AND across dimensions and page/query scopes). Do not mix singular and list filters for one dimension. Apply supplied filters at Google identically to BOTH windows, never by local postfiltering; each call or retry consumes read quota.`,
                 '3. Compare exact canonical page URL keys returned in BOTH click-sorted top-page samples, reporting at most five measured declines and three gains with each week\'s clicks, impressions and CTR. Calculate a percent change only from a nonzero observed baseline; a position average is not a live rank and is not reliable for Search News.',
                 '4. Separately label at most three baseline-only and latest-only pages as follow-up candidates, NOT confirmed lost, new or zero-traffic pages. Google returns incomplete, click-sorted top-row samples, can change their membership, and may omit rows; an absent page is not measured zero even if a sample has 100 rows. If either sample is empty, report insufficient data rather than a whole-section collapse.',
                 '5. If one shared observed page needs query-level context, budget remains and search_type is NOT webMultimodal, optionally call one additional analytics.query grouped by query using that exact canonical page equals filter, preserving the same dates, search surface, query contains topic and country/device filterLists. When a URL-section substring was supplied, verify that the selected page belongs to it; replace the broad page filter with the exact observed page filter for this drilldown while retaining the same query topic. For webMultimodal, do not request unsupported query grouping or a query filter. Do not use another helper that silently drops a topic or list filter.',
