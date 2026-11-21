@@ -2011,6 +2011,27 @@ test('Search Analytics request validation accepts a ten-day hourly window', () =
   );
 });
 
+test('Search Analytics hourly window rejects a long span across years 0099 and 0100', () => {
+  const hourly = {
+    startDate: '0099-12-31',
+    endDate: '0100-01-20',
+    dimensions: ['hour'] as const,
+    rowLimit: 100,
+    dataState: 'hourly_all' as const,
+  };
+  assert.throws(
+    () => assertSearchAnalyticsQueryCompatible({ ...hourly, dimensions: [...hourly.dimensions] }),
+    /hourly queries support at most 10 inclusive calendar days/,
+  );
+  assert.doesNotThrow(() =>
+    assertSearchAnalyticsQueryCompatible({
+      ...hourly,
+      endDate: '0100-01-09',
+      dimensions: [...hourly.dimensions],
+    }),
+  );
+});
+
 test('Search Analytics request validation permits non-query Discover dimensions', () => {
   assert.doesNotThrow(() =>
     assertSearchAnalyticsQueryCompatible({

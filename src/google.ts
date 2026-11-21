@@ -645,10 +645,9 @@ export interface SearchAnalyticsQuery {
 }
 
 function inclusiveCalendarDayCount(startDate: string, endDate: string): number {
-  const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
-  const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
-  const startUtc = Date.UTC(startYear, startMonth - 1, startDay);
-  const endUtc = Date.UTC(endYear, endMonth - 1, endDay);
+  // Date.UTC remaps numeric years 0-99 to 1900-1999; ISO parsing preserves the year.
+  const startUtc = Date.parse(`${startDate}T00:00:00Z`);
+  const endUtc = Date.parse(`${endDate}T00:00:00Z`);
   return Math.floor((endUtc - startUtc) / 86_400_000) + 1;
 }
 
