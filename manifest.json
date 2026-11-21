@@ -19,7 +19,9 @@
     "entry_point": "src/index.ts",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/src/index.ts"]
+      "args": [
+        "${__dirname}/src/index.ts"
+      ]
     }
   },
   "tools": [
@@ -110,6 +112,10 @@
     {
       "name": "analytics.compare",
       "description": "Compare search performance across two date ranges."
+    },
+    {
+      "name": "diagnostics.query_page_shift",
+      "description": "Diagnose observed query, page and query-page visibility shifts across two explicit windows. Compares exact matched keys; treats one-sided missing keys as unknown rather than zero. Bounded, read-only Search Analytics requests."
     },
     {
       "name": "reports.weekly_digest",

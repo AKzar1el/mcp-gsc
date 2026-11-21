@@ -93,11 +93,15 @@
       "description": "Compare clicks, impressions, CTR, and average position between two date ranges by query, page, country, or device."
     },
     {
+      "name": "diagnostics.query_page_shift",
+      "description": "Diagnose observed query, page and query-page visibility shifts across two explicit windows. Compares exact matched keys; treats one-sided missing keys as unknown rather than zero. Bounded, read-only Search Analytics requests."
+    },
+    {
       "name": "reports.weekly_digest",
       "description": "Generate a plain-language weekly SEO report with movers, top pages, and a recommended action."
     }
   ],
-  "version": "0.4.41-registry.1",
+  "version": "0.4.41-registry.2",
   "repository": {
     "url": "https://github.com/AKzar1el/mcp-gsc",
     "source": "github"
@@ -164,7 +168,13 @@
   "_meta": {
     "io.modelcontextprotocol.registry/publisher-provided": {
       "license": "MIT",
-      "tags": ["seo", "google-search-console", "analytics", "search-analytics", "cloudflare-workers"]
+      "tags": [
+        "seo",
+        "google-search-console",
+        "analytics",
+        "search-analytics",
+        "cloudflare-workers"
+      ]
     }
   }
 }
