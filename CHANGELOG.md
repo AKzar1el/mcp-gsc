@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Allow `gsc-device-movement-review` to compare desktop/mobile/tablet changes for one bounded combined searcher-country list (1-10) using identical Google-side filters in both finalized weeks and the optional page follow-up, without changing read quotas.
 - Let `gsc-search-appearance-review` isolate provider-returned rich-result types for one property-validated exact `page_url` (mutually exclusive with URL substring filtering), then optionally inspect privacy-bounded query evidence for that same page and observed type without widening scopes or read quotas.
 - Add `gsc-url-index-visibility-review`, a property-validated, exact-page, read-only workflow that cross-checks finalized Search Analytics traffic and optional Google-indexed URL evidence while preserving query/searcher scopes, independent quotas, missing-data caveats and non-causal interpretation.
 - Let `gsc-country-movement-review` compare searcher-country changes for one property-validated exact `page_url`, applying Google's case-sensitive page equality to both finalized weeks and any optional same-scope page drilldown, without broadening to sibling URLs or increasing read quotas.
