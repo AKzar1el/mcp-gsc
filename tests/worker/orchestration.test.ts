@@ -4928,6 +4928,60 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('scopes exact-page quick wins at Google without including sibling URLs', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'quick-wins-exact-page-user', email: 'quick-wins-exact-page@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const exactPage = 'https://example.com/de/Guide';
+    const sibling = 'https://example.com/de/Guide-next';
+    const args = {
+      site_url: 'sc-domain:example.com', start_date: '2026-07-01', end_date: '2026-07-31',
+      min_impressions: 100, min_position: 8, max_position: 20, limit: 20, start_row: 0,
+      page_url: exactPage, query_contains: 'seo',
+    };
+    let requestCount = 0;
+    try {
+      globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+        const body = JSON.parse(String(init?.body)) as {
+          dimensions: string[];
+          dimensionFilterGroups?: Array<{ filters: Array<{ dimension: string; operator: string; expression: string }> }>;
+        };
+        requestCount += 1;
+        expect(body.dimensions).toEqual(['query', 'page']);
+        expect(body.dimensionFilterGroups?.[0]?.filters).toEqual([
+          { dimension: 'page', operator: 'equals', expression: exactPage },
+          { dimension: 'query', operator: 'contains', expression: 'seo' },
+        ]);
+        return response({
+          rows: [
+            { keys: ['seo guide', exactPage], clicks: 4, impressions: 200, ctr: 0.02, position: 12 },
+          ],
+        });
+      };
+      const result = (await registered['insights.quick_wins'].handler(args)) as {
+        structuredContent: { page_url: string | null; page_contains: string | null; scope_note: string; quick_wins: Array<{ page: string }> };
+      };
+      expect(result.structuredContent.page_url).toBe(exactPage);
+      expect(result.structuredContent.page_contains).toBeNull();
+      expect(result.structuredContent.quick_wins.map((row) => row.page)).toEqual([exactPage]);
+      expect(result.structuredContent.quick_wins[0].page).not.toBe(sibling);
+      expect(result.structuredContent.scope_note).toMatch(/exact page/i);
+      await expect(registered['insights.quick_wins'].handler({ ...args, page_contains: '/de/' }))
+        .rejects.toThrow('page_contains or page_url');
+      await expect(registered['insights.quick_wins'].handler({ ...args, page_url: 'https://other.example.net/de/Guide' }))
+        .rejects.toThrow('page_url must belong to the site_url Search Console property');
+      expect(requestCount).toBe(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('scopes quick wins at Google before pagination while retaining the unfiltered default', async () => {
     const server = await createGscMcpServer(
       workerEnv,

@@ -1128,7 +1128,7 @@ test('capabilities catalog advertises supported insight filters and weekly repor
   for (const [toolName, filters] of [
     ['insights.page_queries', ['query_contains', 'country', 'device']],
     ['insights.query_pages', ['page_contains', 'country', 'device']],
-    ['insights.quick_wins', ['page_contains', 'query_contains', 'country', 'countries', 'device', 'devices']],
+    ['insights.quick_wins', ['page_url', 'page_contains', 'query_contains', 'country', 'countries', 'device', 'devices']],
     ['insights.cannibalization', ['page_contains', 'query_contains', 'country', 'device']],
     ['insights.content_decay', ['page_contains', 'query_contains', 'country', 'countries', 'device', 'devices']],
     ['reports.weekly_digest', ['search_type', 'page_contains', 'device', 'devices', 'country', 'countries', 'query_contains']],

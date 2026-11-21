@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Allow `insights.quick_wins` and `gsc-quick-win-review` to isolate one property-validated `page_url` with Google-side case-sensitive page equality before pagination, preserving searcher/topic filters, read quotas, default behavior and missing-row caveats while excluding sibling pages.
 - Let `gsc-brand-traffic-review` compare native branded and non-branded Search results for one property-validated `page_url`, applying Google-side case-sensitive page equality across both finalized weeks while preserving country/device lists, existing URL-section mode and read quotas.
 - Allow `gsc-device-movement-review` to compare desktop/mobile/tablet changes for one bounded combined searcher-country list (1-10) using identical Google-side filters in both finalized weeks and the optional page follow-up, without changing read quotas.
 - Let `gsc-search-appearance-review` isolate provider-returned rich-result types for one property-validated exact `page_url` (mutually exclusive with URL substring filtering), then optionally inspect privacy-bounded query evidence for that same page and observed type without widening scopes or read quotas.
