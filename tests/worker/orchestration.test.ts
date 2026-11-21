@@ -1541,6 +1541,45 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('keeps native branded comparisons on one authorized exact page without sibling URL leakage', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean }> };
+        handler: (args: Record<string, unknown>) => Promise<{
+          messages: Array<{ content: { text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-brand-traffic-review'];
+    const page_url = 'https://example.com/en/brand';
+    expect((await prompt.argsSchema.safeParseAsync({ site_url: 'sc-domain:example.com', page_url })).success).toBe(true);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const result = await prompt.handler({
+        site_url: 'sc-domain:example.com', end_date: '2026-11-10', page_url,
+        countries: ['deu', 'aut'], devices: ['mobile', 'desktop'],
+      });
+      const guidance = result.messages[0].content.text;
+      expect(guidance).toContain(`"page_url":"${page_url}"`);
+      expect(guidance).toContain('page equals page_url (case-sensitive)');
+      expect(guidance).not.toContain('page contains the exact page_contains');
+      expect(guidance).toContain('filterLists');
+      expect(guidance).toContain('DEU');
+      expect(guidance).toContain('AUT');
+      expect(guidance).toContain('MOBILE');
+      expect(guidance).toContain('DESKTOP');
+      expect(guidance).toContain('brandedClassification');
+      expect(guidance).toContain('Do not use a query filter');
+      await expect(prompt.handler({ site_url: 'sc-domain:example.com', page_url, page_contains: '/en/' })).rejects.toThrow();
+      await expect(prompt.handler({ site_url: 'https://example.com/blog/', page_url })).rejects.toThrow();
+      await expect(prompt.handler({ site_url: 'sc-domain:example.com', page_url: 'https://another.example.net/page' })).rejects.toThrow();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a visual-search page review prompt without provider requests or unsupported query grouping', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
