@@ -1129,6 +1129,40 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('isolates Search Appearance types and their query follow-up to one authorized exact page', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (args: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-search-appearance-review'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const parsed = await prompt.argsSchema.safeParseAsync({
+        site_url: 'sc-domain:example.com', page_url: 'https://example.com/guides/seo',
+        query_contains: 'seo', countries: 'deu,usa', devices: 'mobile,desktop',
+      });
+      expect(parsed.success).toBe(true);
+      const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"page_url":"https://example.com/guides/seo"');
+      expect(guidance).toContain('page equals page_url');
+      expect(guidance).toContain('dimensions=["searchAppearance"]');
+      expect(guidance).toContain('dimensions=["query"]');
+      expect(guidance).toContain('searchAppearance equals');
+      expect(guidance).toContain('"countries":["DEU","USA"]');
+      expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
+      expect(guidance).toContain('filterLists');
+      await expect(prompt.handler({ ...parsed.data!, page_contains: '/guides/' }))
+        .rejects.toThrow('Supply either page_contains or page_url');
+      await expect(prompt.handler({ ...parsed.data!, page_url: 'https://other.test/guides/seo' }))
+        .rejects.toThrow();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('rejects future reporting dates in guided client, brand, and visual prompts without Google calls', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
