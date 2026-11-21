@@ -480,6 +480,9 @@ test('quick wins accepts bounded distinct multi-market selectors without mixing 
   assert.equal(schema.safeParse({ ...base, countries: ['DEU'], country: 'USA' }).success, false);
   assert.equal(schema.safeParse({ ...base, devices: ['mobile'], device: 'tablet' }).success, false);
   assert.equal(schema.safeParse({ ...base, countries: ['DE'] }).success, false);
+  assert.equal(schema.safeParse({ ...base, page_url: 'https://example.com/de/guide' }).success, true);
+  assert.equal(schema.safeParse({ ...base, page_url: 'not-a-url' }).success, false);
+  assert.equal(schema.safeParse({ ...base, page_url: 'https://example.com/de/guide', page_contains: '/de/' }).success, false);
 });
 
 function makeKey(byteLength = 32): string {
