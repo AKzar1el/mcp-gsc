@@ -1097,6 +1097,12 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('urls.inspect_many');
       expect(guidance).toContain('20');
       expect(guidance).toContain('per-URL');
+      expect(guidance).toContain('no remaining-budget counter');
+      expect(guidance).toContain('reserves initial units for the whole batch');
+      expect(guidance).toContain('Do not split or retry a refused batch');
+      expect(guidance).toContain('does not expose precise retry-unit consumption');
+      expect(guidance).not.toContain('confirm the remaining per-user URL Inspection safety budget');
+      expect(guidance).not.toContain('actual inspection quota consumption');
       expect(guidance).toContain('index_status_counts');
       expect(guidance).toContain('unknown');
       expect(guidance).toContain('not_indexed');
