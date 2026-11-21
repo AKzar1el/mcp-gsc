@@ -777,6 +777,46 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('keeps combined searcher-country scope in device movement and its optional follow-up', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-device-movement-review'];
+    const input = {
+      site_url: 'sc-domain:example.com',
+      end_date: '2026-06-20',
+      search_type: 'web',
+      page_contains: '/de/',
+      countries: 'deu,usa',
+    };
+    const parsed = await prompt.argsSchema.safeParseAsync(input);
+    expect(parsed.success).toBe(true);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"countries":["DEU","USA"]');
+      expect(guidance).toContain('"country":null');
+      expect(guidance).toContain('"page_contains":"/de/"');
+      expect(guidance).toContain('dimension=device');
+      expect(guidance).toContain('Google-side filterLists');
+      expect(guidance).toContain('OR within the country dimension');
+      expect(guidance).toContain('same country list');
+      expect(guidance).toContain('combined searcher-country scope');
+      expect(fetchSpy).not.toHaveBeenCalled();
+      await expect(prompt.handler({ ...parsed.data, country: 'DEU' })).rejects.toThrow('either country or countries');
+      await expect(prompt.handler({ ...parsed.data, countries: ['deu', 'DEU'] })).rejects.toThrow('duplicates');
+      expect((await prompt.argsSchema.safeParseAsync({ ...input, countries: 'DEU,invalid' })).success).toBe(false);
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a property-scoped index-status triage prompt without Google requests', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
