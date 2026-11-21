@@ -1025,6 +1025,8 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('noindex');
       expect(guidance).toContain('not a live URL test');
       expect(guidance).toContain('Never call indexing.request');
+      expect(guidance).toContain('no remaining URL Inspection budget counter');
+      expect(guidance).toContain('Do not invent a remaining budget or exact retry-unit total');
       expect(fetchSpy).not.toHaveBeenCalled();
       await expect(prompts['gsc-index-status-triage'].handler({
         site_url: 'sc-domain:example.com',
@@ -1059,6 +1061,8 @@ describe('Worker orchestration', () => {
         'query contains', 'countries', 'devices', 'normal Search Analytics',
         'one URL Inspection', 'missing', 'not measured zero', 'not a live URL test',
         'cannot establish causation', 'Never call indexing.request',
+        'no remaining URL Inspection budget counter',
+        'Do not invent a remaining budget or exact retry-unit total',
       ]) expect(text).toContain(required);
       expect(text).not.toContain('page contains page_url');
       expect(fetchSpy).not.toHaveBeenCalled();
