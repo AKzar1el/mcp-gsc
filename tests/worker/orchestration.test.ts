@@ -1694,6 +1694,32 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('keeps native branded comparisons unfiltered when no optional scope is supplied', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-brand-traffic-review'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const base = { site_url: 'sc-domain:example.com', end_date: '2026-11-10', search_type: 'web' };
+      const unscoped = (await prompt.handler(base)).messages[0].content.text;
+      expect(unscoped).toContain('omit dimension_filter_groups entirely');
+      expect(unscoped).toContain('unfiltered property scope');
+      expect(unscoped).not.toContain('same URL-section');
+      expect(unscoped).not.toContain('page contains the exact page_contains');
+
+      const countryOnly = (await prompt.handler({ ...base, countries: ['deu'] })).messages[0].content.text;
+      expect(countryOnly).toContain('filterLists');
+      expect(countryOnly).toContain('omit the page filter');
+      expect(countryOnly).not.toContain('page contains the exact page_contains');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('keeps native branded comparisons on one authorized exact page without sibling URL leakage', async () => {
     const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
     const prompts = (server as unknown as {
