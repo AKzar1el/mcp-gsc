@@ -40,6 +40,9 @@ export function createQuickWinsInputSchema() {
         "Omit for Google's finalized-only default; 'all' includes recent preliminary Search Analytics rows that may still change. 'final' requests finalized data only.",
       ),
       ...QUICK_WINS_THRESHOLDS_SHAPE,
+      page_url: z.string().trim().url().max(2048).optional().describe(
+        'Optional exact page URL within the selected Search Console property. Google applies a case-sensitive page equals filter before query/page pagination; use instead of page_contains to exclude similarly named sibling URLs.',
+      ),
       page_contains: z.string().trim().min(1).max(240).optional().describe(
         'Optional case-insensitive page URL substring (for example /de/). Google filters matching pages before query/page pagination, so opportunities are limited to that URL subset, not property-wide results.',
       ),
@@ -76,7 +79,8 @@ export function createQuickWinsInputSchema() {
       ({ min_position, max_position }) => min_position <= max_position,
       POSITION_RANGE_ERROR,
     )
-    .superRefine(({ country, countries, device, devices }, ctx) => {
+    .superRefine(({ page_url, page_contains, country, countries, device, devices }, ctx) => {
+      if (page_url && page_contains) ctx.addIssue({ code: 'custom', path: ['page_url'], message: 'Supply either page_contains or page_url, not both.' });
       if (country && countries) ctx.addIssue({ code: 'custom', path: ['countries'], message: 'Use country or countries, not both.' });
       if (device && devices) ctx.addIssue({ code: 'custom', path: ['devices'], message: 'Use device or devices, not both.' });
     });
