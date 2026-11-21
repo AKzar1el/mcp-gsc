@@ -32,6 +32,8 @@ const tokenEncryptionKeyPattern =
 if (
   !tokenEncryptionKeyPattern.test(tokenEncryptionKey)
   || Buffer.from(tokenEncryptionKey, 'base64').byteLength !== 32
+  // Buffer's decoder ignores unused padding bits; require the canonical text.
+  || Buffer.from(tokenEncryptionKey, 'base64').toString('base64') !== tokenEncryptionKey
 ) {
   console.error(
     `[mcp-gsc] Invalid TOKEN_ENCRYPTION_KEY: expected a valid base64-encoded 32-byte (256-bit) AES key. See SETUP.md for local launcher configuration. Generate one with: ${tokenEncryptionKeyGenerationCommand}`,
