@@ -847,6 +847,50 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('uses a query drilldown for exact-page country movement without broadening scope', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-country-movement-review'];
+    const args = {
+      site_url: 'sc-domain:example.com',
+      page_url: 'https://example.com/de/tools/sitemap-checker',
+      end_date: '2026-06-20',
+      search_type: 'web',
+      query_contains: 'sitemap',
+      devices: ['mobile', 'tablet'],
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const exactPage = (await prompt.handler(args)).messages[0].content.text;
+      expect(exactPage).toContain('dimension=query');
+      expect(exactPage).toContain('page equals the exact page_url');
+      expect(exactPage).toContain('same query contains topic');
+      expect(exactPage).toContain('same device list');
+      expect(exactPage).not.toContain('dimension=page');
+
+      const multimodal = (await prompt.handler({
+        ...args, query_contains: undefined, search_type: 'webMultimodal',
+      })).messages[0].content.text;
+      expect(multimodal).not.toContain('dimension=query');
+      expect(multimodal).not.toContain('dimension=page');
+      expect(multimodal).toContain('no text-query drilldown');
+
+      const section = (await prompt.handler({
+        ...args, page_url: undefined, page_contains: '/de/',
+      })).messages[0].content.text;
+      expect(section).toContain('dimension=page');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides a finalized device-movement comparison without contacting Google', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
