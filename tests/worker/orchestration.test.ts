@@ -1158,6 +1158,10 @@ describe('Worker orchestration', () => {
         expect(guidance).toContain('provider_auth_live_verified');
         expect(guidance).toContain('sites.list');
         expect(guidance).toContain('sites.get');
+        expect(guidance).toContain('result_page.has_more');
+        expect(guidance).toContain('result_page.next_start_row');
+        expect(guidance).toContain('at most three pages');
+        expect(guidance).toContain('not verified by this bounded scan');
         expect(guidance).toContain('permissionLevel');
         expect(guidance).toContain('Do not silently select');
         expect(guidance).toContain('Never call sites.add');
