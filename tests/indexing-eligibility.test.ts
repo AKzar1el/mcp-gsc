@@ -499,6 +499,31 @@ test('removal eligibility accepts a robots noindex meta directive in the documen
   }
 });
 
+test('removal eligibility recognizes implicit HTML head metadata but not body metadata', async () => {
+  for (const html of [
+    '<!doctype html><html><meta name="robots" content="noindex"><body>Retired job</body></html>',
+    '<meta name="googlebot" content="nofollow, noindex"><body>Retired job</body>',
+    '<html><meta name="robots" content="nofollow"><meta name="robots" content="noindex"><body>Retired job</body></html>',
+  ]) {
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingRemovalEligibility('https://example.com/jobs/old-role'),
+    );
+    assert.deepEqual(result, { eligible: true }, html);
+  }
+
+  for (const html of [
+    '<!doctype html><html><body><meta name="robots" content="noindex"></body></html>',
+    '<html><div><meta name="robots" content="noindex"></div></html>',
+  ]) {
+    const result = await withMockFetch(
+      async () => htmlResponse(html),
+      () => checkIndexingRemovalEligibility('https://example.com/jobs/old-role'),
+    );
+    assert.equal(result.eligible, false, html);
+  }
+});
+
 test('removal eligibility recognizes Googlebot-specific noindex without accepting other agents or inert markup', async () => {
   for (const html of [
     '<html><head><meta name="googlebot" content="nofollow, noindex"></head><body>Retired job</body></html>',

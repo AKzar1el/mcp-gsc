@@ -2354,10 +2354,11 @@ export async function checkIndexingEligibility(
 }
 
 function hasRobotsNoindexMeta(html: string): boolean {
-  // HTML permits an omitted </head>, so stop at </head>, <body>, or EOF.
-  const head = /<head\b[^>]*>([\s\S]*?)(?:<\/head\s*>|<body\b|$)/i.exec(
-    stripInertHtml(html),
-  )?.[1];
+  const activeHtml = stripInertHtml(html);
+  // HTML also permits an omitted <head> start tag when metadata comes first.
+  // Only accept leading active meta elements; do not promote body markup.
+  const head = /<head\b[^>]*>([\s\S]*?)(?:<\/head\s*>|<body\b|$)/i.exec(activeHtml)?.[1]
+    ?? /^(?:\s*<!doctype\b[^>]*>)?\s*(?:<html\b[^>]*>)?\s*((?:<meta\b[^>]*>\s*)+)/i.exec(activeHtml)?.[1];
   if (!head) return false;
 
   const metaPattern = /<meta\b([^>]*)>/gi;
