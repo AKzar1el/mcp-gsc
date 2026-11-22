@@ -3,6 +3,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { createMcpHandler, getMcpAuthContext } from 'agents/mcp/server';
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import { EXACT_PAGE_URL_SCHEMA } from './exact-page-url-schema';
 import pkg from '../package.json';
 import {
   buildAuthUrl,
@@ -1354,7 +1355,7 @@ class GscMcpRuntime {
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive start date for the review.')),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Inclusive end date for the review; prefer finalized data.')),
           search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe('Search surface; news is the Search News tab, not the Google News app.'),
-          page_url: z.string().trim().url().max(2048).optional().describe('Optional exact landing-page URL in the selected property; use instead of page_contains.'),
+          page_url: EXACT_PAGE_URL_SCHEMA.optional().describe('Optional exact landing-page URL in the selected property; use instead of page_contains.'),
           page_contains: z.string().trim().min(1).max(240).optional().describe('Optional URL-section substring; use instead of page_url.'),
           query_contains: z.string().trim().min(1).max(240).optional().describe('Optional query-topic substring.'),
           country: z.string().trim().regex(/^[a-zA-Z]{3}$/).optional().describe('Optional ISO alpha-3 searcher country, not URL language.'),
@@ -1469,7 +1470,7 @@ class GscMcpRuntime {
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional inclusive end date; omit for a latest usually finalized week.')),
           search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe('Google Search surface to review; keep identical between periods.'),
           page_contains: z.string().trim().min(1).max(120).optional().describe('Optional URL-section substring for a branded/non-branded comparison within this exact eligible property.'),
-          page_url: z.string().trim().url().max(2048).optional().describe('Optional exact landing-page URL within the selected eligible property; use instead of page_contains.'),
+          page_url: EXACT_PAGE_URL_SCHEMA.optional().describe('Optional exact landing-page URL within the selected eligible property; use instead of page_contains.'),
           countries: promptCountries.describe('Optional comma/newline-separated ISO alpha-3 searcher countries (such as DEU,USA), not page languages.'),
           devices: promptDevices.describe('Optional comma/newline-separated searcher devices (desktop,mobile,tablet).'),
         }),
@@ -1516,7 +1517,7 @@ class GscMcpRuntime {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional inclusive final reporting end date.')),
           page_contains: z.string().trim().min(1).max(120).optional().describe('Optional landing-page URL section, such as /de/.'),
-          page_url: z.string().trim().url().max(2048).optional().describe('Optional exact landing-page URL in this property; use instead of page_contains to exclude similarly named pages.'),
+          page_url: EXACT_PAGE_URL_SCHEMA.optional().describe('Optional exact landing-page URL in this property; use instead of page_contains to exclude similarly named pages.'),
           countries: promptCountries.describe('Optional comma/newline-separated ISO alpha-3 searcher countries (such as DEU,USA), not page languages.'),
           devices: promptDevices.describe('Optional comma/newline-separated searcher devices (desktop,mobile,tablet).'),
         }),
@@ -1559,7 +1560,7 @@ class GscMcpRuntime {
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional inclusive final reporting end date.')),
           search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe('Google Search surface; news means the Search News tab, not the Google News app.'),
           page_contains: z.string().trim().min(1).max(120).optional().describe('Optional URL-section substring filtered at Google in both weeks.'),
-          page_url: z.string().trim().url().max(2048).optional().describe('Optional exact page URL in the selected property; use instead of page_contains to exclude sibling URLs.'),
+          page_url: EXACT_PAGE_URL_SCHEMA.optional().describe('Optional exact page URL in the selected property; use instead of page_contains to exclude sibling URLs.'),
           query_contains: z.string().trim().min(1).max(120).optional().describe('Optional search-query topic substring filtered at Google in both weeks.'),
           country: z.string().trim().regex(/^[a-zA-Z]{3}$/).optional().describe('Optional ISO alpha-3 searcher country, not the URL locale.'),
           device: z.enum(['desktop', 'mobile', 'tablet']).optional().describe('Optional searcher device.'),
@@ -1641,7 +1642,7 @@ class GscMcpRuntime {
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional inclusive reporting end date. Omit for the latest usually finalized week.')),
           search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe('Search surface; news is the Google Search News tab, not Google News app.'),
           page_contains: z.string().trim().min(1).max(120).optional().describe('Optional URL section, such as /de/, for a scoped report.'),
-          page_url: z.string().trim().url().max(2048).optional().describe('Optional exact page URL within site_url. Use instead of page_contains to exclude similarly named sibling URLs.'),
+          page_url: EXACT_PAGE_URL_SCHEMA.optional().describe('Optional exact page URL within site_url. Use instead of page_contains to exclude similarly named sibling URLs.'),
           query_contains: z.string().trim().min(1).max(240).optional().describe('Optional query topic substring for a scoped report.'),
           device: z.enum(['desktop', 'mobile', 'tablet']).optional().describe('Optional searcher device scope.'),
           country: z.string().trim().regex(/^[a-zA-Z]{3}$/, 'Use an ISO alpha-3 searcher country such as DEU.').optional().describe('Optional ISO alpha-3 searcher country (not page language).'),
@@ -1712,7 +1713,7 @@ class GscMcpRuntime {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional comparison end date. Omit for the latest usually finalized week.')),
           page_contains: z.string().trim().min(1).max(120).optional().describe('Optional URL substring such as /de/ to scope the investigation at Google.'),
-          page_url: z.string().trim().url().max(2048).optional().describe('Optional exact page URL within this property; use instead of page_contains to avoid sibling-page traffic.'),
+          page_url: EXACT_PAGE_URL_SCHEMA.optional().describe('Optional exact page URL within this property; use instead of page_contains to avoid sibling-page traffic.'),
           query_contains: z.string().trim().min(1).max(120).optional().describe('Optional search-query topic substring, such as technical seo, filtered at Google identically in every comparison.'),
           search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe('Search surface applied consistently to each read. news means the Google Search News tab.'),
           country: z.string().trim().regex(/^[a-zA-Z]{3}$/).optional().describe('Optional ISO alpha-3 searcher country, not the page language.'),
@@ -1802,7 +1803,7 @@ class GscMcpRuntime {
           lookback_days: z.enum(['14', '21', '35']).default('21').describe('Number of finalized Pacific dates to inspect: 14, 21 (default) or 35. One Google read regardless of selection.'),
           search_type: z.enum(['web', 'image', 'video', 'news', 'webMultimodal']).default('web').describe('Search surface; webMultimodal is Google Lens/Circle to Search, not ordinary Web or Image-tab traffic.'),
           page_contains: z.string().trim().min(1).max(120).optional().describe('Optional URL section, for example /tools/; this limits results to that segment.'),
-          page_url: z.string().trim().url().max(2048).optional().describe('Optional exact page URL within the authorized Search Console property; use instead of page_contains.'),
+          page_url: EXACT_PAGE_URL_SCHEMA.optional().describe('Optional exact page URL within the authorized Search Console property; use instead of page_contains.'),
           query_contains: z.string().trim().min(1).max(120).optional().describe('Optional Google-side search-query topic substring for the daily onset series; unavailable for webMultimodal.'),
           country: z.string().trim().regex(/^[a-zA-Z]{3}$/).optional().describe('Optional ISO alpha-3 searcher country, not page language.'),
           device: z.enum(['desktop', 'mobile', 'tablet']).optional().describe('Optional searcher device.'),
@@ -1868,7 +1869,7 @@ class GscMcpRuntime {
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional inclusive end date for the latest finalized seven-day window.')),
           search_type: z.enum(['web', 'image', 'video', 'news', 'webMultimodal']).default('web').describe('Same surface for both weeks; webMultimodal covers image-initiated Google Lens/Circle to Search.'),
           page_contains: z.string().trim().min(1).max(120).optional().describe('Optional URL section filter, such as /de/; not a searcher-country filter.'),
-          page_url: z.string().trim().url().max(2048).optional().describe('Optional exact landing-page URL within this property; use instead of page_contains to exclude sibling URLs.'),
+          page_url: EXACT_PAGE_URL_SCHEMA.optional().describe('Optional exact landing-page URL within this property; use instead of page_contains to exclude sibling URLs.'),
           query_contains: z.string().trim().min(1).max(120).optional().describe('Optional search-query topic substring, applied at Google in both weeks; unavailable for webMultimodal.'),
           device: z.enum(['desktop', 'mobile', 'tablet']).optional().describe('Optional searcher device filter.'),
           devices: promptDevices.describe('Optional 1-3 searcher devices, comma/newline-separated or JSON-array text; ORed at Google. Use instead of device.'),
@@ -1949,7 +1950,7 @@ class GscMcpRuntime {
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional inclusive finalized Pacific comparison end date.')),
           search_type: z.enum(['web', 'image', 'video', 'news', 'discover', 'googleNews', 'webMultimodal']).default('web').describe('One fixed search surface for both periods.'),
           page_contains: z.string().trim().min(1).max(120).optional().describe('Optional exact URL-section substring.'),
-          page_url: z.string().trim().url().max(2048).optional().describe('Optional exact page within this Search Console property; use instead of page_contains.'),
+          page_url: EXACT_PAGE_URL_SCHEMA.optional().describe('Optional exact page within this Search Console property; use instead of page_contains.'),
           country: z.string().trim().regex(/^[a-zA-Z]{3}$/).optional().describe('Optional ISO alpha-3 searcher country, not URL locale.'),
           countries: promptCountries.describe('Optional 1-10 ISO alpha-3 searcher countries, comma/newline-separated or JSON-array text; use instead of country for one combined segment.'),
         }),
@@ -2029,7 +2030,7 @@ class GscMcpRuntime {
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional inclusive finalized Pacific end date.')),
           search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe('Use the same Search surface for both weeks.'),
           page_contains: z.string().trim().min(1).max(120).optional().describe('Optional page URL substring; limits the query cohort to that section.'),
-          page_url: z.string().trim().url().max(2048).optional().describe('Optional exact URL within the authorized property; use instead of page_contains to avoid sibling pages.'),
+          page_url: EXACT_PAGE_URL_SCHEMA.optional().describe('Optional exact URL within the authorized property; use instead of page_contains to avoid sibling pages.'),
           query_contains: z.string().trim().min(1).max(120).optional().describe('Optional query topic substring, filtered by Google in both weeks.'),
           country: z.string().trim().regex(/^[a-zA-Z]{3}$/).optional().describe('Optional ISO alpha-3 searcher country.'),
           device: z.enum(['desktop', 'mobile', 'tablet']).optional().describe('Optional searcher device.'),
@@ -2182,7 +2183,7 @@ class GscMcpRuntime {
         description: 'Guide a property-scoped, read-only comparison of finalized page traffic with optional URL Inspection evidence; no Google request on prompt retrieval.',
         argsSchema: z.object({
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
-          page_url: z.string().trim().url().max(2048).describe('One exact landing page within the selected Search Console property.'),
+          page_url: EXACT_PAGE_URL_SCHEMA.describe('One exact landing page within the selected Search Console property.'),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional finalized Pacific comparison end date; defaults to the latest finalized day.')),
           search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe('One Search Console surface, held constant for both periods.'),
           query_contains: z.string().trim().min(1).max(120).optional().describe('Optional query-topic substring. It scopes Analytics only, not URL Inspection.'),
@@ -4306,7 +4307,7 @@ class GscMcpRuntime {
           page_contains: z.string().trim().min(1).max(120).optional().describe(
             'Optional case-insensitive page URL substring such as /de/. Applied to every Search Analytics request, including totals and query movers, so the report describes matching pages rather than property-wide traffic.',
           ),
-          page_url: z.string().trim().url().max(2048).optional().describe(
+          page_url: EXACT_PAGE_URL_SCHEMA.optional().describe(
             'Optional exact page URL belonging to site_url; applies Google-side case-sensitive page equals to every Search Analytics request. Use instead of page_contains.',
           ),
           device: z.enum(['desktop', 'mobile', 'tablet']).optional().describe(
