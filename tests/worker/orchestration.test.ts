@@ -1291,6 +1291,43 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('guides a direct single-sitemap health check without bulk listing or provider calls', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (args: unknown) => Promise<{ success: boolean }> };
+        handler: (args: Record<string, string>) => Promise<{
+          messages: Array<{ content: { text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts['gsc-sitemap-health-review'];
+    const args = {
+      site_url: 'sc-domain:example.com',
+      sitemap_url: 'https://sitemap-host.example.net/blog.xml',
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      expect((await prompt.argsSchema.safeParseAsync(args)).success).toBe(true);
+      expect((await prompt.argsSchema.safeParseAsync({
+        ...args,
+        sitemap_url: 'javascript:alert(1)',
+      })).success).toBe(false);
+      const guidance = (await prompt.handler(args)).messages[0].content.text;
+      expect(guidance).toContain(JSON.stringify(args));
+      expect(guidance).toContain('sitemaps.get');
+      expect(guidance).toContain('feedpath');
+      expect(guidance).not.toContain('sitemaps.list');
+      expect(guidance).toContain('cross-site');
+      expect(guidance).toContain('lastDownloaded');
+      expect(guidance).toContain('Never call sitemaps.submit');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides a bounded read-only Search Appearance comparison using discovered types', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
