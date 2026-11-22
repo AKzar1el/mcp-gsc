@@ -1041,6 +1041,38 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('skips unsupported exact-page query drilldowns for Discover and Google News device reports', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-device-movement-review'];
+    const base = {
+      site_url: 'sc-domain:example.com', end_date: '2026-06-20',
+      page_url: 'https://example.com/de/tool', countries: ['DEU', 'AUT'],
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      for (const search_type of ['discover', 'googleNews']) {
+        const text = (await prompt.handler({ ...base, search_type })).messages[0].content.text;
+        const followUp = text.split('\n6. ')[1].split('\nNever call')[0];
+        expect(followUp).not.toContain('dimension=query');
+        expect(followUp).not.toContain('call analytics.query');
+        expect(followUp).toContain('no text-query drilldown');
+        expect(followUp.toLowerCase()).toContain('stop after the device comparison');
+        expect(text).toContain('same country list');
+      }
+      const web = (await prompt.handler({ ...base, search_type: 'web' })).messages[0].content.text;
+      expect(web).toContain('dimension=query');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  }, 20_000);
+
   it('offers a property-scoped index-status triage prompt without Google requests', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
