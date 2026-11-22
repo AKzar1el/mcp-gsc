@@ -1373,6 +1373,27 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('keeps one-window-only Search Appearance types as unconfirmed diagnostic candidates', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-search-appearance-review'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const guidance = (await prompt.handler({ site_url: 'sc-domain:example.com', end_date: '2026-11-10' })).messages[0].content.text;
+      expect(guidance).toContain('baseline-only');
+      expect(guidance).toContain('latest-only');
+      expect(guidance).toContain('not measured zero');
+      expect(guidance).toContain('not confirmed gained or lost');
+      expect(guidance).toContain('only exact provider-returned appearance types');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('anchors Search Appearance comparisons to finalized, explicit Pacific weeks', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
