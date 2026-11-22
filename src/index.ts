@@ -3,7 +3,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { createMcpHandler, getMcpAuthContext } from 'agents/mcp/server';
 import { McpServer } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { EXACT_PAGE_URL_SCHEMA } from './exact-page-url-schema';
+import { EXACT_PAGE_URL_SCHEMA, PRESERVED_URL_SCHEMA } from './exact-page-url-schema';
 import pkg from '../package.json';
 import {
   buildAuthUrl,
@@ -1283,6 +1283,14 @@ class GscMcpRuntime {
       }
       return input.split(separator).map((item) => item.trim());
     };
+    // Unlike country/device lists, URL entries must not be silently trimmed.
+    const parseInspectionUrlList = (value: unknown): unknown => {
+      if (typeof value !== 'string') return value;
+      if (value.trimStart().startsWith('[')) {
+        try { return JSON.parse(value) as unknown; } catch { return value; }
+      }
+      return value.split(/\r?\n/).filter((item) => item.length > 0);
+    };
     const promptCountries = z.preprocess(
       (value) => parsePromptList(value, /(?:\r?\n|,)/),
       z.array(z.string().regex(/^[a-zA-Z]{3}$/)).min(1).max(10)
@@ -2237,7 +2245,7 @@ class GscMcpRuntime {
         description: 'Guide a property-scoped, read-only index-status investigation. Retrieving this prompt makes no Google API request.',
         argsSchema: z.object({
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
-          inspection_url: z.string().url().describe('One fully-qualified URL within the exact Search Console property to investigate.'),
+          inspection_url: PRESERVED_URL_SCHEMA.describe('One fully-qualified URL within the exact Search Console property to investigate.'),
         }),
       },
       async ({ site_url, inspection_url }) => {
@@ -2272,8 +2280,8 @@ class GscMcpRuntime {
         argsSchema: z.object({
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           inspection_urls: z.preprocess(
-            (value) => parsePromptList(value, /\r?\n/),
-            z.array(z.string().url()).min(2).max(10)
+            parseInspectionUrlList,
+            z.array(PRESERVED_URL_SCHEMA).min(2).max(10)
               .refine((urls) => new Set(urls).size === urls.length, {
                 message: 'inspection_urls must not contain duplicate URLs.',
               }),
@@ -2565,7 +2573,7 @@ class GscMcpRuntime {
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           inspection_urls: z
-            .array(z.string().url())
+            .array(PRESERVED_URL_SCHEMA)
             .min(1)
             .max(10)
             .refine((urls) => new Set(urls).size === urls.length, {
@@ -2952,7 +2960,7 @@ class GscMcpRuntime {
         description: 'For one exact page URL within the supplied Search Console property, return the queries that produced impressions for it over a date range. This wraps an exact page dimension filter so agents do not need to construct analytics.query filter groups manually. Optional query_contains, ISO alpha-3 searcher country and device (desktop/mobile/tablet) narrow the Google-side population before pagination; these observed rows may not represent all queries for the page or all devices. Country is searcher location, not page language. Rows retain observed clicks and impressions with position=null when Google omits optional average position; do not infer rank zero. Exact page matching is case-sensitive in Search Console. Use row_limit and start_row to page through bounded results; Search Console can still omit anonymized queries. Google Discover and Google News are intentionally unavailable because those reports do not expose query data.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
-          page_url: z.string().url().describe('Exact fully-qualified page URL to filter on, e.g. https://example.com/guides/seo/. The URL must belong to site_url; Search Console exact page filters are case-sensitive.'),
+          page_url: PRESERVED_URL_SCHEMA.describe('Exact fully-qualified page URL to filter on, e.g. https://example.com/guides/seo/. The URL must belong to site_url; Search Console exact page filters are case-sensitive.'),
           query_contains: z.string().trim().min(1).max(240).optional().describe('Optional case-insensitive query substring (e.g. seo) to filter at Google before pagination. Omit for all query topics.'),
           country: DIRECT_INSIGHT_COUNTRY_SCHEMA,
           countries: CANNIBALIZATION_COUNTRIES_SCHEMA,

@@ -3300,6 +3300,44 @@ describe('Worker orchestration', () => {
     expect(getAccessToken).not.toHaveBeenCalled();
   });
 
+  it('rejects raw exact-page URL normalization in direct tools and inspection prompts', async () => {
+    const server = await createGscMcpServer(workerEnv, {
+      google_id: 'raw-url-schema-user',
+      email: 'raw-url-schema@example.test',
+    });
+    const registered = server as unknown as {
+      _registeredTools: Record<string, { inputSchema: { safeParseAsync: (input: unknown) => Promise<{ success: boolean }> } }>;
+      _registeredPrompts: Record<string, { argsSchema: { safeParseAsync: (input: unknown) => Promise<{ success: boolean }> } }>;
+    };
+    const site_url = 'sc-domain:example.com';
+    const valid = 'https://example.com/a%20b';
+    for (const raw of [
+      ' https://example.com/a',
+      'https://example.com/a ',
+      'https://example.com/a\t',
+      'https://example.com\\a',
+    ]) {
+      expect((await registered._registeredTools['urls.inspect_many'].inputSchema.safeParseAsync({
+        site_url, inspection_urls: [raw],
+      })).success, `batch tool accepted ${JSON.stringify(raw)}`).toBe(false);
+      expect((await registered._registeredTools['insights.page_queries'].inputSchema.safeParseAsync({
+        site_url, page_url: raw, start_date: '2026-09-01', end_date: '2026-09-07',
+      })).success, `exact-page query tool accepted ${JSON.stringify(raw)}`).toBe(false);
+      expect((await registered._registeredPrompts['gsc-index-status-triage'].argsSchema.safeParseAsync({
+        site_url, inspection_url: raw,
+      })).success, `single inspection prompt accepted ${JSON.stringify(raw)}`).toBe(false);
+      expect((await registered._registeredPrompts['gsc-index-batch-review'].argsSchema.safeParseAsync({
+        site_url, inspection_urls: [raw, valid],
+      })).success, `batch inspection prompt accepted ${JSON.stringify(raw)}`).toBe(false);
+    }
+    expect((await registered._registeredPrompts['gsc-index-batch-review'].argsSchema.safeParseAsync({
+      site_url, inspection_urls: ` ${valid}\nhttps://example.com/other`,
+    })).success).toBe(false);
+    expect((await registered._registeredTools['urls.inspect_many'].inputSchema.safeParseAsync({
+      site_url, inspection_urls: [valid],
+    })).success).toBe(true);
+  });
+
   it('rejects duplicate urls.inspect_many inputs before provider work', async () => {
     const originalFetch = globalThis.fetch;
     let outboundRequests = 0;
