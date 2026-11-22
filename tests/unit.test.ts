@@ -194,6 +194,23 @@ test('Search Console property schema rejects malformed and unsupported identifie
   }
 });
 
+test('Search Console property identifiers reject raw control characters without normalizing them', () => {
+  for (const codepoint of [0x00, 0x01, 0x0e, 0x1f, 0x7f, 0x80, 0x85, 0x9f]) {
+    const character = String.fromCodePoint(codepoint);
+    for (const property of [
+      `https://example.com/path${character}/`,
+      `sc-domain:exa${character}mple.com`,
+    ]) {
+      assert.equal(SEARCH_CONSOLE_PROPERTY_SCHEMA.safeParse(property).success, false, `U+${codepoint.toString(16)}`);
+      assert.equal(classifySearchConsolePropertyIdentifier(property), 'undocumented');
+    }
+  }
+
+  for (const valid of ['https://example.com/path%00/', 'https://example.com/path%C2%85/', 'sc-domain:bücher.example']) {
+    assert.equal(SEARCH_CONSOLE_PROPERTY_SCHEMA.safeParse(valid).success, true, valid);
+  }
+});
+
 test('Search Console property classifier distinguishes documented API forms without guessing platform-property identifiers', () => {
   assert.equal(classifySearchConsolePropertyIdentifier('sc-domain:example.com'), 'domain');
   assert.equal(classifySearchConsolePropertyIdentifier('sc-domain:example..com'), 'undocumented');

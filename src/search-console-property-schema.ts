@@ -8,10 +8,12 @@ export type SearchConsolePropertyIdentifierKind =
   | 'url_prefix'
   | 'undocumented';
 
+const RAW_CONTROL_CHARACTER = /\p{Cc}/u;
+
 function isDomainPropertyIdentifier(value: string): boolean {
   if (!value.startsWith('sc-domain:')) return false;
   const domain = value.slice('sc-domain:'.length);
-  if (!domain || /[\s/?#@:%\\]/.test(domain)) return false;
+  if (!domain || RAW_CONTROL_CHARACTER.test(domain) || /[\s/?#@:%\\]/.test(domain)) return false;
   try {
     // IDN hosts need ASCII label-length validation, but the original property ID
     // must still be sent to Google unchanged.
@@ -29,7 +31,7 @@ function isDomainPropertyIdentifier(value: string): boolean {
 }
 
 function isUrlPrefixPropertyIdentifier(value: string): boolean {
-  if (value !== value.trim() || /\s/.test(value) || /[?#\\]/.test(value)) return false;
+  if (RAW_CONTROL_CHARACTER.test(value) || value !== value.trim() || /\s/.test(value) || /[?#\\]/.test(value)) return false;
   try {
     const parsed = new URL(value);
     return (
