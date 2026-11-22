@@ -1508,6 +1508,34 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('requires two complete branded-classification weeks after Google history begins', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{
+          messages: Array<{ content: { text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts['gsc-brand-traffic-review'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      await expect(prompt.handler({
+        site_url: 'sc-domain:example.com', end_date: '2026-03-05',
+      })).rejects.toThrow(/brandedClassification.*2026-02-21/);
+      const firstComplete = await prompt.handler({
+        site_url: 'sc-domain:example.com', end_date: '2026-03-06',
+      });
+      const guidance = firstComplete.messages[0].content.text;
+      expect(guidance).toContain('"start_date_b":"2026-02-21"');
+      expect(guidance).toContain('"end_date_a":"2026-03-06"');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('accepts protocol string arguments for list-valued MCP prompts', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
