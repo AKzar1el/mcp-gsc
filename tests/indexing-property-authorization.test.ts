@@ -104,6 +104,25 @@ test('Indexing authorization rejects malformed, non-HTTP, and userinfo URLs', ()
   }
 });
 
+test('Shared URL authorization rejects raw characters silently normalized by URL parsing', () => {
+  for (const url of [
+    'https://example.com/jobs\\engineer',
+    'https://example.com/jobs/eng\tineer',
+    'https://example.com/jobs/eng\nineer',
+    'https://example.com/jobs/eng\rineer',
+    'https://example.com/jobs/eng\u0000ineer',
+  ]) {
+    assert.throws(
+      () => assertUrlWithinSearchConsoleProperty(url, ownerPrefix.siteUrl, 'inspection_url'),
+      /raw whitespace|control characters|backslashes/,
+    );
+    assert.throws(
+      () => assertIndexingRequestUrl(url),
+      /raw whitespace|control characters|backslashes/,
+    );
+  }
+});
+
 test('Indexing API URL validation rejects fragments without restricting URL Inspection', () => {
   assert.throws(
     () => assertIndexingRequestUrl('https://example.com/jobs/engineer#details'),
