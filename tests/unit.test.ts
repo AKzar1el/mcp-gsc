@@ -22,12 +22,14 @@ import {
 import {
   CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
   CONTENT_DECAY_PAGE_CONTAINS_SCHEMA,
+  CONTENT_DECAY_PAGE_URL_SCHEMA,
   CONTENT_DECAY_QUERY_CONTAINS_SCHEMA,
 } from '../src/content-decay-schema';
 import { resolveWeeklyDigestEndDate, weeklyDigestAnalyticsRequestCount } from '../src/digest';
 import { INDEXED_PAGES_START_ROW_SCHEMA, resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
 import { SEARCH_ANALYTICS_START_ROW_SCHEMA } from '../src/result-bounds';
 import { createQuickWinsInputSchema } from '../src/quick-wins-schema';
+import { EXACT_PAGE_URL_SCHEMA } from '../src/exact-page-url-schema';
 import { SITEMAP_URL_SCHEMA } from '../src/sitemap-url-schema';
 import { URL_INSPECTION_LANGUAGE_CODE_SCHEMA } from '../src/url-inspection-language-schema';
 import {
@@ -483,6 +485,37 @@ test('quick wins accepts bounded distinct multi-market selectors without mixing 
   assert.equal(schema.safeParse({ ...base, page_url: 'https://example.com/de/guide' }).success, true);
   assert.equal(schema.safeParse({ ...base, page_url: 'not-a-url' }).success, false);
   assert.equal(schema.safeParse({ ...base, page_url: 'https://example.com/de/guide', page_contains: '/de/' }).success, false);
+});
+
+test('quick wins rejects raw exact-page URL whitespace instead of trimming the caller input', () => {
+  const schema = createQuickWinsInputSchema();
+  const base = { site_url: 'sc-domain:example.com', start_date: '2026-01-01', end_date: '2026-01-31' };
+  assert.equal(schema.safeParse({ ...base, page_url: 'https://example.com/de/guide' }).success, true);
+  assert.equal(schema.safeParse({ ...base, page_url: 'https://example.com/de/my%20guide' }).success, true);
+  for (const page_url of [
+    ' https://example.com/de/guide',
+    'https://example.com/de/guide ',
+    '\thttps://example.com/de/guide',
+    'https://example.com/de/guide\n',
+    'https://example.com/de\\guide',
+  ]) {
+    assert.equal(schema.safeParse({ ...base, page_url }).success, false, JSON.stringify(page_url));
+  }
+});
+
+test('shared exact-page filters reject normalization-prone raw inputs across reporting schemas', () => {
+  for (const pageUrl of [
+    ' https://example.com/de/guide',
+    'https://example.com/de/guide ',
+    'https://example.com/de/guide\t',
+    'https://example.com/de\\guide',
+  ]) {
+    assert.equal(EXACT_PAGE_URL_SCHEMA.safeParse(pageUrl).success, false, JSON.stringify(pageUrl));
+    assert.equal(CONTENT_DECAY_PAGE_URL_SCHEMA.safeParse(pageUrl).success, false, JSON.stringify(pageUrl));
+  }
+  const exact = 'https://example.com/de/my%20guide';
+  assert.equal(EXACT_PAGE_URL_SCHEMA.parse(exact), exact);
+  assert.equal(CONTENT_DECAY_PAGE_URL_SCHEMA.parse(exact), exact);
 });
 
 function makeKey(byteLength = 32): string {

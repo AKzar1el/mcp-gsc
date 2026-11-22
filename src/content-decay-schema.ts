@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { EXACT_PAGE_URL_SCHEMA } from './exact-page-url-schema';
 
 export const CONTENT_DECAY_COMPARE_DAYS_SCHEMA = z
   .number()
@@ -18,11 +19,7 @@ export const CONTENT_DECAY_PAGE_CONTAINS_SCHEMA = z
   .optional()
   .describe('Optional case-insensitive page URL substring, such as /de/, applied to both Google Search Analytics requests before pagination. Restricts both comparison periods to matching page URLs without extra requests or treating absent rows as zero.');
 
-export const CONTENT_DECAY_PAGE_URL_SCHEMA = z
-  .string()
-  .trim()
-  .url()
-  .max(2048)
+export const CONTENT_DECAY_PAGE_URL_SCHEMA = EXACT_PAGE_URL_SCHEMA
   .optional()
   .describe('Optional exact landing-page URL within the selected property, applied as Google-side case-sensitive page equals in both comparison periods before pagination. Use instead of page_contains.');
 
