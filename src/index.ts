@@ -1478,6 +1478,9 @@ class GscMcpRuntime {
         if (page_contains && page_url) throw new Error('Supply either page_contains or page_url, not both.');
         if (page_url) assertUrlWithinSearchConsoleProperty(page_url, site_url, 'page_url');
         const dates = finalizedReviewWindows(end_date);
+        if (dates.start_date_b < '2026-02-21') {
+          throw new Error('brandedClassification history begins on 2026-02-21; choose end_date 2026-03-06 or later for two complete seven-day comparison windows.');
+        }
         const hasFilters = Boolean(page_url || page_contains || countries?.length || devices?.length);
         const pageScope = page_url ? 'exact page' : page_contains ? 'URL-section' : 'unfiltered property scope';
         const pageFilterGuidance = page_url
