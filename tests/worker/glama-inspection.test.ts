@@ -144,6 +144,47 @@ describe('Glama inspection mode', () => {
     expect(dataText).not.toContain('Settings → Connectors');
   });
 
+  it('exposes guided prompts through the client-facing MCP protocol without provider access', async () => {
+    const inspectionEnv: InspectionEnv = {
+      ...workerEnv,
+      GLAMA_INSPECTION_MODE: 'true',
+    };
+
+    const listed = await callWorker(
+      request({ jsonrpc: '2.0', id: 1, method: 'prompts/list' }),
+      inspectionEnv,
+    );
+    expect(listed.status).toBe(200);
+    const listedEnvelope = await readJsonRpc(listed);
+    expect(listedEnvelope).not.toHaveProperty('error');
+    const prompts = (listedEnvelope.result as {
+      prompts: Array<{ name: string; description?: string }>;
+    }).prompts;
+    const names = prompts.map((prompt) => prompt.name);
+    expect(names.length).toBeGreaterThanOrEqual(17);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).toEqual(expect.arrayContaining([
+      'gsc-property-readiness-review',
+      'gsc-weekly-client-report',
+      'gsc-sitemap-health-review',
+    ]));
+    expect(prompts.every((prompt) => Boolean(prompt.description?.trim()))).toBe(true);
+
+    const retrieved = await callWorker(
+      request({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'prompts/get',
+        params: { name: 'gsc-property-readiness-review', arguments: {} },
+      }),
+      inspectionEnv,
+    );
+    expect(retrieved.status).toBe(200);
+    const retrievedEnvelope = await readJsonRpc(retrieved);
+    expect(retrievedEnvelope).not.toHaveProperty('error');
+    expect(JSON.stringify(retrievedEnvelope.result)).toContain('sites.list');
+  });
+
   it('serves the MCP 2026-07-28 stateless lifecycle without initialize', async () => {
     const inspectionEnv: InspectionEnv = {
       ...workerEnv,
