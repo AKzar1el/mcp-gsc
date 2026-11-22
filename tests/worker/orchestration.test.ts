@@ -567,6 +567,38 @@ describe('Worker orchestration', () => {
     })).rejects.toThrow();
   });
 
+  it('omits phantom Google filters in unscoped and country-only traffic-drop comparisons', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, string>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const unscoped = (await prompts['gsc-traffic-drop-triage'].handler({
+        site_url: 'sc-domain:example.com', end_date: '2026-06-20',
+      })).messages[0].content.text;
+      const unscopedCompare = unscoped.split('\n').find((line) => line.startsWith('4. When a targeted hypothesis'));
+      expect(unscopedCompare).toContain('omit dimension_filter_groups entirely');
+      expect(unscopedCompare).not.toContain('page contains the supplied URL section');
+
+      const countryOnly = (await prompts['gsc-traffic-drop-triage'].handler({
+        site_url: 'sc-domain:example.com', end_date: '2026-06-20', country: 'deu',
+      })).messages[0].content.text;
+      const countryCompare = countryOnly.split('\n').find((line) => line.startsWith('4. When a targeted hypothesis'));
+      expect(countryCompare).toContain('country equals its uppercase ISO alpha-3 code');
+      expect(countryCompare).not.toContain('page contains the supplied URL section');
+      expect(countryCompare).not.toContain('query contains the optional search topic');
+      expect(countryCompare).not.toContain('omit dimension_filter_groups entirely');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('keeps an exact-page traffic decline isolated from sibling URLs', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
@@ -993,6 +1025,8 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('noindex');
       expect(guidance).toContain('not a live URL test');
       expect(guidance).toContain('Never call indexing.request');
+      expect(guidance).toContain('no remaining URL Inspection budget counter');
+      expect(guidance).toContain('Do not invent a remaining budget or exact retry-unit total');
       expect(fetchSpy).not.toHaveBeenCalled();
       await expect(prompts['gsc-index-status-triage'].handler({
         site_url: 'sc-domain:example.com',
@@ -1027,6 +1061,8 @@ describe('Worker orchestration', () => {
         'query contains', 'countries', 'devices', 'normal Search Analytics',
         'one URL Inspection', 'missing', 'not measured zero', 'not a live URL test',
         'cannot establish causation', 'Never call indexing.request',
+        'no remaining URL Inspection budget counter',
+        'Do not invent a remaining budget or exact retry-unit total',
       ]) expect(text).toContain(required);
       expect(text).not.toContain('page contains page_url');
       expect(fetchSpy).not.toHaveBeenCalled();
@@ -1065,6 +1101,12 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('urls.inspect_many');
       expect(guidance).toContain('20');
       expect(guidance).toContain('per-URL');
+      expect(guidance).toContain('no remaining-budget counter');
+      expect(guidance).toContain('reserves initial units for the whole batch');
+      expect(guidance).toContain('Do not split or retry a refused batch');
+      expect(guidance).toContain('does not expose precise retry-unit consumption');
+      expect(guidance).not.toContain('confirm the remaining per-user URL Inspection safety budget');
+      expect(guidance).not.toContain('actual inspection quota consumption');
       expect(guidance).toContain('index_status_counts');
       expect(guidance).toContain('unknown');
       expect(guidance).toContain('not_indexed');
@@ -1116,6 +1158,10 @@ describe('Worker orchestration', () => {
         expect(guidance).toContain('provider_auth_live_verified');
         expect(guidance).toContain('sites.list');
         expect(guidance).toContain('sites.get');
+        expect(guidance).toContain('result_page.has_more');
+        expect(guidance).toContain('result_page.next_start_row');
+        expect(guidance).toContain('at most three pages');
+        expect(guidance).toContain('not verified by this bounded scan');
         expect(guidance).toContain('permissionLevel');
         expect(guidance).toContain('Do not silently select');
         expect(guidance).toContain('Never call sites.add');
@@ -1600,6 +1646,33 @@ describe('Worker orchestration', () => {
         site_url: 'sc-domain:example.com',
         countries: 'DEU,AUT,CHE,SVN,HRV,ITA,FRA,ESP,PRT,NLD,GBR',
       })).success).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('omits absent Google-side filters in unscoped and list-only weekly client reports', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const weekly = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-weekly-client-report'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const unscoped = (await weekly.handler({
+        site_url: 'sc-domain:example.com', search_type: 'web',
+      })).messages[0].content.text;
+      expect(unscoped).toContain('omit dimension_filter_groups entirely in both periods');
+
+      const listOnly = (await weekly.handler({
+        site_url: 'sc-domain:example.com', search_type: 'web',
+        countries: ['DEU', 'AUT'], devices: ['mobile', 'desktop'],
+      })).messages[0].content.text;
+      expect(listOnly).toContain('omit absent page and query filters');
+      expect(listOnly).toContain('Google-side filterLists');
+      expect(listOnly).toContain('identical dimension_filter_groups');
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       fetchSpy.mockRestore();
