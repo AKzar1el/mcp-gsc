@@ -1520,7 +1520,7 @@ class GscMcpRuntime {
       'gsc-visual-search-review',
       {
         title: 'Review Google Lens and visual-search landing-page performance',
-        description: 'Guide a read-only, matched-week webMultimodal performance review with optional exact-page, URL-section, country and device scope. Prompt retrieval does not call Google.',
+        description: 'Guide a read-only, matched-week webMultimodal review and optional longer-window page-decay follow-up with exact-page, URL-section, country and device scope. Prompt retrieval does not call Google.',
         argsSchema: z.object({
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional inclusive final reporting end date.')),
@@ -1551,6 +1551,7 @@ class GscMcpRuntime {
               page_url
                 ? '6. Keep all conclusions and any optional read-only follow-up on exactly this page_url, not similarly named siblings or the entire property. Explain the distinction between visual-search and standard search, missing data, and any preliminary evidence. Every further read consumes normal Google quota; prompt retrieval makes no Google request.'
                 : '6. Give at most three observed landing-page follow-ups and two safe hypotheses to verify separately. Explain top-row truncation, the distinction between visual-search traffic and standard search, and any missing or preliminary evidence. All later read calls consume normal Google quotas; prompt retrieval itself makes no Google request.',
+              `7. Only if a longer-window landing-page decline would change the user's next decision and quota remains, offer an optional insights.content_decay call with compare_days=28, end_date=end_date_a, search_type="webMultimodal", the same site_url and ${page_url ? 'exact page_url (never broaden to page_contains or the whole property)' : page_contains ? 'page_contains URL section' : 'no page filter'}. Preserve the same countries/devices lists, without query_contains or any text-query grouping. This is a separate 28-day comparison, not the two seven-day windows above; absent page rows are not measured zero and rank metrics may be unavailable. Do not call automatically.`,
               'Never call indexing.request, indexing.remove, submit sitemaps, modify properties, email reports or publish content. Do not infer indexing failures, algorithmic causes, new revenue or guaranteed visibility improvements from these samples.',
             ].join('\n'),
           },
