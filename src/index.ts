@@ -1162,7 +1162,7 @@ const TOOL_CATALOG = [
   {
     name: 'reports.weekly_digest',
     description:
-      'Generate a plain-language weekly Search Console report for Web (default), Image, Video or Google Search News-tab performance using search_type, optionally scoped by page_contains URL section, query_contains topic, and either country or countries (1-10 ISO alpha-3 searcher codes), plus device or devices (1-3 desktop/mobile/tablet). Plural lists use Google-side OR within a dimension, AND across other filters; do not combine single and plural values for one dimension. Reported figures describe the selected scope, not necessarily property-wide traffic.',
+      'Generate a plain-language weekly Search Console report for Web (default), Image, Video or Google Search News-tab performance using search_type, optionally scoped by page_contains URL section OR property-validated exact page_url (case-sensitive Google-side page equals), query_contains topic, and either country or countries (1-10 ISO alpha-3 searcher codes), plus device or devices (1-3 desktop/mobile/tablet). Never combine page_url and page_contains. Plural lists use Google-side OR within a dimension, AND across other filters; do not combine single and plural values for one dimension. Reported figures describe the selected scope, not necessarily property-wide traffic.',
   },
   {
     name: 'server.capabilities',
