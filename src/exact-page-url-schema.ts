@@ -4,8 +4,10 @@ import { z } from 'zod';
 // page that Google receives in a case-sensitive exact-page filter.
 export const PRESERVED_URL_SCHEMA = z
   .string()
-  .regex(
-    /^[^\p{White_Space}\p{Cc}\\]*$/u,
+  // Keep Unicode-sensitive checks server-side: JSON Schema has no regex flags,
+  // so serializing \p{} into pattern can reject valid URLs in ordinary clients.
+  .refine(
+    (value) => !/[\p{White_Space}\p{Cc}\\]/u.test(value),
     'Exact page URL must not contain raw whitespace, control characters, or backslashes.',
   )
   .url();
