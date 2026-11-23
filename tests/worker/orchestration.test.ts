@@ -2027,6 +2027,13 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('dimensions=[]');
       expect(guidance).toContain('filterLists');
       expect(guidance).toContain('text query');
+      const longerWindow = guidance.split('\n').find((line) => line.includes('insights.content_decay'));
+      expect(longerWindow).toContain('compare_days=28');
+      expect(longerWindow).toContain('end_date=end_date_a');
+      expect(longerWindow).toContain('page_contains');
+      expect(longerWindow).toContain('countries/devices');
+      expect(longerWindow).toContain('without query_contains');
+      expect(longerWindow).toContain('optional');
       expect(guidance).toContain('not measured zero');
       expect(guidance).toContain('Never call indexing.request');
       expect(fetchSpy).not.toHaveBeenCalled();
@@ -2061,6 +2068,11 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('analytics.compare');
       expect(guidance).toContain('DEU');
       expect(guidance).toContain('DESKTOP');
+      const longerWindow = guidance.split('\n').find((line) => line.includes('insights.content_decay'));
+      expect(longerWindow).toContain('compare_days=28');
+      expect(longerWindow).toContain('page_url');
+      expect(longerWindow).toContain('never broaden');
+      expect(longerWindow).toContain('countries/devices');
       await expect(prompt.handler({ site_url: 'sc-domain:example.com', page_url, page_contains: '/de/' }))
         .rejects.toThrow(/either page_contains or page_url/);
       await expect(prompt.handler({ site_url: 'sc-domain:example.com', page_url: 'https://other.example.net/de/' }))
