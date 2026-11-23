@@ -1192,9 +1192,20 @@ test('exact page/query drilldowns offer opt-in preliminary data without changing
 });
 
 test('direct page and query drilldowns advertise optional device scope', () => {
-  assert.equal((indexSource.match(/device:\s*DIRECT_INSIGHT_DEVICE_SCHEMA/g) ?? []).length, 2);
+  const registrations = [...indexSource.matchAll(/this\.server\.registerTool\(\s*'insights\.(?:page_queries|query_pages)'([\s\S]*?)outputSchema:/g)];
+  assert.equal(registrations.length, 2);
+  for (const [, registration] of registrations) {
+    assert.match(registration, /device:\s*DIRECT_INSIGHT_DEVICE_SCHEMA/);
+  }
   assert.match(indexSource, /const DIRECT_INSIGHT_DEVICE_SCHEMA[\s\S]*?desktop[\s\S]*?mobile[\s\S]*?tablet/);
   assert.match(readmeSource, /Both accept optional .*device/);
+});
+
+test('search-visible page discovery advertises optional market and device scopes', () => {
+  const registration = indexSource.match(/this\.server\.registerTool\(\s*'indexing\.list_pages'([\s\S]*?)outputSchema:/)?.[1] ?? '';
+  assert.match(registration, /country:\s*DIRECT_INSIGHT_COUNTRY_SCHEMA/);
+  assert.match(registration, /device:\s*DIRECT_INSIGHT_DEVICE_SCHEMA/);
+  assert.match(readmeSource, /To distinguish visitors in Germany on mobile/);
 });
 
 test('content decay country scope is discoverable, validated and not confused with page language', () => {

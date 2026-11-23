@@ -808,12 +808,14 @@ const INDEXED_PAGES_OUTPUT_SCHEMA = {
   })),
   page_contains: z.string().nullable(),
   query_contains: z.string().nullable(),
+  country: z.string().optional().describe('Selected ISO alpha-3 searcher country, when filtered; not a URL language.'),
+  device: z.enum(['desktop', 'mobile', 'tablet']).optional().describe('Selected searcher device, when filtered.'),
   note: z.string(),
   result_page: RESULT_PAGE_OUTPUT_SCHEMA,
 };
 
 const SEARCH_VISIBLE_PAGES_DESCRIPTION =
-  'List pages with observed Search Console impressions in the requested period. Preserve observed clicks and impressions when Google omits optional average position (reported as null, not rank zero). This is performance data, not an index-coverage inventory: a URL can be indexed even when it is absent here, and Search Analytics can omit some page-level detail. Use urls.inspect or urls.inspect_many for URL-level index status.';
+  'List pages with observed Search Console impressions in the requested period, optionally scoped to a URL section, query topic, searcher country or device. Preserve observed clicks and impressions when Google omits optional average position (reported as null, not rank zero). This is performance data, not an index-coverage inventory: a URL can be indexed even when it is absent here, and Search Analytics can omit some page-level detail. Use urls.inspect or urls.inspect_many for URL-level index status.';
 
 const SEARCH_VISIBLE_PAGES_NOTE =
   'These are observed Search Analytics performance rows, including pages for which Google omits optional average position (position=null). This is not a complete list of indexed URLs. Absence does not mean a URL is unindexed. Use urls.inspect or urls.inspect_many for URL-level index status.';
@@ -3904,7 +3906,7 @@ class GscMcpRuntime {
       'indexing.list_pages',
       {
         title: 'List Search-Visible Pages',
-        description: `${SEARCH_VISIBLE_PAGES_DESCRIPTION} Optional page_contains filters a URL section (for example /de/); query_contains narrows pages to impressions from a matching search-query topic. Both filters run at Google before pagination and can be combined with AND. Scoped results are not property-wide, and anonymized query traffic may be absent. When one date boundary is omitted, the server derives the other to target an inclusive 30-day range; generated end dates are capped at the latest complete date. Responses are bounded and pageable with row_limit/start_row.`,
+        description: `${SEARCH_VISIBLE_PAGES_DESCRIPTION} Optional page_contains filters a URL section (for example /de/); query_contains narrows matching search-query traffic, while country/device narrow the searcher market. All supplied filters run at Google with AND before pagination. Searcher country is not the URL language. Scoped results are not property-wide, and anonymized query traffic may be absent. When one date boundary is omitted, the server derives the other to target an inclusive 30-day range; generated end dates are capped at the latest complete date. Responses are bounded and pageable with row_limit/start_row.`,
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           page_contains: z.string().trim().min(1).max(120).optional().describe(
@@ -3913,6 +3915,8 @@ class GscMcpRuntime {
           query_contains: z.string().trim().min(1).max(120).optional().describe(
             'Optional case-insensitive search-query topic substring, such as seo audit. Applied by Google before page pagination and ANDed with page_contains when supplied. Only observed matching query traffic is represented; anonymized queries may be omitted.',
           ),
+          country: DIRECT_INSIGHT_COUNTRY_SCHEMA,
+          device: DIRECT_INSIGHT_DEVICE_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(
             searchConsoleDateDescription(
               'Start date (inclusive) in YYYY-MM-DD format. If end_date is omitted, the generated end date is 29 days later, capped at the latest complete date.',
@@ -3929,7 +3933,7 @@ class GscMcpRuntime {
         outputSchema: INDEXED_PAGES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, page_contains, query_contains, start_date, end_date, row_limit, start_row = 0 }) => {
+      async ({ site_url, page_contains, query_contains, country, device, start_date, end_date, row_limit, start_row = 0 }) => {
         const { startDate, endDate } = resolveIndexedPagesDateRange(
           start_date,
           end_date,
@@ -3947,12 +3951,14 @@ class GscMcpRuntime {
           dimensions: ['page'],
           rowLimit: sourceRowLimit,
           startRow: start_row,
-          ...(page_contains || query_contains ? {
+          ...(page_contains || query_contains || country || device ? {
             dimensionFilterGroups: [{
               groupType: 'and' as const,
               filters: [
                 ...(page_contains ? [{ dimension: 'page' as const, operator: 'contains' as const, expression: page_contains }] : []),
                 ...(query_contains ? [{ dimension: 'query' as const, operator: 'contains' as const, expression: query_contains }] : []),
+                ...(country ? [{ dimension: 'country' as const, operator: 'equals' as const, expression: country.toUpperCase() }] : []),
+                ...(device ? [{ dimension: 'device' as const, operator: 'equals' as const, expression: device.toUpperCase() }] : []),
               ],
             }],
           } : {}),
@@ -3979,11 +3985,15 @@ class GscMcpRuntime {
           pages: bounded.items,
           page_contains: page_contains ?? null,
           query_contains: query_contains ?? null,
+          ...(country ? { country: country.toUpperCase() } : {}),
+          ...(device ? { device } : {}),
           result_page: bounded.resultPage,
           note: SEARCH_VISIBLE_PAGES_NOTE
             + (page_contains ? ` Results are scoped to URLs containing ${JSON.stringify(page_contains)}.` : '')
             + (query_contains ? ` Results are scoped to observed traffic from matching queries containing ${JSON.stringify(query_contains)}; anonymized queries may be omitted.` : '')
-            + (page_contains || query_contains ? ' This is not property-wide traffic.' : ''),
+            + (country ? ` Results are scoped to searcher country ${country.toUpperCase()}, not page language.` : '')
+            + (device ? ` Results are scoped to searcher device ${device}.` : '')
+            + (page_contains || query_contains || country || device ? ' This is not property-wide traffic.' : ''),
         };
         return toolResponse(JSON.stringify(payload), payload);
       },
