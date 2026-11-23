@@ -62,6 +62,47 @@ function createPendingStateBinding() {
 }
 
 describe('Worker orchestration', () => {
+  it('guides topic and market scoped Search-visible page discovery without inspecting or mutating URLs', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean }> };
+        handler: (args: Record<string, string>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-search-visible-pages-review'];
+    expect(prompt).toBeDefined();
+    const args = {
+      site_url: 'sc-domain:example.com',
+      page_contains: '/de/',
+      query_contains: 'seo audit',
+      country: 'deu',
+      device: 'mobile',
+      end_date: '2026-11-10',
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      expect((await prompt.argsSchema.safeParseAsync(args)).success).toBe(true);
+      expect((await prompt.argsSchema.safeParseAsync({ ...args, country: 'germany' })).success).toBe(false);
+      expect((await prompt.argsSchema.safeParseAsync({ ...args, device: 'watch' })).success).toBe(false);
+      const guidance = (await prompt.handler(args)).messages[0].content.text;
+      expect(guidance).toContain('indexing.list_pages');
+      expect(guidance).toContain('"site_url":"sc-domain:example.com"');
+      expect(guidance).toContain('"page_contains":"/de/"');
+      expect(guidance).toContain('"query_contains":"seo audit"');
+      expect(guidance).toContain('"country":"DEU"');
+      expect(guidance).toContain('"device":"mobile"');
+      expect(guidance).toContain('"end_date":"2026-11-10"');
+      expect(guidance).toContain('result_page.has_more');
+      expect(guidance).toContain('not index coverage');
+      expect(guidance).toContain('anonymized queries');
+      expect(guidance).toContain('Never call indexing.request');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides a finalized daily traffic-onset review without provider calls on retrieval', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
