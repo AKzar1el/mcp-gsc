@@ -7187,14 +7187,64 @@ describe('Worker orchestration', () => {
       expect(topicScoped.structuredContent.query_contains).toBe('seo audit');
       expect(topicScoped.structuredContent.note).toMatch(/query topic|matching queries/i);
 
+      const marketScoped = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        page_contains: '/de/',
+        query_contains: 'seo audit',
+        country: 'deu',
+        device: 'mobile',
+        row_limit: 25,
+      })) as { structuredContent: { country?: string; device?: string; note: string } };
+      expect(requests[2]).toMatchObject({
+        dimensions: ['page'],
+        dimensionFilterGroups: [{
+          groupType: 'and',
+          filters: [
+            { dimension: 'page', operator: 'contains', expression: '/de/' },
+            { dimension: 'query', operator: 'contains', expression: 'seo audit' },
+            { dimension: 'country', operator: 'equals', expression: 'DEU' },
+            { dimension: 'device', operator: 'equals', expression: 'MOBILE' },
+          ],
+        }],
+      });
+      expect(marketScoped.structuredContent).toMatchObject({ country: 'DEU', device: 'mobile' });
+      expect(marketScoped.structuredContent.note).toMatch(/searcher country|searcher device/i);
+
+      await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        country: 'SVN',
+        row_limit: 25,
+      });
+      expect(requests[3]).toMatchObject({
+        dimensionFilterGroups: [{ groupType: 'and', filters: [
+          { dimension: 'country', operator: 'equals', expression: 'SVN' },
+        ] }],
+      });
+      await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        device: 'desktop',
+        row_limit: 25,
+      });
+      expect(requests[4]).toMatchObject({
+        dimensionFilterGroups: [{ groupType: 'and', filters: [
+          { dimension: 'device', operator: 'equals', expression: 'DESKTOP' },
+        ] }],
+      });
+
       const unfiltered = (await registered['indexing.list_pages'].handler({
         site_url: 'sc-domain:example.com',
         start_date: '2026-06-01',
         end_date: '2026-06-30',
         row_limit: 25,
       })) as { structuredContent: { page_contains: string | null } };
-      expect(requests).toHaveLength(3);
-      expect(requests[2]).not.toHaveProperty('dimensionFilterGroups');
+      expect(requests).toHaveLength(6);
+      expect(requests[5]).not.toHaveProperty('dimensionFilterGroups');
       expect(unfiltered.structuredContent.page_contains).toBeNull();
     } finally {
       globalThis.fetch = originalFetch;

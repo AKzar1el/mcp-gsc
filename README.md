@@ -290,7 +290,7 @@ MCP clients can call read-only `server.capabilities` to discover the existing `a
 
 ## What you can ask
 
-For a multilingual site, call `indexing.list_pages` with `page_contains: "/de/"` to find Search-visible pages within the German URL section. The filter is applied at Google before pagination and adds no API requests. The response echoes `page_contains`, and its metrics describe only the matching pages returned by Search Analytics. This is not a complete index-coverage inventory: use URL Inspection to check an individual page's indexed state.
+For a multilingual site, call `indexing.list_pages` with `page_contains: "/de/"` to find Search-visible pages within the German URL section. To distinguish visitors in Germany on mobile from visitors elsewhere, add `country: "DEU"` and `device: "mobile"`; searcher country is not page language. Optional `query_contains: "seo audit"` narrows the same request to observed topic traffic. These filters are ANDed at Google before pagination and add no API requests. The response echoes selected scopes, and its metrics describe only matching Search Analytics rows, not property-wide traffic. Omitting optional filters preserves the unfiltered behavior. This is not a complete index-coverage inventory: use URL Inspection to check an individual page's indexed state.
 
 **Agency reporting workflow:** [Read-only weekly Search Console reporting for SEO agencies](docs/agency-weekly-reporting.md) walks through exact-property verification, one bounded weekly digest, matched-period comparisons, evidence checks, and a reusable human-reviewed client report. It contains no fabricated client metrics or automated outreach.
 
