@@ -807,6 +807,7 @@ const INDEXED_PAGES_OUTPUT_SCHEMA = {
     position: z.number().nullable().describe('Average position when supplied by Google; null means this optional metric was not reported.'),
   })),
   page_contains: z.string().nullable(),
+  query_contains: z.string().nullable(),
   note: z.string(),
   result_page: RESULT_PAGE_OUTPUT_SCHEMA,
 };
@@ -3903,11 +3904,14 @@ class GscMcpRuntime {
       'indexing.list_pages',
       {
         title: 'List Search-Visible Pages',
-        description: `${SEARCH_VISIBLE_PAGES_DESCRIPTION} Optional page_contains filters page URLs at Google before pagination, for example /de/ to inspect one locale section; scoped results are not property-wide. When one date boundary is omitted, the server derives the other to target an inclusive 30-day range; generated end dates are capped at the latest complete date. Responses are bounded and pageable with row_limit/start_row.`,
+        description: `${SEARCH_VISIBLE_PAGES_DESCRIPTION} Optional page_contains filters a URL section (for example /de/); query_contains narrows pages to impressions from a matching search-query topic. Both filters run at Google before pagination and can be combined with AND. Scoped results are not property-wide, and anonymized query traffic may be absent. When one date boundary is omitted, the server derives the other to target an inclusive 30-day range; generated end dates are capped at the latest complete date. Responses are bounded and pageable with row_limit/start_row.`,
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           page_contains: z.string().trim().min(1).max(120).optional().describe(
             'Optional case-insensitive page URL substring such as /de/. Applied by Google before pagination; results are limited to matching URLs.',
+          ),
+          query_contains: z.string().trim().min(1).max(120).optional().describe(
+            'Optional case-insensitive search-query topic substring, such as seo audit. Applied by Google before page pagination and ANDed with page_contains when supplied. Only observed matching query traffic is represented; anonymized queries may be omitted.',
           ),
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(
             searchConsoleDateDescription(
@@ -3925,7 +3929,7 @@ class GscMcpRuntime {
         outputSchema: INDEXED_PAGES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, page_contains, start_date, end_date, row_limit, start_row = 0 }) => {
+      async ({ site_url, page_contains, query_contains, start_date, end_date, row_limit, start_row = 0 }) => {
         const { startDate, endDate } = resolveIndexedPagesDateRange(
           start_date,
           end_date,
@@ -3943,10 +3947,13 @@ class GscMcpRuntime {
           dimensions: ['page'],
           rowLimit: sourceRowLimit,
           startRow: start_row,
-          ...(page_contains ? {
+          ...(page_contains || query_contains ? {
             dimensionFilterGroups: [{
               groupType: 'and' as const,
-              filters: [{ dimension: 'page' as const, operator: 'contains' as const, expression: page_contains }],
+              filters: [
+                ...(page_contains ? [{ dimension: 'page' as const, operator: 'contains' as const, expression: page_contains }] : []),
+                ...(query_contains ? [{ dimension: 'query' as const, operator: 'contains' as const, expression: query_contains }] : []),
+              ],
             }],
           } : {}),
         }, () => this.reserveSearchAnalyticsRetry(googleId));
@@ -3971,10 +3978,12 @@ class GscMcpRuntime {
         const payload = {
           pages: bounded.items,
           page_contains: page_contains ?? null,
+          query_contains: query_contains ?? null,
           result_page: bounded.resultPage,
-          note: page_contains
-            ? `${SEARCH_VISIBLE_PAGES_NOTE} Results are scoped to URLs containing ${JSON.stringify(page_contains)} and are not property-wide.`
-            : SEARCH_VISIBLE_PAGES_NOTE,
+          note: SEARCH_VISIBLE_PAGES_NOTE
+            + (page_contains ? ` Results are scoped to URLs containing ${JSON.stringify(page_contains)}.` : '')
+            + (query_contains ? ` Results are scoped to observed traffic from matching queries containing ${JSON.stringify(query_contains)}; anonymized queries may be omitted.` : '')
+            + (page_contains || query_contains ? ' This is not property-wide traffic.' : ''),
         };
         return toolResponse(JSON.stringify(payload), payload);
       },
