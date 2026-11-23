@@ -7293,6 +7293,96 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('uses one Google page read for combined searcher countries and devices', async () => {
+    await saveUser(workerEnv, 'market-pages-user', 'market@example.test', 'market-refresh-token');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'market-pages-user', email: 'market@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'market-pages-access', expires_in: 3600 });
+        }
+        if (url.endsWith('/searchAnalytics/query')) {
+          requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+          return response({ rows: [{
+            keys: ['https://example.com/de/guide/'], clicks: 2, impressions: 40, ctr: 0.05,
+          }] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        search_type: 'image',
+        page_contains: '/de/',
+        query_contains: 'seo',
+        countries: ['deu', 'aut'],
+        devices: ['desktop', 'mobile'],
+        row_limit: 25,
+        start_row: 6,
+      };
+      const result = (await registered['indexing.list_pages'].handler(args)) as {
+        structuredContent: {
+          countries?: string[];
+          devices?: string[];
+          pages: Array<{ position: number | null }>;
+          note: string;
+          result_page: { start_row: number };
+        };
+      };
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        type: 'image',
+        dimensions: ['page'],
+        rowLimit: 25,
+        startRow: 6,
+        dimensionFilterGroups: [{
+          groupType: 'and',
+          filters: [
+            { dimension: 'page', operator: 'contains', expression: '/de/' },
+            { dimension: 'query', operator: 'contains', expression: 'seo' },
+          ],
+          filterLists: [
+            { dimension: 'country', expressions: ['DEU', 'AUT'] },
+            { dimension: 'device', expressions: ['DESKTOP', 'MOBILE'] },
+          ],
+        }],
+      });
+      expect(result.structuredContent).toMatchObject({
+        countries: ['DEU', 'AUT'], devices: ['desktop', 'mobile'],
+        result_page: { start_row: 6 },
+      });
+      expect(result.structuredContent.pages[0].position).toBeNull();
+      expect(result.structuredContent.note).toMatch(/combined|OR within/i);
+      for (const invalid of [
+        { ...args, country: 'DEU' },
+        { ...args, device: 'desktop' },
+        { ...args, countries: ['deu', 'DEU'] },
+        { ...args, devices: ['mobile', 'mobile'] },
+        { ...args, search_type: 'discover' },
+      ]) {
+        const rejected = await registered['indexing.list_pages'].handler(invalid);
+        expect(JSON.stringify(rejected)).toMatch(/country|device|query_contains/i);
+      }
+      expect(requests).toHaveLength(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('selects the requested Search-visible page surface without adding provider reads', async () => {
     await saveUser(workerEnv, 'surface-pages-user', 'surface@example.test', 'surface-refresh-token');
     const server = await createGscMcpServer(

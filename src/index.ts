@@ -812,12 +812,14 @@ const INDEXED_PAGES_OUTPUT_SCHEMA = {
     .describe('Explicit non-default Search surface, when selected; omitted for default Web requests.'),
   country: z.string().optional().describe('Selected ISO alpha-3 searcher country, when filtered; not a URL language.'),
   device: z.enum(['desktop', 'mobile', 'tablet']).optional().describe('Selected searcher device, when filtered.'),
+  countries: z.array(z.string()).optional().describe('Selected uppercase searcher countries ORed at Google; one combined segment, not separate country reports.'),
+  devices: z.array(z.enum(['desktop', 'mobile', 'tablet'])).optional().describe('Selected searcher devices ORed at Google; not separate device reports.'),
   note: z.string(),
   result_page: RESULT_PAGE_OUTPUT_SCHEMA,
 };
 
 const SEARCH_VISIBLE_PAGES_DESCRIPTION =
-  'List pages with observed Search Console impressions in the requested period on Web (default), Image, Video, Search News-tab, Discover, Google News or webMultimodal (Lens/Circle to Search), optionally scoped to a URL section, supported query topic, searcher country or device. webMultimodal, Discover and Google News do not support query_contains. Preserve observed clicks and impressions when Google omits optional average position (reported as null, not rank zero). This is performance data, not an index-coverage inventory: a URL can be indexed even when it is absent here, and Search Analytics can omit some page-level detail. Use urls.inspect or urls.inspect_many for URL-level index status.';
+  'List pages with observed Search Console impressions in the requested period on Web (default), Image, Video, Search News-tab, Discover, Google News or webMultimodal (Lens/Circle to Search), optionally scoped to a URL section, supported query topic, and single or combined searcher countries/devices. Combined lists use Google-side OR within each dimension and AND across dimensions in one read, not separate market attribution. webMultimodal, Discover and Google News do not support query_contains. Preserve observed clicks and impressions when Google omits optional average position (reported as null, not rank zero). This is performance data, not an index-coverage inventory: a URL can be indexed even when it is absent here, and Search Analytics can omit some page-level detail. Use urls.inspect or urls.inspect_many for URL-level index status.';
 
 const SEARCH_VISIBLE_PAGES_NOTE =
   'These are observed Search Analytics performance rows, including pages for which Google omits optional average position (position=null). This is not a complete list of indexed URLs. Absence does not mean a URL is unindexed. Use urls.inspect or urls.inspect_many for URL-level index status.';
@@ -3952,7 +3954,7 @@ class GscMcpRuntime {
       'indexing.list_pages',
       {
         title: 'List Search-Visible Pages',
-        description: `${SEARCH_VISIBLE_PAGES_DESCRIPTION} Optional page_contains filters a URL section (for example /de/); query_contains narrows matching text-query traffic on supported surfaces, while country/device narrow the searcher market. All supplied filters run at Google with AND before pagination. Searcher country is not the URL language. Scoped results are not property-wide, and anonymized query traffic may be absent. When one date boundary is omitted, the server derives the other to target an inclusive 30-day range; generated end dates are capped at the latest complete date. Responses are bounded and pageable with row_limit/start_row.`,
+        description: `${SEARCH_VISIBLE_PAGES_DESCRIPTION} Optional page_contains filters a URL section (for example /de/); query_contains narrows matching text-query traffic on supported surfaces, while country/device or countries/devices narrow the searcher market. All selected dimensions are ANDed at Google before pagination, and list values are ORed within each selected dimension. Searcher country is not the URL language. Scoped results are not property-wide, and anonymized query traffic may be absent. When one date boundary is omitted, the server derives the other to target an inclusive 30-day range; generated end dates are capped at the latest complete date. Responses are bounded and pageable with row_limit/start_row.`,
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           search_type: z.enum(['web', 'image', 'video', 'news', 'discover', 'googleNews', 'webMultimodal']).default('web')
@@ -3965,6 +3967,8 @@ class GscMcpRuntime {
           ),
           country: DIRECT_INSIGHT_COUNTRY_SCHEMA,
           device: DIRECT_INSIGHT_DEVICE_SCHEMA,
+          countries: CANNIBALIZATION_COUNTRIES_SCHEMA,
+          devices: CANNIBALIZATION_DEVICES_SCHEMA,
           start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(
             searchConsoleDateDescription(
               'Start date (inclusive) in YYYY-MM-DD format. If end_date is omitted, the generated end date is 29 days later, capped at the latest complete date.',
@@ -3981,7 +3985,7 @@ class GscMcpRuntime {
         outputSchema: INDEXED_PAGES_OUTPUT_SCHEMA,
         annotations: READ_ONLY_ANNOTATIONS,
       },
-      async ({ site_url, page_contains, query_contains, country, device, search_type = 'web', start_date, end_date, row_limit, start_row = 0 }) => {
+      async ({ site_url, page_contains, query_contains, country, device, countries, devices, search_type = 'web', start_date, end_date, row_limit, start_row = 0 }) => {
         const { startDate, endDate } = resolveIndexedPagesDateRange(
           start_date,
           end_date,
@@ -3990,6 +3994,20 @@ class GscMcpRuntime {
         if (query_contains && ['webMultimodal', 'discover', 'googleNews'].includes(search_type)) {
           return toolError(`${search_type} does not support query_contains in Search Analytics. Omit the text-query filter and keep the exact page, country and device scope; missing query rows are not zero traffic.`);
         }
+        if (country && countries) return toolError('Use country or countries, not both.');
+        if (device && devices) return toolError('Use device or devices, not both.');
+        if (countries && (countries.length < 1 || countries.length > 10 || new Set(countries.map((value) => value.toUpperCase())).size !== countries.length)) {
+          return toolError('Countries must contain 1-10 distinct ISO alpha-3 searcher country codes.');
+        }
+        if (devices && (devices.length < 1 || devices.length > 3 || new Set(devices).size !== devices.length)) {
+          return toolError('Devices must contain 1-3 distinct desktop/mobile/tablet values.');
+        }
+        const selectedCountries = countries?.map((value) => value.toUpperCase());
+        const selectedDevices = devices?.map((value) => value.toUpperCase());
+        const filterLists = [
+          ...(selectedCountries ? [{ dimension: 'country' as const, expressions: selectedCountries }] : []),
+          ...(selectedDevices ? [{ dimension: 'device' as const, expressions: selectedDevices }] : []),
+        ];
         const googleId = this.requireGoogleId();
         const rateLimitError = await this.rateLimitError(googleId, 'indexing.list_pages');
         if (rateLimitError) return rateLimitError;
@@ -4003,7 +4021,7 @@ class GscMcpRuntime {
           ...(search_type !== 'web' ? { type: search_type } : {}),
           rowLimit: sourceRowLimit,
           startRow: start_row,
-          ...(page_contains || query_contains || country || device ? {
+          ...(page_contains || query_contains || country || device || filterLists.length ? {
             dimensionFilterGroups: [{
               groupType: 'and' as const,
               filters: [
@@ -4012,6 +4030,7 @@ class GscMcpRuntime {
                 ...(country ? [{ dimension: 'country' as const, operator: 'equals' as const, expression: country.toUpperCase() }] : []),
                 ...(device ? [{ dimension: 'device' as const, operator: 'equals' as const, expression: device.toUpperCase() }] : []),
               ],
+              ...(filterLists.length ? { filterLists } : {}),
             }],
           } : {}),
         }, () => this.reserveSearchAnalyticsRetry(googleId));
@@ -4040,15 +4059,19 @@ class GscMcpRuntime {
           ...(search_type !== 'web' ? { search_type } : {}),
           ...(country ? { country: country.toUpperCase() } : {}),
           ...(device ? { device } : {}),
+          ...(selectedCountries ? { countries: selectedCountries } : {}),
+          ...(devices ? { devices } : {}),
           result_page: bounded.resultPage,
           note: SEARCH_VISIBLE_PAGES_NOTE
             + (page_contains ? ` Results are scoped to URLs containing ${JSON.stringify(page_contains)}.` : '')
             + (query_contains ? ` Results are scoped to observed traffic from matching queries containing ${JSON.stringify(query_contains)}; anonymized queries may be omitted.` : '')
             + (country ? ` Results are scoped to searcher country ${country.toUpperCase()}, not page language.` : '')
             + (device ? ` Results are scoped to searcher device ${device}.` : '')
+            + (selectedCountries ? ` Combined searcher countries ${selectedCountries.join(', ')} are ORed at Google, not separately attributed and not URL languages.` : '')
+            + (devices ? ` Combined searcher devices ${devices.join(', ')} are ORed at Google, not separately attributed.` : '')
             + (search_type !== 'web' ? ` Results describe only ${search_type} Search visibility, not default Web traffic.` : '')
             + (['webMultimodal', 'discover', 'googleNews'].includes(search_type) ? ' Text-query grouping is unavailable on this surface; missing average position is not an inferred rank.' : '')
-            + (page_contains || query_contains || country || device || search_type !== 'web' ? ' This is not property-wide traffic.' : ''),
+            + (page_contains || query_contains || country || device || countries || devices || search_type !== 'web' ? ' This is not property-wide traffic.' : ''),
         };
         return toolResponse(JSON.stringify(payload), payload);
       },
