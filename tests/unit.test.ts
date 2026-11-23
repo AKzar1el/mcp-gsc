@@ -10,6 +10,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { z } from 'zod';
 import { encryptToken, decryptToken } from '../src/crypto';
 import {
   assertDateNotInFuture,
@@ -29,7 +30,7 @@ import { resolveWeeklyDigestEndDate, weeklyDigestAnalyticsRequestCount } from '.
 import { INDEXED_PAGES_START_ROW_SCHEMA, resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
 import { SEARCH_ANALYTICS_START_ROW_SCHEMA } from '../src/result-bounds';
 import { createQuickWinsInputSchema } from '../src/quick-wins-schema';
-import { EXACT_PAGE_URL_SCHEMA } from '../src/exact-page-url-schema';
+import { EXACT_PAGE_URL_SCHEMA, PRESERVED_URL_SCHEMA } from '../src/exact-page-url-schema';
 import { SITEMAP_URL_SCHEMA } from '../src/sitemap-url-schema';
 import { URL_INSPECTION_LANGUAGE_CODE_SCHEMA } from '../src/url-inspection-language-schema';
 import {
@@ -533,6 +534,25 @@ test('shared exact-page filters reject normalization-prone raw inputs across rep
   const exact = 'https://example.com/de/my%20guide';
   assert.equal(EXACT_PAGE_URL_SCHEMA.parse(exact), exact);
   assert.equal(CONTENT_DECAY_PAGE_URL_SCHEMA.parse(exact), exact);
+});
+
+test('exact-page JSON Schema remains usable by clients compiling patterns without Unicode flags', () => {
+  const descriptor = z.toJSONSchema(PRESERVED_URL_SCHEMA);
+  const validPages = ['https://example.com/de/guide', 'https://example.com/de/my%20guide'];
+  for (const url of validPages) {
+    assert.equal(PRESERVED_URL_SCHEMA.safeParse(url).success, true);
+    if (typeof descriptor.pattern === 'string') {
+      assert.equal(new RegExp(descriptor.pattern).test(url), true, 'MCP clients must not reject valid URL inputs');
+    }
+  }
+  for (const url of [
+    'https://example.com/de\\guide',
+    'https://example.com/de/my guide',
+    'https://example.com/de/\u0085',
+    'https://example.com/de/\u00a0',
+  ]) {
+    assert.equal(PRESERVED_URL_SCHEMA.safeParse(url).success, false, JSON.stringify(url));
+  }
 });
 
 function makeKey(byteLength = 32): string {
