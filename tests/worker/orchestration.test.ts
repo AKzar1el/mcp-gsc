@@ -97,6 +97,20 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('not index coverage');
       expect(guidance).toContain('anonymized queries');
       expect(guidance).toContain('Never call indexing.request');
+      const exactArgs = {
+        site_url: 'sc-domain:example.com',
+        page_url: 'https://example.com/de/guide/',
+        query_contains: 'seo audit',
+      };
+      expect((await prompt.argsSchema.safeParseAsync(exactArgs)).success).toBe(true);
+      expect((await prompt.argsSchema.safeParseAsync({ ...exactArgs, page_contains: '/de/' })).success).toBe(false);
+      const exactGuidance = (await prompt.handler(exactArgs)).messages[0].content.text;
+      expect(exactGuidance).toContain('"page_url":"https://example.com/de/guide/"');
+      expect(exactGuidance).toContain('case-sensitive page equals');
+      await expect(prompt.handler({
+        site_url: 'sc-domain:example.com',
+        page_url: 'https://outside.example.net/private/',
+      })).rejects.toThrow();
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       fetchSpy.mockRestore();
@@ -7325,6 +7339,42 @@ describe('Worker orchestration', () => {
       expect(requests[5]).not.toHaveProperty('dimensionFilterGroups');
       expect(requests[5]).not.toHaveProperty('type');
       expect(unfiltered.structuredContent.page_contains).toBeNull();
+
+      const exactPage = 'https://example.com/de/guide/';
+      const exact = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        page_url: exactPage,
+        query_contains: 'seo audit',
+        country: 'deu',
+        row_limit: 25,
+        start_row: 2,
+      })) as { structuredContent: { page_url?: string; page_contains: string | null; note: string } };
+      expect(requests[6]).toMatchObject({
+        dimensions: ['page'],
+        rowLimit: 25,
+        startRow: 2,
+        dimensionFilterGroups: [{ groupType: 'and', filters: [
+          { dimension: 'page', operator: 'equals', expression: exactPage },
+          { dimension: 'query', operator: 'contains', expression: 'seo audit' },
+          { dimension: 'country', operator: 'equals', expression: 'DEU' },
+        ] }],
+      });
+      expect(exact.structuredContent).toMatchObject({ page_url: exactPage, page_contains: null });
+      expect(exact.structuredContent.note).toMatch(/exact page|case-sensitive/i);
+
+      const conflicting = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        page_contains: '/de/',
+        page_url: exactPage,
+      })) as { isError?: boolean };
+      expect(conflicting.isError).toBe(true);
+      await expect(registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        page_url: 'https://outside.example.net/private/',
+      })).rejects.toThrow();
+      expect(requests).toHaveLength(7);
     } finally {
       globalThis.fetch = originalFetch;
     }
