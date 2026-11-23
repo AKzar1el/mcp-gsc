@@ -1103,6 +1103,17 @@ test('agency report follow-ups preserve weekly digest device and section scope',
   assert.match(guide, /never compare device-scoped totals with all-device totals/i);
 });
 
+test('agency reporting exposes exact-page digest and scope-preserving comparison instructions', () => {
+  const guide = readFileSync(resolve(projectRoot, 'docs/agency-weekly-reporting.md'), 'utf8');
+  const catalog = indexSource.split("name: 'reports.weekly_digest'")[1]?.split('\n  },')[0] ?? '';
+  assert.match(catalog, /page_url/);
+  assert.match(guide, /Optional exact-page report:/);
+  assert.match(guide, /page_url: "https:\/\/blog\.example\.com\/pricing"/);
+  assert.match(guide, /"dimension":"page","operator":"equals","expression":"https:\/\/blog\.example\.com\/pricing"/);
+  assert.match(guide, /case-sensitive/);
+  assert.match(guide, /Never replace the exact page filter with `page_contains`/);
+});
+
 test('weekly digest country scope is discoverable and documented as ISO alpha-3', () => {
   const catalog = indexSource.split("name: 'reports.weekly_digest'")[1]?.split('\n  },')[0] ?? '';
   const registration = indexSource.match(/this\.server\.registerTool\(\s*'reports\.weekly_digest'([\s\S]*?)outputSchema:/)?.[1] ?? '';
