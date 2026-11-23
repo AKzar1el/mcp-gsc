@@ -7166,14 +7166,35 @@ describe('Worker orchestration', () => {
       expect(filtered.structuredContent.pages[0]?.page).toBe('https://example.com/de/guide/');
       expect(filtered.structuredContent.result_page).toMatchObject({ start_row: 12, has_more: false });
 
+      const topicScoped = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        page_contains: '/de/',
+        query_contains: 'seo audit',
+        row_limit: 25,
+      })) as { structuredContent: { query_contains: string | null; note: string } };
+      expect(requests[1]).toMatchObject({
+        dimensions: ['page'],
+        dimensionFilterGroups: [{
+          groupType: 'and',
+          filters: [
+            { dimension: 'page', operator: 'contains', expression: '/de/' },
+            { dimension: 'query', operator: 'contains', expression: 'seo audit' },
+          ],
+        }],
+      });
+      expect(topicScoped.structuredContent.query_contains).toBe('seo audit');
+      expect(topicScoped.structuredContent.note).toMatch(/query topic|matching queries/i);
+
       const unfiltered = (await registered['indexing.list_pages'].handler({
         site_url: 'sc-domain:example.com',
         start_date: '2026-06-01',
         end_date: '2026-06-30',
         row_limit: 25,
       })) as { structuredContent: { page_contains: string | null } };
-      expect(requests).toHaveLength(2);
-      expect(requests[1]).not.toHaveProperty('dimensionFilterGroups');
+      expect(requests).toHaveLength(3);
+      expect(requests[2]).not.toHaveProperty('dimensionFilterGroups');
       expect(unfiltered.structuredContent.page_contains).toBeNull();
     } finally {
       globalThis.fetch = originalFetch;
