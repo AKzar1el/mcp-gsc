@@ -7286,7 +7286,105 @@ describe('Worker orchestration', () => {
       })) as { structuredContent: { page_contains: string | null } };
       expect(requests).toHaveLength(6);
       expect(requests[5]).not.toHaveProperty('dimensionFilterGroups');
+      expect(requests[5]).not.toHaveProperty('type');
       expect(unfiltered.structuredContent.page_contains).toBeNull();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('selects the requested Search-visible page surface without adding provider reads', async () => {
+    await saveUser(workerEnv, 'surface-pages-user', 'surface@example.test', 'surface-refresh-token');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'surface-pages-user', email: 'surface@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'surface-pages-access', expires_in: 3600 });
+        }
+        if (url.endsWith('/searchAnalytics/query')) {
+          requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+          return response({ rows: [{
+            keys: ['https://example.com/visual/guide/'],
+            clicks: 3,
+            impressions: 40,
+            ctr: 0.075,
+          }] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const visual = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        row_limit: 25,
+        search_type: 'webMultimodal',
+        page_contains: '/visual/',
+        country: 'DEU',
+      })) as { structuredContent: { search_type?: string; pages: Array<{ position: number | null }>; note: string } };
+      expect(requests[0]).toMatchObject({
+        type: 'webMultimodal',
+        dimensions: ['page'],
+        dimensionFilterGroups: [{ groupType: 'and', filters: [
+          { dimension: 'page', operator: 'contains', expression: '/visual/' },
+          { dimension: 'country', operator: 'equals', expression: 'DEU' },
+        ] }],
+      });
+      expect(visual.structuredContent.search_type).toBe('webMultimodal');
+      expect(visual.structuredContent.pages[0].position).toBeNull();
+      expect(visual.structuredContent.note).toMatch(/multimodal|visual/i);
+
+      const discover = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        row_limit: 25,
+        search_type: 'discover',
+      })) as { structuredContent: { search_type?: string; pages: Array<{ position: number | null }> } };
+      expect(requests[1].type).toBe('discover');
+      expect(discover.structuredContent.search_type).toBe('discover');
+      expect(discover.structuredContent.pages[0].position).toBeNull();
+
+      const image = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        row_limit: 25,
+        search_type: 'image',
+        query_contains: 'diagram',
+      })) as { structuredContent: { search_type?: string } };
+      expect(requests[2]).toMatchObject({
+        type: 'image',
+        dimensionFilterGroups: [{ filters: [
+          { dimension: 'query', operator: 'contains', expression: 'diagram' },
+        ] }],
+      });
+      expect(image.structuredContent.search_type).toBe('image');
+
+      for (const unsupported of ['webMultimodal', 'discover', 'googleNews']) {
+        const rejected = await registered['indexing.list_pages'].handler({
+          site_url: 'sc-domain:example.com',
+          start_date: '2026-06-01',
+          end_date: '2026-06-30',
+          row_limit: 25,
+          search_type: unsupported,
+          query_contains: 'visual topic',
+        });
+        expect(JSON.stringify(rejected)).toMatch(/does not support query_contains/i);
+      }
+      expect(requests).toHaveLength(3);
     } finally {
       globalThis.fetch = originalFetch;
     }
