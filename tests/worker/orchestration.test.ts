@@ -6500,6 +6500,71 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('compares webMultimodal page declines without inventing missing average positions', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'visual-decay-user', email: 'visual-decay@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const tool = (server as unknown as {
+      _registeredTools: Record<string, {
+        inputSchema: { safeParseAsync: (input: unknown) => Promise<{ success: boolean }> };
+        handler: (args: Record<string, unknown>) => Promise<{
+          isError?: boolean;
+          structuredContent: {
+            search_type: string;
+            decay_results: Array<{ classification: string; previous_position: number | null; recent_position: number | null }>;
+          };
+        }>;
+      }>;
+    })._registeredTools['insights.content_decay'];
+    const args = {
+      site_url: 'sc-domain:example.com',
+      compare_days: 14,
+      search_type: 'webMultimodal',
+      page_url: 'https://example.com/visual-guide',
+    };
+    expect((await tool.inputSchema.safeParseAsync(args)).success).toBe(true);
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ type: string; dimensions: string[]; dimensionFilterGroups?: unknown[] }> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        expect(requestUrl(input)).toContain('/searchAnalytics/query');
+        requests.push(JSON.parse(String(init?.body)));
+        return response({ rows: [{
+          keys: ['https://example.com/visual-guide'],
+          clicks: requests.length === 1 ? 20 : 40,
+          impressions: requests.length === 1 ? 100 : 250,
+          ctr: requests.length === 1 ? 0.2 : 0.16,
+        }] });
+      };
+      const result = await tool.handler(args);
+      expect(result.isError).not.toBe(true);
+      expect(requests).toHaveLength(2);
+      for (const body of requests) {
+        expect(body.type).toBe('webMultimodal');
+        expect(body.dimensions).toEqual(['page']);
+        expect(body.dimensionFilterGroups).toEqual([{
+          groupType: 'and',
+          filters: [{ dimension: 'page', operator: 'equals', expression: args.page_url }],
+        }]);
+      }
+      expect(result.structuredContent.search_type).toBe('webMultimodal');
+      expect(result.structuredContent.decay_results).toEqual([
+        expect.objectContaining({
+          classification: 'likely_decay',
+          previous_position: null,
+          recent_position: null,
+        }),
+      ]);
+      const unsupportedQueryScope = await tool.handler({ ...args, query_contains: 'camera query' });
+      expect(unsupportedQueryScope.isError).toBe(true);
+      expect(requests).toHaveLength(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('focuses content decay on one locale without treating other pages as missing data', async () => {
     const server = await createGscMcpServer(
       workerEnv,
