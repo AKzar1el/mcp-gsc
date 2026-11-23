@@ -706,7 +706,7 @@ const CANNIBALIZATION_OUTPUT_SCHEMA = {
 
 const CONTENT_DECAY_OUTPUT_SCHEMA = {
   site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe('The exact Search Console property used for both historical comparison periods.'),
-  search_type: z.enum(['web', 'image', 'video', 'news']),
+  search_type: z.enum(['web', 'image', 'video', 'news', 'webMultimodal']),
   classification_filter: CONTENT_DECAY_CLASSIFICATION_FILTER_SCHEMA,
   min_click_loss: z.number().int().nonnegative().nullable(),
   page_url: z.string().nullable(),
@@ -3552,14 +3552,14 @@ class GscMcpRuntime {
       'insights.content_decay',
       {
         title: 'Detect Content Decay',
-        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Optional end_date anchors a historical comparison to a selected finalized Pacific Search Console date (at least three days before today); omit for the latest finalized date. Compare 1-240 days per period within Search Console\'s rolling 16-month history. Optional search_type selects Web (default), Image, Video or News-tab search consistently for both periods; Discover and Google News are excluded from this position-aware heuristic. Optional property-validated page_url scopes one exact landing page (case-sensitive Google page equals), or page_contains scopes a URL section; never combine both. query_contains filters query topics. Use country or countries (1-10 ISO alpha-3 searcher countries), and device or devices (1-3 desktop/mobile/tablet); plural lists use Google-side OR within a dimension and AND across dimensions and page/query filters, identically in both periods. Never mix singular and plural selectors. These comparisons concern only the selected segment, not property-wide totals. Optional classification_filter and min_click_loss narrow returned assessments locally without changing unfiltered counts. observed_click_loss sums observed comparable page declines, not property-wide lost traffic. No additional requests are made; missing rows are not zero. Only pages returned in both Search Analytics period responses are compared. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility; this is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row and source pagination.',
+        description: 'Assess page-level click declines across two contiguous periods without treating every small click change as content decay. Optional end_date anchors a historical comparison to a selected finalized Pacific Search Console date (at least three days before today); omit for the latest finalized date. Compare 1-240 days per period within Search Console\'s rolling 16-month history. Optional search_type selects Web (default), Image, Video, News-tab, or webMultimodal (Lens/Circle to Search/image uploads) consistently for both periods; Discover and Google News are excluded. For webMultimodal, use page-level evidence without query_contains; missing average position remains null rather than an inferred rank. Optional property-validated page_url scopes one exact landing page (case-sensitive Google page equals), or page_contains scopes a URL section; never combine both. query_contains filters query topics on non-multimodal surfaces. Use country or countries (1-10 ISO alpha-3 searcher countries), and device or devices (1-3 desktop/mobile/tablet); plural lists use Google-side OR within a dimension and AND across dimensions and page/query filters, identically in both periods. Never mix singular and plural selectors. These comparisons concern only the selected segment, not property-wide totals. Optional classification_filter and min_click_loss narrow returned assessments locally without changing unfiltered counts. observed_click_loss sums observed comparable page declines, not property-wide lost traffic. No additional requests are made; missing rows are not zero. Only pages returned in both Search Analytics period responses are compared. Each result is classified as likely_decay, weak_insufficient_evidence, or improving_visibility_with_click_volatility; this is a heuristic assessment, not statistical proof. Results are bounded with limit/start_row and source pagination.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           compare_days: CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(
             searchConsoleDateDescription('Optional historical end date (inclusive) of the recent comparison period. Must be at least three days before the current Search Console date, and both periods must fit within the rolling 16-month data window. Omit to compare the latest finalized periods.'),
           ),
-          search_type: z.enum(['web', 'image', 'video', 'news']).default('web').describe('Search Console search type applied identically to both comparison periods: web (default), image, video or news (Google Search News tab). Discover and Google News are excluded because this heuristic relies on average position.'),
+          search_type: z.enum(['web', 'image', 'video', 'news', 'webMultimodal']).default('web').describe('Search Console search type applied identically to both comparison periods: web (default), image, video, news (Google Search News tab), or webMultimodal (Lens/Circle to Search/image uploads). Visual-search page comparisons cannot use query_contains; absent position is null. Discover and Google News are excluded.'),
           classification_filter: CONTENT_DECAY_CLASSIFICATION_FILTER_SCHEMA,
           min_click_loss: CONTENT_DECAY_MIN_CLICK_LOSS_SCHEMA,
           page_url: CONTENT_DECAY_PAGE_URL_SCHEMA,
@@ -3578,6 +3578,7 @@ class GscMcpRuntime {
       async ({ site_url, compare_days, end_date, search_type = 'web', classification_filter = 'all', min_click_loss, page_url, page_contains, query_contains, country, countries, device, devices, limit = DEFAULT_ANALYSIS_RESULT_LIMIT, start_row = 0 }) => {
         if (page_url && page_contains) throw new Error('Supply either page_contains or page_url, not both.');
         if (page_url) assertUrlWithinSearchConsoleProperty(page_url, site_url, 'page_url');
+        if (search_type === 'webMultimodal' && query_contains) return toolError('webMultimodal visual-search page comparisons do not support query_contains; omit that filter rather than treating absent image-query rows as zero traffic.');
         if (country && countries) return toolError('Use country or countries, not both.');
         if (device && devices) return toolError('Use device or devices, not both.');
         const formatDate = (d: Date) => d.toISOString().split('T')[0];
@@ -3703,6 +3704,7 @@ class GscMcpRuntime {
           scope_note: (page_url || page_contains || query_contains || country || countries || device || devices
             ? 'Both comparison periods contain only the same Google-filtered exact page (case-sensitive equals) or URL section, search query topics, searcher countries and/or devices, not property-wide totals or all-device totals. Combined country/device lists use OR within each dimension and AND across dimensions; this is not a separate breakdown. Searcher country is not page language. Missing rows are not zero.'
             : 'Both comparison periods use observed property-page rows; missing rows are not zero.')
+            + (search_type === 'webMultimodal' ? ' Visual-search page rows cover only webMultimodal, not ordinary Web/Image tabs; missing average position stays null, and page decline is not evidence of a lost rank or a proven cause.' : '')
             + (classification_filter === 'all' && min_click_loss === undefined ? '' : ' Local classification and minimum-click-loss filters narrow returned assessment rows only; assessment_count and decay_count still describe all observed declines before these filters.'),
           comparison_periods: {
             recent: { start: recentStart, end: recentEnd },
