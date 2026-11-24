@@ -1967,6 +1967,36 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('guides exact-query weekly client reporting without broadening to topic matches', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const weekly = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (input: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-weekly-client-report'];
+    const parsed = await weekly.argsSchema.safeParseAsync({
+      site_url: 'sc-domain:example.com', query: 'Technical SEO',
+      page_url: 'https://example.com/de/pricing/', countries: 'DEU,AUT', devices: 'mobile,desktop',
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.query).toBe('Technical SEO');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const guidance = (await weekly.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"query":"Technical SEO"');
+      expect(guidance).toContain('query equals the exact query (case-sensitive)');
+      expect(guidance).toContain('analytics.compare');
+      expect(guidance).toContain('analytics.query');
+      expect(guidance).toContain('never replace with query_contains');
+      await expect(weekly.handler({ site_url: 'sc-domain:example.com', query: 'Technical SEO', query_contains: 'SEO' }))
+        .rejects.toThrow('query or query_contains');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a native brand-segmentation review prompt without provider requests', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
@@ -8951,6 +8981,58 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves one exact query across finalized and preliminary weekly digest requests', async () => {
+    const take = vi.fn(async () => ({ allowed: true }));
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly', TOOL_RATE_LIMITER: { idFromName: (name: string) => name, get: () => ({ take }) } } as unknown as Env,
+      { google_id: 'digest-exact-query-user', email: 'digest-exact-query@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{ isError?: boolean; content: Array<{ text: string }> }>;
+      }>;
+    })._registeredTools['reports.weekly_digest'].handler;
+    const exactQuery = 'Technical SEO';
+    const pageUrl = 'https://example.com/de/pricing/';
+    const requests: Array<Record<string, unknown>> = [];
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async (_input, init) => {
+        const body = JSON.parse(String(init?.body)) as { dimensions: string[] };
+        requests.push(body);
+        const keys = body.dimensions[0] === 'query' ? [exactQuery] : body.dimensions[0] === 'page' ? [pageUrl] : [];
+        return response({ rows: [{ keys, clicks: 1, impressions: 100, ctr: 0.01, position: 8 }] });
+      };
+      const args = {
+        site_url: 'sc-domain:example.com', query: exactQuery, page_url: pageUrl,
+        search_type: 'image', countries: ['DEU', 'AUT'], devices: ['mobile', 'desktop'],
+      };
+      for (const [endDate, count] of [['2026-09-17', 5], [getSearchConsoleCalendarDate(), 3]] as const) {
+        requests.length = 0;
+        const result = await handler({ ...args, end_date: endDate });
+        expect(result.isError).not.toBe(true);
+        expect(requests).toHaveLength(count);
+        for (const request of requests) {
+          expect(request.type).toBe('image');
+          expect(request.dimensionFilterGroups).toEqual([{
+            groupType: 'and', filters: [
+              { dimension: 'page', operator: 'equals', expression: pageUrl },
+              { dimension: 'query', operator: 'equals', expression: exactQuery },
+            ], filterLists: [
+              { dimension: 'country', expressions: ['DEU', 'AUT'] },
+              { dimension: 'device', expressions: ['MOBILE', 'DESKTOP'] },
+            ],
+          }]);
+        }
+        expect(result.content[0]?.text).toContain('**Exact query filter:** Technical SEO');
+        expect(result.content[0]?.text).toContain('case-sensitive');
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('reserves five shared Search Analytics units before running a weekly digest', async () => {
     const take = vi.fn(async (_bucket: string, policy: { category: string }, _units: number) => ({
       allowed: policy.category !== 'search-analytics',
@@ -9022,7 +9104,7 @@ describe('Worker orchestration', () => {
 
   it('rejects ambiguous weekly digest single/list scopes before any quota or Google request', async () => {
     const take = vi.fn(async () => ({ allowed: true }));
-    const getAccessToken = vi.fn(async () => 'test-token');
+    const getAccessToken = vi.fn(async () => { throw new Error('Unexpected credential retrieval in conflict fixture'); });
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly', TOOL_RATE_LIMITER: { idFromName: (name: string) => name, get: () => ({ take }) } } as unknown as Env,
       { google_id: 'digest-conflict-user', email: 'conflict@example.test' },
@@ -9036,10 +9118,13 @@ describe('Worker orchestration', () => {
 
     const countryResult = await handler({ site_url: 'sc-domain:example.com', country: 'SVN', countries: ['DEU'] });
     const deviceResult = await handler({ site_url: 'sc-domain:example.com', device: 'mobile', devices: ['desktop'] });
+    const queryResult = await handler({ site_url: 'sc-domain:example.com', query: 'Technical SEO', query_contains: 'SEO' });
     expect(countryResult.isError).toBe(true);
     expect(countryResult.content[0]?.text).toContain('Use country or countries, not both');
     expect(deviceResult.isError).toBe(true);
     expect(deviceResult.content[0]?.text).toContain('Use device or devices, not both');
+    expect(queryResult.isError).toBe(true);
+    expect(queryResult.content[0]?.text).toContain('Use query or query_contains, not both');
     expect(take).not.toHaveBeenCalled();
     expect(getAccessToken).not.toHaveBeenCalled();
   });
