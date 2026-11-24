@@ -539,6 +539,10 @@ export async function getSite(
   if (!isSiteEntry(data)) {
     throw new Error('Google Search Console sites.get response contains invalid property data.');
   }
+  // Permission metadata must belong to the exact property the caller selected.
+  if (data.siteUrl !== siteUrl) {
+    throw new Error('Google Search Console sites.get response does not match the requested property identifier.');
+  }
   return data;
 }
 
