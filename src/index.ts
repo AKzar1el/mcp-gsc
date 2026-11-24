@@ -2196,6 +2196,7 @@ class GscMcpRuntime {
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(searchConsoleDateDescription('Optional finalized inclusive end date for the latest week.')),
           search_type: z.enum(['web', 'image', 'video', 'news', 'webMultimodal']).default('web').describe('Compare one Search surface, never sum different surfaces.'),
           page_contains: z.string().trim().min(1).max(120).optional().describe('Optional URL-section substring, applied at Google in both weeks.'),
+          query: z.string().min(1).max(240).refine((value) => value.trim().length > 0, 'Exact query cannot be blank.').optional().describe('Optional exact Search Console query text, case-sensitive; use instead of query_contains. Not supported for webMultimodal.'),
           query_contains: z.string().trim().min(1).max(120).optional().describe('Optional search-query topic substring, applied at Google in both weeks; not supported for webMultimodal.'),
           country: z.string().trim().regex(/^[a-zA-Z]{3}$/).optional().describe('Optional single ISO alpha-3 searcher country.'),
           device: z.enum(['desktop', 'mobile', 'tablet']).optional().describe('Optional single searcher device.'),
@@ -2203,9 +2204,13 @@ class GscMcpRuntime {
           devices: promptDevices.describe('Optional 1-3 devices, comma/newline-separated or JSON-array string; use instead of device.'),
         }),
       },
-      async ({ site_url, end_date, search_type, page_contains, query_contains, country, device, countries, devices }) => {
+      async ({ site_url, end_date, search_type, page_contains, query, query_contains, country, device, countries, devices }) => {
         if (country && countries) throw new Error('Supply either country or countries, not both.');
         if (device && devices) throw new Error('Supply either device or devices, not both.');
+        if (query !== undefined && query_contains !== undefined) throw new Error('Supply either query or query_contains, not both.');
+        if (search_type === 'webMultimodal' && query !== undefined) {
+          throw new Error('Query filtering is not available for webMultimodal Search Analytics.');
+        }
         if (search_type === 'webMultimodal' && query_contains) {
           throw new Error('Query topic filtering is not available for webMultimodal Search Analytics.');
         }
@@ -2223,6 +2228,7 @@ class GscMcpRuntime {
         };
         const cohortFilters = [
           page_contains ? 'page contains the supplied page_contains URL section' : null,
+          query !== undefined ? 'query equals the exact query (case-sensitive)' : null,
           query_contains ? 'query contains the same query topic' : null,
           country ? 'country equals the uppercase country code' : null,
           device ? 'device equals the uppercase device code' : null,
@@ -2243,7 +2249,7 @@ class GscMcpRuntime {
                   site_url,
                   start_date_a: offset(-6), end_date_a: selectedEnd,
                   start_date_b: offset(-13), end_date_b: offset(-7),
-                  search_type, page_contains: page_contains ?? null, query_contains: query_contains ?? null,
+                  search_type, page_contains: page_contains ?? null, query: query ?? null, query_contains: query_contains ?? null,
                   country: country?.toUpperCase() ?? null, device: device?.toUpperCase() ?? null,
                   countries: countries?.map((value) => value.toUpperCase()) ?? null,
                   devices: devices?.map((value) => value.toUpperCase()) ?? null,
@@ -2252,10 +2258,12 @@ class GscMcpRuntime {
                 `2. Call analytics.query exactly twice with dimensions=["page"], row_limit=100, start_row=0, data_state="final", aggregation_type="auto" and the same search_type, one request for EACH stated seven-day Pacific window. ${cohortFilterGuidance} For countries/devices lists use Google-side filterLists with exact uppercase expressions (OR within a list, AND across dimensions and page/query scopes). Do not mix singular and list filters for one dimension. Apply supplied filters at Google identically to BOTH windows, never by local postfiltering; each call or retry consumes read quota.`,
                 '3. Compare exact canonical page URL keys returned in BOTH click-sorted top-page samples, reporting at most five measured declines and three gains with each week\'s clicks, impressions and CTR. Calculate a percent change only from a nonzero observed baseline; a position average is not a live rank and is not reliable for Search News.',
                 '4. Separately label at most three baseline-only and latest-only pages as follow-up candidates, NOT confirmed lost, new or zero-traffic pages. Google returns incomplete, click-sorted top-row samples, can change their membership, and may omit rows; an absent page is not measured zero even if a sample has 100 rows. If either sample is empty, report insufficient data rather than a whole-section collapse.',
-                '5. If one shared observed page needs query-level context, budget remains and search_type is NOT webMultimodal, optionally call one additional analytics.query grouped by query using that exact canonical page equals filter, preserving the same dates, search surface, query contains topic and country/device filterLists. When a URL-section substring was supplied, verify that the selected page belongs to it; replace the broad page filter with the exact observed page filter for this drilldown while retaining the same query topic. For webMultimodal, do not request unsupported query grouping or a query filter. Do not use another helper that silently drops a topic or list filter.',
+                query !== undefined
+                  ? '5. With one exact query already selected, stop after the page cohort comparison; grouping by that same query would be redundant. Do not broaden the query or drop any searcher or URL-section scope.'
+                  : '5. If one shared observed page needs query-level context, budget remains and search_type is NOT webMultimodal, optionally call one additional analytics.query grouped by query using that exact canonical page equals filter, preserving the same dates, search surface, query contains topic and country/device filterLists. When a URL-section substring was supplied, verify that the selected page belongs to it; replace the broad page filter with the exact observed page filter for this drilldown while retaining the same query topic. For webMultimodal, do not request unsupported query grouping or a query filter. Do not use another helper that silently drops a topic or list filter.',
                 '6. Distinguish canonical URL grouping from live redirects, URL Inspection, index coverage, searcher geography and localized URL sections. A page movement does not establish a ranking penalty or a canonical change. Recommend only one evidence-backed human review and an equal-scope remeasurement; combined country/device scopes do NOT provide separate country/device trends.',
                 'Never call indexing.request, indexing.remove, sitemap write tools, content publication or outreach. Retrieving this prompt makes no Google call; following it uses normal read quotas. Stop when permission, budget or data is insufficient.',
-                'Return the exact property, dates, Search surface, URL-section, query topic and searcher filters, common-page movements, separately labeled one-period-only samples, limitations and one safe next check. Topic-filtered results are not property-wide totals. Do not invent lost pages, recovery, usage, customers or revenue.',
+                'Return the exact property, dates, Search surface, URL-section, exact query or query topic and searcher filters, common-page movements, separately labeled one-period-only samples, limitations and one safe next check. Query-filtered results are not property-wide totals. Do not invent lost pages, recovery, usage, customers or revenue.',
               ].join('\n'),
             },
           }],
