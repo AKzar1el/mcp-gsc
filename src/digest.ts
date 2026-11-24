@@ -107,11 +107,15 @@ export async function generateWeeklyDigest(
   countries?: string[],
   devices?: Array<'desktop' | 'mobile' | 'tablet'>,
   pageUrl?: string,
+  query?: string,
 ): Promise<string> {
   if (pageContains && pageUrl) {
     throw new Error('Use page_contains or page_url, not both.');
   }
   if (pageUrl) assertUrlWithinSearchConsoleProperty(pageUrl, siteUrl, 'page_url');
+  if (query !== undefined && queryContains !== undefined) {
+    throw new Error('Use query or query_contains, not both.');
+  }
   if (country && countries?.length) {
     throw new Error('Use country or countries, not both.');
   }
@@ -131,7 +135,9 @@ export async function generateWeeklyDigest(
   if (device) {
     filters.push({ dimension: 'device', operator: 'equals', expression: device.toUpperCase() });
   }
-  if (queryContains) {
+  if (query !== undefined) {
+    filters.push({ dimension: 'query', operator: 'equals', expression: query });
+  } else if (queryContains) {
     filters.push({ dimension: 'query', operator: 'contains', expression: queryContains });
   }
   if (country) {
@@ -157,9 +163,11 @@ export async function generateWeeklyDigest(
     : device
       ? `> **Device filter:** ${device[0].toUpperCase() + device.slice(1)} searches only. Figures exclude other devices and are not property-wide totals.`
       : undefined;
-  const queryScopeNotice = queryContains
-    ? `> **Query topic filter:** ${escapeMarkdownInline(queryContains)} (case-insensitive). All figures cover only matching search queries, not property-wide totals; anonymized queries may be omitted by Google.`
-    : undefined;
+  const queryScopeNotice = query !== undefined
+    ? `> **Exact query filter:** ${escapeMarkdownInline(query)} (case-sensitive Google-side equality). All figures cover only that query, not property-wide totals; anonymized queries may be omitted by Google.`
+    : queryContains
+      ? `> **Query topic filter:** ${escapeMarkdownInline(queryContains)} (case-insensitive). All figures cover only matching search queries, not property-wide totals; anonymized queries may be omitted by Google.`
+      : undefined;
   const countryScopeNotice = countries?.length
     ? `> **Country filters:** ${countries.map((value) => value.toUpperCase()).join(', ')} (ISO 3166-1 alpha-3; OR within selected countries). Metrics reflect searcher location only and are not property-wide traffic; URL language is not searcher location.`
     : country

@@ -4,6 +4,7 @@ import {
   searchConsoleDateDescription,
 } from './date-validation';
 import { SEARCH_CONSOLE_PROPERTY_SCHEMA } from './search-console-property-schema';
+import { EXACT_PAGE_URL_SCHEMA } from './exact-page-url-schema';
 import {
   DEFAULT_ANALYSIS_RESULT_LIMIT,
   MAX_ANALYSIS_RESULT_LIMIT,
@@ -40,7 +41,7 @@ export function createQuickWinsInputSchema() {
         "Omit for Google's finalized-only default; 'all' includes recent preliminary Search Analytics rows that may still change. 'final' requests finalized data only.",
       ),
       ...QUICK_WINS_THRESHOLDS_SHAPE,
-      page_url: z.string().trim().url().max(2048).optional().describe(
+      page_url: EXACT_PAGE_URL_SCHEMA.optional().describe(
         'Optional exact page URL within the selected Search Console property. Google applies a case-sensitive page equals filter before query/page pagination; use instead of page_contains to exclude similarly named sibling URLs.',
       ),
       page_contains: z.string().trim().min(1).max(240).optional().describe(

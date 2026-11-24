@@ -10,6 +10,11 @@ function parseHttpUrl(value: string, fieldName: string): URL {
   if (value !== value.trim() || !/^https?:\/\//i.test(value)) {
     throw new Error(`${fieldName} must be a fully qualified HTTP or HTTPS URL.`);
   }
+  // WHATWG URL parsing silently removes controls and treats backslashes as slashes.
+  // Reject ambiguous raw input before comparing a URL with its authorized property.
+  if (/[\p{White_Space}\p{Cc}\\]/u.test(value)) {
+    throw new Error(`${fieldName} must not contain raw whitespace, control characters, or backslashes.`);
+  }
 
   let url: URL;
   try {

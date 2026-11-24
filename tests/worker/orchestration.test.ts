@@ -62,6 +62,98 @@ function createPendingStateBinding() {
 }
 
 describe('Worker orchestration', () => {
+  it('guides topic and market scoped Search-visible page discovery without inspecting or mutating URLs', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean }> };
+        handler: (args: Record<string, string>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-search-visible-pages-review'];
+    expect(prompt).toBeDefined();
+    const args = {
+      site_url: 'sc-domain:example.com',
+      page_contains: '/de/',
+      query_contains: 'seo audit',
+      country: 'deu',
+      device: 'mobile',
+      end_date: '2026-11-10',
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      expect((await prompt.argsSchema.safeParseAsync(args)).success).toBe(true);
+      expect((await prompt.argsSchema.safeParseAsync({ ...args, country: 'germany' })).success).toBe(false);
+      expect((await prompt.argsSchema.safeParseAsync({ ...args, device: 'watch' })).success).toBe(false);
+      const guidance = (await prompt.handler(args)).messages[0].content.text;
+      expect(guidance).toContain('indexing.list_pages');
+      expect(guidance).toContain('"site_url":"sc-domain:example.com"');
+      expect(guidance).toContain('"page_contains":"/de/"');
+      expect(guidance).toContain('"query_contains":"seo audit"');
+      expect(guidance).toContain('"country":"DEU"');
+      expect(guidance).toContain('"device":"mobile"');
+      expect(guidance).toContain('"end_date":"2026-11-10"');
+      expect(guidance).toContain('result_page.has_more');
+      expect(guidance).toContain('not index coverage');
+      expect(guidance).toContain('anonymized queries');
+      expect(guidance).toContain('Never call indexing.request');
+      const exactArgs = {
+        site_url: 'sc-domain:example.com',
+        page_url: 'https://example.com/de/guide/',
+        query_contains: 'seo audit',
+      };
+      expect((await prompt.argsSchema.safeParseAsync(exactArgs)).success).toBe(true);
+      expect((await prompt.argsSchema.safeParseAsync({ ...exactArgs, page_contains: '/de/' })).success).toBe(false);
+      const exactGuidance = (await prompt.handler(exactArgs)).messages[0].content.text;
+      expect(exactGuidance).toContain('"page_url":"https://example.com/de/guide/"');
+      expect(exactGuidance).toContain('case-sensitive page equals');
+      await expect(prompt.handler({
+        site_url: 'sc-domain:example.com',
+        page_url: 'https://outside.example.net/private/',
+      })).rejects.toThrow();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('guides one combined non-Web page-discovery segment without suggesting invalid query filters', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-search-visible-pages-review'];
+    const scope = {
+      site_url: 'sc-domain:example.com',
+      search_type: 'webMultimodal',
+      page_contains: '/de/',
+      countries: ['deu', 'aut'],
+      devices: ['desktop', 'mobile'],
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      expect((await prompt.argsSchema.safeParseAsync(scope)).success).toBe(true);
+      expect((await prompt.argsSchema.safeParseAsync({ ...scope, countries: ['deu', 'DEU'] })).success).toBe(false);
+      expect((await prompt.argsSchema.safeParseAsync({ ...scope, country: 'deu' })).success).toBe(false);
+      expect((await prompt.argsSchema.safeParseAsync({ ...scope, device: 'mobile' })).success).toBe(false);
+      expect((await prompt.argsSchema.safeParseAsync({ ...scope, query_contains: 'seo audit' })).success).toBe(false);
+      expect((await prompt.argsSchema.safeParseAsync({ ...scope, search_type: 'maps' })).success).toBe(false);
+      const guidance = (await prompt.handler(scope)).messages[0].content.text;
+      expect(guidance).toContain('"search_type":"webMultimodal"');
+      expect(guidance).toContain('"countries":["DEU","AUT"]');
+      expect(guidance).toContain('"devices":["desktop","mobile"]');
+      expect(guidance).toContain('one combined segment');
+      expect(guidance).toContain('nullable average position');
+      expect(guidance).not.toContain('"query_contains"');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides a finalized daily traffic-onset review without provider calls on retrieval', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
@@ -256,6 +348,60 @@ describe('Worker orchestration', () => {
         site_url: 'sc-domain:example.com', query_contains: '  ',
       })).success).toBe(false);
       await expect(prompt.handler({ ...parsed.data, search_type: 'webMultimodal' })).rejects.toThrow(/webMultimodal/);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('preserves an exact case-sensitive query in every daily-onset read and follow-up', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-daily-onset-review'];
+    const args = {
+      site_url: 'sc-domain:example.com',
+      end_date: '2026-11-10',
+      search_type: 'image',
+      page_url: 'https://blog.example.com/posts/launch',
+      query: 'Technical SEO',
+      countries: 'deu,aut',
+      devices: 'mobile,desktop',
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected provider call'));
+    try {
+      const parsed = await prompt.argsSchema.safeParseAsync(args);
+      expect(parsed.success).toBe(true);
+      expect(parsed.data?.query).toBe('Technical SEO');
+      for (const [lookback_days, start] of [['14', '2026-10-28'], ['21', '2026-10-21'], ['35', '2026-10-07']]) {
+        const guidance = (await prompt.handler({ ...parsed.data, lookback_days })).messages[0].content.text;
+        expect(guidance).toContain('"query":"Technical SEO"');
+        expect(guidance).toContain('query equals the exact query (case-sensitive)');
+        expect(guidance).toContain('page equals the exact page_url');
+        expect(guidance).toContain('"countries":["DEU","AUT"]');
+        expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
+        expect(guidance).toContain('"search_type":"image"');
+        expect(guidance).toContain(start);
+        expect(guidance).toContain(`row_limit=${lookback_days}`);
+        expect(guidance).toContain('gsc-traffic-drop-triage');
+        expect(guidance).not.toContain('insights.page_queries');
+        expect(guidance).not.toContain('insights.content_decay');
+        expect(guidance).toContain('not measured zero');
+      }
+      const section = (await prompt.handler({ ...parsed.data, page_url: undefined, page_contains: '/tools/' })).messages[0].content.text;
+      expect(section).toContain('page contains the exact page_contains');
+      expect(section).toContain('query equals the exact query (case-sensitive)');
+      expect((await prompt.argsSchema.safeParseAsync({ ...args, query: '   ' })).success).toBe(false);
+      expect((await prompt.argsSchema.safeParseAsync({ ...args, query: 'x'.repeat(241) })).success).toBe(false);
+      await expect(prompt.handler({ ...parsed.data, query_contains: 'seo' })).rejects.toThrow(/query_contains/);
+      await expect(prompt.handler({ ...parsed.data, search_type: 'webMultimodal' })).rejects.toThrow(/webMultimodal/);
+      await expect(prompt.handler({ ...parsed.data, page_url: 'https://elsewhere.example/launch' })).rejects.toThrow();
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       fetchSpy.mockRestore();
@@ -652,6 +798,58 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves an exact query throughout finalized traffic-drop triage without provider calls', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (input: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-traffic-drop-triage'];
+    const input = { site_url: 'sc-domain:example.com', query: 'Technical SEO', end_date: '2026-06-20', search_type: 'image' };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected network request'));
+    try {
+      for (const segment of [{}, { page_url: 'https://example.com/tools/', countries: 'deu,svn', devices: 'mobile,desktop' }, { page_contains: '/de/', country: 'deu', device: 'mobile' }]) {
+        const parsed = await prompt.argsSchema.safeParseAsync({ ...input, ...segment });
+        expect(parsed.success).toBe(true);
+        expect(parsed.data?.query).toBe(input.query);
+        const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+        expect(guidance).toContain('"query":"Technical SEO"');
+        expect(guidance).toContain('query equals the exact query (case-sensitive)');
+        expect(guidance).toContain('call analytics.query exactly twice');
+        expect(guidance).toContain('"start_date_a":"2026-06-14"');
+        expect(guidance).toContain('"start_date_b":"2026-06-07"');
+        expect(guidance).toContain('analytics.compare');
+        expect(guidance).toContain('missing days are unknown');
+        expect(guidance).toContain('"search_type":"image"');
+        if ('page_url' in segment) {
+          expect(guidance).toContain('page equals the exact page_url (case-sensitive)');
+          expect(guidance).toContain('"countries":["DEU","SVN"]');
+          expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
+          expect(guidance).toContain('country filterLists');
+          expect(guidance).toContain('device filterLists');
+        } else if ('page_contains' in segment) {
+          expect(guidance).toContain('page contains the supplied page_contains');
+          expect(guidance).toContain('country equals its uppercase ISO alpha-3 code');
+          expect(guidance).toContain('device equals its uppercase type');
+        }
+        expect(guidance).not.toContain('insights.content_decay');
+        expect(guidance).not.toContain('insights.page_queries');
+        expect(guidance).not.toContain('gsc-page-cohort-review');
+        expect(guidance).not.toContain('gsc-daily-onset-review');
+      }
+      await expect(prompt.handler({ ...input, query_contains: 'SEO' })).rejects.toThrow('query or query_contains');
+      await expect(prompt.handler({ ...input, page_url: 'https://other.test/' })).rejects.toThrow('must belong to the site_url');
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+      await expect(prompt.handler({ ...input, end_date: today })).rejects.toThrow('require finalized Search Console dates');
+      expect((await prompt.argsSchema.safeParseAsync({ ...input, query: '   ' })).success).toBe(false);
+      expect((await prompt.argsSchema.safeParseAsync({ ...input, query: 'x'.repeat(241) })).success).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('keeps multi-region/device traffic-drop triage within matching finalized Google scopes', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
@@ -847,6 +1045,85 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('uses a query drilldown for exact-page country movement without broadening scope', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-country-movement-review'];
+    const args = {
+      site_url: 'sc-domain:example.com',
+      page_url: 'https://example.com/de/tools/sitemap-checker',
+      end_date: '2026-06-20',
+      search_type: 'web',
+      query_contains: 'sitemap',
+      devices: ['mobile', 'tablet'],
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const exactPage = (await prompt.handler(args)).messages[0].content.text;
+      expect(exactPage).toContain('dimension=query');
+      expect(exactPage).toContain('page equals the exact page_url');
+      expect(exactPage).toContain('same query contains topic');
+      expect(exactPage).toContain('same device list');
+      expect(exactPage).not.toContain('dimension=page');
+
+      const multimodal = (await prompt.handler({
+        ...args, query_contains: undefined, search_type: 'webMultimodal',
+      })).messages[0].content.text;
+      expect(multimodal).not.toContain('dimension=query');
+      expect(multimodal).not.toContain('dimension=page');
+      expect(multimodal).toContain('no text-query drilldown');
+
+      const section = (await prompt.handler({
+        ...args, page_url: undefined, page_contains: '/de/',
+      })).messages[0].content.text;
+      expect(section).toContain('dimension=page');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('preserves exact-query scope across finalized country movement and follow-ups', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-country-movement-review'];
+    const input = { site_url: 'sc-domain:example.com', end_date: '2026-06-20', query: 'Technical SEO', devices: 'mobile,desktop' };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const parsed = await prompt.argsSchema.safeParseAsync(input);
+      expect(parsed.success).toBe(true);
+      expect(parsed.data?.query).toBe(input.query);
+      const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"query":"Technical SEO"');
+      expect(guidance).toContain('query equals the exact query (case-sensitive)');
+      expect(guidance).toContain('dimension=country');
+      expect(guidance).toContain('dimension=page');
+      expect(guidance).toContain('"start_date_b":"2026-06-07"');
+      expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
+      expect(guidance).not.toContain('query contains topic filter');
+      const both = (await prompt.handler({ ...parsed.data, page_url: 'https://example.com/de/guide/' })).messages[0].content.text;
+      expect(both).toContain('Stop after the bounded country comparison');
+      expect(both).not.toContain('dimension=query');
+      expect(both).not.toContain('dimension=page');
+      await expect(prompt.handler({ ...parsed.data, query_contains: 'seo' })).rejects.toThrow();
+      await expect(prompt.handler({ ...parsed.data, search_type: 'webMultimodal' })).rejects.toThrow();
+      expect((await prompt.argsSchema.safeParseAsync({ ...input, query: '   ' })).success).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides a finalized device-movement comparison without contacting Google', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
@@ -996,6 +1273,38 @@ describe('Worker orchestration', () => {
       fetchSpy.mockRestore();
     }
   });
+
+  it('skips unsupported exact-page query drilldowns for Discover and Google News device reports', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-device-movement-review'];
+    const base = {
+      site_url: 'sc-domain:example.com', end_date: '2026-06-20',
+      page_url: 'https://example.com/de/tool', countries: ['DEU', 'AUT'],
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      for (const search_type of ['discover', 'googleNews']) {
+        const text = (await prompt.handler({ ...base, search_type })).messages[0].content.text;
+        const followUp = text.split('\n6. ')[1].split('\nNever call')[0];
+        expect(followUp).not.toContain('dimension=query');
+        expect(followUp).not.toContain('call analytics.query');
+        expect(followUp).toContain('no text-query drilldown');
+        expect(followUp.toLowerCase()).toContain('stop after the device comparison');
+        expect(text).toContain('same country list');
+      }
+      const web = (await prompt.handler({ ...base, search_type: 'web' })).messages[0].content.text;
+      expect(web).toContain('dimension=query');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  }, 20_000);
 
   it('offers a property-scoped index-status triage prompt without Google requests', async () => {
     const server = await createGscMcpServer(
@@ -1215,6 +1524,43 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('guides a direct single-sitemap health check without bulk listing or provider calls', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (args: unknown) => Promise<{ success: boolean }> };
+        handler: (args: Record<string, string>) => Promise<{
+          messages: Array<{ content: { text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts['gsc-sitemap-health-review'];
+    const args = {
+      site_url: 'sc-domain:example.com',
+      sitemap_url: 'https://sitemap-host.example.net/blog.xml',
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      expect((await prompt.argsSchema.safeParseAsync(args)).success).toBe(true);
+      expect((await prompt.argsSchema.safeParseAsync({
+        ...args,
+        sitemap_url: 'javascript:alert(1)',
+      })).success).toBe(false);
+      const guidance = (await prompt.handler(args)).messages[0].content.text;
+      expect(guidance).toContain(JSON.stringify(args));
+      expect(guidance).toContain('sitemaps.get');
+      expect(guidance).toContain('feedpath');
+      expect(guidance).not.toContain('sitemaps.list');
+      expect(guidance).toContain('cross-site');
+      expect(guidance).toContain('lastDownloaded');
+      expect(guidance).toContain('Never call sitemaps.submit');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides a bounded read-only Search Appearance comparison using discovered types', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
@@ -1254,6 +1600,27 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('MOBILE');
       expect(guidance).toContain('not a complete');
       expect(guidance).toContain('Never call indexing.request');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('keeps one-window-only Search Appearance types as unconfirmed diagnostic candidates', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-search-appearance-review'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const guidance = (await prompt.handler({ site_url: 'sc-domain:example.com', end_date: '2026-11-10' })).messages[0].content.text;
+      expect(guidance).toContain('baseline-only');
+      expect(guidance).toContain('latest-only');
+      expect(guidance).toContain('not measured zero');
+      expect(guidance).toContain('not confirmed gained or lost');
+      expect(guidance).toContain('only exact provider-returned appearance types');
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       fetchSpy.mockRestore();
@@ -1368,6 +1735,49 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves an exact case-sensitive query in Search Appearance discovery and follow-ups', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (args: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-search-appearance-review'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      for (const scope of [{ country: 'deu', device: 'mobile' }, { countries: 'deu,usa', devices: 'desktop,mobile' }]) {
+        const parsed = await prompt.argsSchema.safeParseAsync({
+          site_url: 'sc-domain:example.com', end_date: '2026-11-10', search_type: 'web',
+          page_contains: '/guides/', query: 'Technical SEO', ...scope,
+        });
+        expect(parsed.success).toBe(true);
+        expect(parsed.data?.query).toBe('Technical SEO');
+        const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+        expect(guidance).toContain('"query":"Technical SEO"');
+        expect(guidance).toContain('"query_contains":null');
+        expect(guidance).toContain('query equals the exact query (case-sensitive)');
+        expect(guidance).toContain('dimensions=["searchAppearance"]');
+        expect(guidance).toContain('dimensions=["page"]');
+        expect(guidance).toContain('same page and query filters');
+        expect(guidance).not.toContain('query contains query_contains');
+        await expect(prompt.handler({ ...parsed.data!, query_contains: 'seo' })).rejects.toThrow('Supply either query or query_contains');
+      }
+      const exactPage = await prompt.argsSchema.safeParseAsync({
+        site_url: 'sc-domain:example.com', page_url: 'https://example.com/guides/seo', query: 'Technical SEO',
+      });
+      expect(exactPage.success).toBe(true);
+      const guidance = (await prompt.handler(exactPage.data!)).messages[0].content.text;
+      expect(guidance).toContain('page equals page_url (case-sensitive)');
+      expect(guidance).toContain('Skip the optional drilldown');
+      expect(guidance).not.toContain('dimensions=["query"]');
+      expect(guidance).not.toContain('dimensions=["page"]');
+      expect((await prompt.argsSchema.safeParseAsync({ site_url: 'sc-domain:example.com', query: '  ' })).success).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('isolates Search Appearance types and their query follow-up to one authorized exact page', async () => {
     const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
     const prompt = (server as unknown as {
@@ -1458,6 +1868,34 @@ describe('Worker orchestration', () => {
           site_url: 'sc-domain:example.com', end_date: nonfinalDate,
         })).rejects.toThrow(/finalized/i);
       }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('requires two complete branded-classification weeks after Google history begins', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{
+          messages: Array<{ content: { text: string } }>;
+        }>;
+      }>;
+    })._registeredPrompts['gsc-brand-traffic-review'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      await expect(prompt.handler({
+        site_url: 'sc-domain:example.com', end_date: '2026-03-05',
+      })).rejects.toThrow(/brandedClassification.*2026-02-21/);
+      const firstComplete = await prompt.handler({
+        site_url: 'sc-domain:example.com', end_date: '2026-03-06',
+      });
+      const guidance = firstComplete.messages[0].content.text;
+      expect(guidance).toContain('"start_date_b":"2026-02-21"');
+      expect(guidance).toContain('"end_date_a":"2026-03-06"');
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       fetchSpy.mockRestore();
@@ -1713,6 +2151,36 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('guides exact-query weekly client reporting without broadening to topic matches', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const weekly = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (input: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-weekly-client-report'];
+    const parsed = await weekly.argsSchema.safeParseAsync({
+      site_url: 'sc-domain:example.com', query: 'Technical SEO',
+      page_url: 'https://example.com/de/pricing/', countries: 'DEU,AUT', devices: 'mobile,desktop',
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.query).toBe('Technical SEO');
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const guidance = (await weekly.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"query":"Technical SEO"');
+      expect(guidance).toContain('query equals the exact query (case-sensitive)');
+      expect(guidance).toContain('analytics.compare');
+      expect(guidance).toContain('analytics.query');
+      expect(guidance).toContain('never replace with query_contains');
+      await expect(weekly.handler({ site_url: 'sc-domain:example.com', query: 'Technical SEO', query_contains: 'SEO' }))
+        .rejects.toThrow('query or query_contains');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a native brand-segmentation review prompt without provider requests', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
@@ -1865,6 +2333,13 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('dimensions=[]');
       expect(guidance).toContain('filterLists');
       expect(guidance).toContain('text query');
+      const longerWindow = guidance.split('\n').find((line) => line.includes('insights.content_decay'));
+      expect(longerWindow).toContain('compare_days=28');
+      expect(longerWindow).toContain('end_date=end_date_a');
+      expect(longerWindow).toContain('page_contains');
+      expect(longerWindow).toContain('countries/devices');
+      expect(longerWindow).toContain('without query_contains');
+      expect(longerWindow).toContain('optional');
       expect(guidance).toContain('not measured zero');
       expect(guidance).toContain('Never call indexing.request');
       expect(fetchSpy).not.toHaveBeenCalled();
@@ -1899,6 +2374,11 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('analytics.compare');
       expect(guidance).toContain('DEU');
       expect(guidance).toContain('DESKTOP');
+      const longerWindow = guidance.split('\n').find((line) => line.includes('insights.content_decay'));
+      expect(longerWindow).toContain('compare_days=28');
+      expect(longerWindow).toContain('page_url');
+      expect(longerWindow).toContain('never broaden');
+      expect(longerWindow).toContain('countries/devices');
       await expect(prompt.handler({ site_url: 'sc-domain:example.com', page_url, page_contains: '/de/' }))
         .rejects.toThrow(/either page_contains or page_url/);
       await expect(prompt.handler({ site_url: 'sc-domain:example.com', page_url: 'https://other.example.net/de/' }))
@@ -2512,6 +2992,54 @@ describe('Worker orchestration', () => {
       expect(empty.structuredContent.result_page).toMatchObject({
         has_more: false, total_count: 0, byte_limit_reached: false,
       });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('rejects oversized single-sitemap MCP payloads without losing normal sitemap details', async () => {
+    const server = await createGscMcpServer(
+      {
+        GSC_ACCESS_MODE: 'readonly',
+        TOOL_RATE_LIMITER: {
+          idFromName: (name: string) => name,
+          get: () => ({ take: async () => ({ allowed: true }) }),
+        },
+      } as unknown as Env,
+      { google_id: 'sitemap-detail-user', email: 'sitemap-detail@example.test' },
+      { getAccessToken: async () => 'access-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{
+          isError?: boolean;
+          content: Array<{ text: string }>;
+          structuredContent?: { sitemap: { path: string; errors?: string } };
+        }>;
+      }>;
+    })._registeredTools['sitemaps.get'].handler;
+    const originalFetch = globalThis.fetch;
+    const input = {
+      site_url: 'sc-domain:example.com',
+      feedpath: 'https://example.com/sitemap.xml',
+    };
+    try {
+      globalThis.fetch = async () => response({ path: input.feedpath, errors: '3' });
+      const normal = await handler(input);
+      expect(normal.isError).not.toBe(true);
+      expect(normal.structuredContent?.sitemap).toMatchObject({ path: input.feedpath, errors: '3' });
+
+      globalThis.fetch = async () => response({
+        path: input.feedpath,
+        contents: Array.from({ length: 1200 }, (_, i) => ({
+          type: `web-${i}-${'x'.repeat(50)}`,
+          submitted: '1',
+        })),
+      });
+      const oversized = await handler(input);
+      expect(oversized.isError).toBe(true);
+      expect(oversized.content[0].text).toContain('exceeds the response byte limit');
+      expect(new TextEncoder().encode(oversized.content[0].text).byteLength).toBeLessThan(1_000);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -3136,6 +3664,44 @@ describe('Worker orchestration', () => {
     }
     expect(limiterIdFromName).not.toHaveBeenCalled();
     expect(getAccessToken).not.toHaveBeenCalled();
+  });
+
+  it('rejects raw exact-page URL normalization in direct tools and inspection prompts', async () => {
+    const server = await createGscMcpServer(workerEnv, {
+      google_id: 'raw-url-schema-user',
+      email: 'raw-url-schema@example.test',
+    });
+    const registered = server as unknown as {
+      _registeredTools: Record<string, { inputSchema: { safeParseAsync: (input: unknown) => Promise<{ success: boolean }> } }>;
+      _registeredPrompts: Record<string, { argsSchema: { safeParseAsync: (input: unknown) => Promise<{ success: boolean }> } }>;
+    };
+    const site_url = 'sc-domain:example.com';
+    const valid = 'https://example.com/a%20b';
+    for (const raw of [
+      ' https://example.com/a',
+      'https://example.com/a ',
+      'https://example.com/a\t',
+      'https://example.com\\a',
+    ]) {
+      expect((await registered._registeredTools['urls.inspect_many'].inputSchema.safeParseAsync({
+        site_url, inspection_urls: [raw],
+      })).success, `batch tool accepted ${JSON.stringify(raw)}`).toBe(false);
+      expect((await registered._registeredTools['insights.page_queries'].inputSchema.safeParseAsync({
+        site_url, page_url: raw, start_date: '2026-09-01', end_date: '2026-09-07',
+      })).success, `exact-page query tool accepted ${JSON.stringify(raw)}`).toBe(false);
+      expect((await registered._registeredPrompts['gsc-index-status-triage'].argsSchema.safeParseAsync({
+        site_url, inspection_url: raw,
+      })).success, `single inspection prompt accepted ${JSON.stringify(raw)}`).toBe(false);
+      expect((await registered._registeredPrompts['gsc-index-batch-review'].argsSchema.safeParseAsync({
+        site_url, inspection_urls: [raw, valid],
+      })).success, `batch inspection prompt accepted ${JSON.stringify(raw)}`).toBe(false);
+    }
+    expect((await registered._registeredPrompts['gsc-index-batch-review'].argsSchema.safeParseAsync({
+      site_url, inspection_urls: ` ${valid}\nhttps://example.com/other`,
+    })).success).toBe(false);
+    expect((await registered._registeredTools['urls.inspect_many'].inputSchema.safeParseAsync({
+      site_url, inspection_urls: [valid],
+    })).success).toBe(true);
   });
 
   it('rejects duplicate urls.inspect_many inputs before provider work', async () => {
@@ -4477,6 +5043,208 @@ describe('Worker orchestration', () => {
       const serializedDetail = JSON.stringify(detailEnvelope);
       expect(serializedDetail).toContain('"verification_state":"verified"');
       expect(serializedDetail).toContain('"owner":true');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('bounds single-property MCP RPC details without truncating normal results', async () => {
+    const googleId = 'site-detail-budget-user';
+    await saveUser(workerEnv, googleId, 'site-detail@example.test', 'fixture-refresh-token');
+    const siteUrl = 'sc-domain:example.com';
+    let detailCalls = 0;
+    let extra = 'normal';
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async (input, init) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'fixture-access-token', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com') {
+          expect(init?.method ?? 'GET').toBe('GET');
+          detailCalls++;
+          return response({ siteUrl, permissionLevel: 'siteOwner', futureField: extra });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const call = async (id: number) => {
+        const result = await mcpApiHandler.fetch(new Request('https://worker.example/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'MCP-Protocol-Version': '2025-06-18',
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call',
+            params: { name: 'sites.get', arguments: { site_url: siteUrl } } }),
+        }), workerEnv, { props: { google_id: googleId, email: 'site-detail@example.test' } } as unknown as ExecutionContext);
+        expect(result.status).toBe(200);
+        return (await readMcpJsonRpc(result)).result as {
+          isError?: boolean;
+          content: Array<{ text: string }>;
+          structuredContent?: { site: Record<string, unknown> };
+        };
+      };
+      const normal = await call(1);
+      expect(normal.isError).not.toBe(true);
+      expect(normal.structuredContent?.site).toMatchObject({ siteUrl, permissionLevel: 'siteOwner', verification_state: 'verified', owner: true });
+      expect(JSON.parse(normal.content[0].text).futureField).toBe('normal');
+
+      // Multibyte content fits a character-count limit but exceeds the UTF-8 budget.
+      extra = '\u00e9'.repeat(23_000);
+      const oversized = await call(2);
+      expect(oversized.isError).toBe(true);
+      expect(oversized.content[0].text).toContain('exceeds the response byte limit');
+      expect(oversized.structuredContent).toBeUndefined();
+      expect(new TextEncoder().encode(JSON.stringify(oversized)).byteLength).toBeLessThan(1_000);
+      expect(detailCalls).toBe(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('bounds indexing status MCP RPC metadata without truncating normal receipts', async () => {
+    const googleId = 'indexing-status-budget-user';
+    const targetUrl = 'https://example.com/careers/engineer';
+    await saveUser(workerEnv, googleId, 'status-budget@example.test', 'fixture-refresh-token');
+    let extra = 'normal';
+    let siteListCalls = 0;
+    let metadataCalls = 0;
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async (input, init) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'fixture-access-token', expires_in: 3600 });
+        }
+        expect(init?.method ?? 'GET').toBe('GET');
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites') {
+          siteListCalls++;
+          return response({ siteEntry: [{ siteUrl: 'sc-domain:example.com', permissionLevel: 'siteOwner' }] });
+        }
+        const parsed = new URL(url);
+        if (`${parsed.origin}${parsed.pathname}` === 'https://indexing.googleapis.com/v3/urlNotifications/metadata') {
+          expect(parsed.searchParams.get('url')).toBe(targetUrl);
+          metadataCalls++;
+          return response({ url: targetUrl, latestUpdate: { url: targetUrl, type: 'URL_UPDATED', notifyTime: '2026-09-22T07:30:00Z', futureField: extra } });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const call = async (id: number) => {
+        const result = await mcpApiHandler.fetch(new Request('https://worker.example/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'MCP-Protocol-Version': '2025-06-18',
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call',
+            params: { name: 'indexing.status', arguments: { site_url: 'sc-domain:example.com', url: targetUrl } } }),
+        }), workerEnv, { props: { google_id: googleId, email: 'status-budget@example.test' } } as unknown as ExecutionContext);
+        expect(result.status).toBe(200);
+        return (await readMcpJsonRpc(result)).result as {
+          isError?: boolean;
+          content: Array<{ text: string }>;
+          structuredContent?: Record<string, unknown>;
+        };
+      };
+      const normal = await call(1);
+      expect(normal.isError).not.toBe(true);
+      expect(normal.structuredContent).toMatchObject({ notification_metadata: { url: targetUrl, latestUpdate: { type: 'URL_UPDATED' } }, notification_receipt_only: true, index_coverage_report: false, indexing_or_removal_completion_proven: false });
+      expect(JSON.parse(normal.content[0].text).notification_metadata.latestUpdate.futureField).toBe('normal');
+
+      extra = '\u00e9'.repeat(23_000);
+      const oversized = await call(2);
+      expect(oversized.isError).toBe(true);
+      expect(oversized.content[0].text).toContain('exceeds the response byte limit');
+      expect(oversized.structuredContent).toBeUndefined();
+      expect(new TextEncoder().encode(JSON.stringify(oversized)).byteLength).toBeLessThan(1_000);
+      expect(siteListCalls).toBe(2);
+      expect(metadataCalls).toBe(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('bounds acknowledged indexing publish RPC receipts without retrying the write', async () => {
+    const targetUrl = 'https://example.com/careers/engineer';
+    const originalFetch = globalThis.fetch;
+    let type = 'URL_UPDATED';
+    let extra = 'normal';
+    let siteListCalls = 0;
+    let eligibilityCalls = 0;
+    let posts = 0;
+    try {
+      globalThis.fetch = async (input, init) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'fixture-access-token', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites') {
+          siteListCalls++;
+          return response({ siteEntry: [{ siteUrl: 'sc-domain:example.com', permissionLevel: 'siteOwner' }] });
+        }
+        if (url === targetUrl) {
+          eligibilityCalls++;
+          return type === 'URL_DELETED'
+            ? new Response(null, { status: 404 })
+            : new Response('<script type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting"}</script>', {
+                status: 200, headers: { 'content-type': 'text/html' },
+              });
+        }
+        if (url === 'https://indexing.googleapis.com/v3/urlNotifications:publish') {
+          expect(init?.method).toBe('POST');
+          expect(JSON.parse(String(init?.body))).toEqual({ url: targetUrl, type });
+          posts++;
+          return response({ urlNotificationMetadata: { url: targetUrl, futureField: extra } });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      let id = 0;
+      const call = async (name: string, googleId: string) => {
+        const rpc = await mcpApiHandler.fetch(new Request('https://worker.example/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'MCP-Protocol-Version': '2025-06-18',
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method: 'tools/call',
+            params: { name, arguments: { site_url: 'sc-domain:example.com', url: targetUrl } } }),
+        }), workerEnv, { props: { google_id: googleId, email: 'publish-budget@example.test' } } as unknown as ExecutionContext);
+        expect(rpc.status).toBe(200);
+        return (await readMcpJsonRpc(rpc)).result as {
+          isError?: boolean;
+          content: Array<{ text: string }>;
+          structuredContent?: Record<string, unknown>;
+        };
+      };
+      for (const [name, notificationType] of [['indexing.request', 'URL_UPDATED'], ['indexing.remove', 'URL_DELETED']]) {
+        // Each fixture user has the real two-notifications-per-day limit.
+        const googleId = `indexing-publish-budget-${notificationType}`;
+        await saveUser(workerEnv, googleId, 'publish-budget@example.test', 'fixture-refresh-token');
+        type = notificationType;
+        extra = 'normal';
+        const normal = await call(name, googleId);
+        expect(normal.isError, normal.isError ? normal.content[0].text : undefined).not.toBe(true);
+        expect(normal.structuredContent?.result).toEqual({ urlNotificationMetadata: { url: targetUrl, futureField: 'normal' } });
+        extra = '\u00e9'.repeat(23_000);
+        const oversized = await call(name, googleId);
+        expect(oversized.isError).not.toBe(true);
+        expect(oversized.structuredContent?.result).toMatchObject({
+          receipt_status: 'unverified',
+          receipt_details_omitted: true,
+          note: expect.stringContaining('Google returned HTTP success'),
+        });
+        expect(oversized.content[0].text).toContain('before considering a new submission');
+        expect(JSON.parse(oversized.content[0].text)).toEqual(oversized.structuredContent);
+        expect(new TextEncoder().encode(oversized.content[0].text).byteLength).toBeLessThan(2_000);
+        if (name === 'indexing.remove') expect(oversized.structuredContent?.removal_completion_proven).toBe(false);
+      }
+      expect(posts).toBe(4);
+      expect(siteListCalls).toBe(4);
+      expect(eligibilityCalls).toBe(4);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -6300,6 +7068,71 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('compares webMultimodal page declines without inventing missing average positions', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'visual-decay-user', email: 'visual-decay@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const tool = (server as unknown as {
+      _registeredTools: Record<string, {
+        inputSchema: { safeParseAsync: (input: unknown) => Promise<{ success: boolean }> };
+        handler: (args: Record<string, unknown>) => Promise<{
+          isError?: boolean;
+          structuredContent: {
+            search_type: string;
+            decay_results: Array<{ classification: string; previous_position: number | null; recent_position: number | null }>;
+          };
+        }>;
+      }>;
+    })._registeredTools['insights.content_decay'];
+    const args = {
+      site_url: 'sc-domain:example.com',
+      compare_days: 14,
+      search_type: 'webMultimodal',
+      page_url: 'https://example.com/visual-guide',
+    };
+    expect((await tool.inputSchema.safeParseAsync(args)).success).toBe(true);
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ type: string; dimensions: string[]; dimensionFilterGroups?: unknown[] }> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        expect(requestUrl(input)).toContain('/searchAnalytics/query');
+        requests.push(JSON.parse(String(init?.body)));
+        return response({ rows: [{
+          keys: ['https://example.com/visual-guide'],
+          clicks: requests.length === 1 ? 20 : 40,
+          impressions: requests.length === 1 ? 100 : 250,
+          ctr: requests.length === 1 ? 0.2 : 0.16,
+        }] });
+      };
+      const result = await tool.handler(args);
+      expect(result.isError).not.toBe(true);
+      expect(requests).toHaveLength(2);
+      for (const body of requests) {
+        expect(body.type).toBe('webMultimodal');
+        expect(body.dimensions).toEqual(['page']);
+        expect(body.dimensionFilterGroups).toEqual([{
+          groupType: 'and',
+          filters: [{ dimension: 'page', operator: 'equals', expression: args.page_url }],
+        }]);
+      }
+      expect(result.structuredContent.search_type).toBe('webMultimodal');
+      expect(result.structuredContent.decay_results).toEqual([
+        expect.objectContaining({
+          classification: 'likely_decay',
+          previous_position: null,
+          recent_position: null,
+        }),
+      ]);
+      const unsupportedQueryScope = await tool.handler({ ...args, query_contains: 'camera query' });
+      expect(unsupportedQueryScope.isError).toBe(true);
+      expect(requests).toHaveLength(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('focuses content decay on one locale without treating other pages as missing data', async () => {
     const server = await createGscMcpServer(
       workerEnv,
@@ -6889,15 +7722,310 @@ describe('Worker orchestration', () => {
       expect(filtered.structuredContent.pages[0]?.page).toBe('https://example.com/de/guide/');
       expect(filtered.structuredContent.result_page).toMatchObject({ start_row: 12, has_more: false });
 
+      const topicScoped = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        page_contains: '/de/',
+        query_contains: 'seo audit',
+        row_limit: 25,
+      })) as { structuredContent: { query_contains: string | null; note: string } };
+      expect(requests[1]).toMatchObject({
+        dimensions: ['page'],
+        dimensionFilterGroups: [{
+          groupType: 'and',
+          filters: [
+            { dimension: 'page', operator: 'contains', expression: '/de/' },
+            { dimension: 'query', operator: 'contains', expression: 'seo audit' },
+          ],
+        }],
+      });
+      expect(topicScoped.structuredContent.query_contains).toBe('seo audit');
+      expect(topicScoped.structuredContent.note).toMatch(/query topic|matching queries/i);
+
+      const marketScoped = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        page_contains: '/de/',
+        query_contains: 'seo audit',
+        country: 'deu',
+        device: 'mobile',
+        row_limit: 25,
+      })) as { structuredContent: { country?: string; device?: string; note: string } };
+      expect(requests[2]).toMatchObject({
+        dimensions: ['page'],
+        dimensionFilterGroups: [{
+          groupType: 'and',
+          filters: [
+            { dimension: 'page', operator: 'contains', expression: '/de/' },
+            { dimension: 'query', operator: 'contains', expression: 'seo audit' },
+            { dimension: 'country', operator: 'equals', expression: 'DEU' },
+            { dimension: 'device', operator: 'equals', expression: 'MOBILE' },
+          ],
+        }],
+      });
+      expect(marketScoped.structuredContent).toMatchObject({ country: 'DEU', device: 'mobile' });
+      expect(marketScoped.structuredContent.note).toMatch(/searcher country|searcher device/i);
+
+      await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        country: 'SVN',
+        row_limit: 25,
+      });
+      expect(requests[3]).toMatchObject({
+        dimensionFilterGroups: [{ groupType: 'and', filters: [
+          { dimension: 'country', operator: 'equals', expression: 'SVN' },
+        ] }],
+      });
+      await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        device: 'desktop',
+        row_limit: 25,
+      });
+      expect(requests[4]).toMatchObject({
+        dimensionFilterGroups: [{ groupType: 'and', filters: [
+          { dimension: 'device', operator: 'equals', expression: 'DESKTOP' },
+        ] }],
+      });
+
       const unfiltered = (await registered['indexing.list_pages'].handler({
         site_url: 'sc-domain:example.com',
         start_date: '2026-06-01',
         end_date: '2026-06-30',
         row_limit: 25,
       })) as { structuredContent: { page_contains: string | null } };
-      expect(requests).toHaveLength(2);
-      expect(requests[1]).not.toHaveProperty('dimensionFilterGroups');
+      expect(requests).toHaveLength(6);
+      expect(requests[5]).not.toHaveProperty('dimensionFilterGroups');
+      expect(requests[5]).not.toHaveProperty('type');
       expect(unfiltered.structuredContent.page_contains).toBeNull();
+
+      const exactPage = 'https://example.com/de/guide/';
+      const exact = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        page_url: exactPage,
+        query_contains: 'seo audit',
+        country: 'deu',
+        row_limit: 25,
+        start_row: 2,
+      })) as { structuredContent: { page_url?: string; page_contains: string | null; note: string } };
+      expect(requests[6]).toMatchObject({
+        dimensions: ['page'],
+        rowLimit: 25,
+        startRow: 2,
+        dimensionFilterGroups: [{ groupType: 'and', filters: [
+          { dimension: 'page', operator: 'equals', expression: exactPage },
+          { dimension: 'query', operator: 'contains', expression: 'seo audit' },
+          { dimension: 'country', operator: 'equals', expression: 'DEU' },
+        ] }],
+      });
+      expect(exact.structuredContent).toMatchObject({ page_url: exactPage, page_contains: null });
+      expect(exact.structuredContent.note).toMatch(/exact page|case-sensitive/i);
+
+      const conflicting = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        page_contains: '/de/',
+        page_url: exactPage,
+      })) as { isError?: boolean };
+      expect(conflicting.isError).toBe(true);
+      await expect(registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        page_url: 'https://outside.example.net/private/',
+      })).rejects.toThrow();
+      expect(requests).toHaveLength(7);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('uses one Google page read for combined searcher countries and devices', async () => {
+    await saveUser(workerEnv, 'market-pages-user', 'market@example.test', 'market-refresh-token');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'market-pages-user', email: 'market@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'market-pages-access', expires_in: 3600 });
+        }
+        if (url.endsWith('/searchAnalytics/query')) {
+          requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+          return response({ rows: [{
+            keys: ['https://example.com/de/guide/'], clicks: 2, impressions: 40, ctr: 0.05,
+          }] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const args = {
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        search_type: 'image',
+        page_contains: '/de/',
+        query_contains: 'seo',
+        countries: ['deu', 'aut'],
+        devices: ['desktop', 'mobile'],
+        row_limit: 25,
+        start_row: 6,
+      };
+      const result = (await registered['indexing.list_pages'].handler(args)) as {
+        structuredContent: {
+          countries?: string[];
+          devices?: string[];
+          pages: Array<{ position: number | null }>;
+          note: string;
+          result_page: { start_row: number };
+        };
+      };
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({
+        type: 'image',
+        dimensions: ['page'],
+        rowLimit: 25,
+        startRow: 6,
+        dimensionFilterGroups: [{
+          groupType: 'and',
+          filters: [
+            { dimension: 'page', operator: 'contains', expression: '/de/' },
+            { dimension: 'query', operator: 'contains', expression: 'seo' },
+          ],
+          filterLists: [
+            { dimension: 'country', expressions: ['DEU', 'AUT'] },
+            { dimension: 'device', expressions: ['DESKTOP', 'MOBILE'] },
+          ],
+        }],
+      });
+      expect(result.structuredContent).toMatchObject({
+        countries: ['DEU', 'AUT'], devices: ['desktop', 'mobile'],
+        result_page: { start_row: 6 },
+      });
+      expect(result.structuredContent.pages[0].position).toBeNull();
+      expect(result.structuredContent.note).toMatch(/combined|OR within/i);
+      for (const invalid of [
+        { ...args, country: 'DEU' },
+        { ...args, device: 'desktop' },
+        { ...args, countries: ['deu', 'DEU'] },
+        { ...args, devices: ['mobile', 'mobile'] },
+        { ...args, search_type: 'discover' },
+      ]) {
+        const rejected = await registered['indexing.list_pages'].handler(invalid);
+        expect(JSON.stringify(rejected)).toMatch(/country|device|query_contains/i);
+      }
+      expect(requests).toHaveLength(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('selects the requested Search-visible page surface without adding provider reads', async () => {
+    await saveUser(workerEnv, 'surface-pages-user', 'surface@example.test', 'surface-refresh-token');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'surface-pages-user', email: 'surface@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<unknown>;
+      }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'surface-pages-access', expires_in: 3600 });
+        }
+        if (url.endsWith('/searchAnalytics/query')) {
+          requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+          return response({ rows: [{
+            keys: ['https://example.com/visual/guide/'],
+            clicks: 3,
+            impressions: 40,
+            ctr: 0.075,
+          }] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+
+      const visual = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        row_limit: 25,
+        search_type: 'webMultimodal',
+        page_contains: '/visual/',
+        country: 'DEU',
+      })) as { structuredContent: { search_type?: string; pages: Array<{ position: number | null }>; note: string } };
+      expect(requests[0]).toMatchObject({
+        type: 'webMultimodal',
+        dimensions: ['page'],
+        dimensionFilterGroups: [{ groupType: 'and', filters: [
+          { dimension: 'page', operator: 'contains', expression: '/visual/' },
+          { dimension: 'country', operator: 'equals', expression: 'DEU' },
+        ] }],
+      });
+      expect(visual.structuredContent.search_type).toBe('webMultimodal');
+      expect(visual.structuredContent.pages[0].position).toBeNull();
+      expect(visual.structuredContent.note).toMatch(/multimodal|visual/i);
+
+      const discover = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        row_limit: 25,
+        search_type: 'discover',
+      })) as { structuredContent: { search_type?: string; pages: Array<{ position: number | null }> } };
+      expect(requests[1].type).toBe('discover');
+      expect(discover.structuredContent.search_type).toBe('discover');
+      expect(discover.structuredContent.pages[0].position).toBeNull();
+
+      const image = (await registered['indexing.list_pages'].handler({
+        site_url: 'sc-domain:example.com',
+        start_date: '2026-06-01',
+        end_date: '2026-06-30',
+        row_limit: 25,
+        search_type: 'image',
+        query_contains: 'diagram',
+      })) as { structuredContent: { search_type?: string } };
+      expect(requests[2]).toMatchObject({
+        type: 'image',
+        dimensionFilterGroups: [{ filters: [
+          { dimension: 'query', operator: 'contains', expression: 'diagram' },
+        ] }],
+      });
+      expect(image.structuredContent.search_type).toBe('image');
+
+      for (const unsupported of ['webMultimodal', 'discover', 'googleNews']) {
+        const rejected = await registered['indexing.list_pages'].handler({
+          site_url: 'sc-domain:example.com',
+          start_date: '2026-06-01',
+          end_date: '2026-06-30',
+          row_limit: 25,
+          search_type: unsupported,
+          query_contains: 'visual topic',
+        });
+        expect(JSON.stringify(rejected)).toMatch(/does not support query_contains/i);
+      }
+      expect(requests).toHaveLength(3);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -8199,6 +9327,98 @@ describe('Worker orchestration', () => {
       globalThis.fetch = originalFetch;
     }
   });
+  it('rejects an oversized weekly digest without returning partial Markdown', async () => {
+    const take = vi.fn(async () => ({ allowed: true }));
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly', TOOL_RATE_LIMITER: { idFromName: (name: string) => name, get: () => ({ take }) } } as unknown as Env,
+      { google_id: 'digest-output-bound-user', email: 'digest-output-bound@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, string>) => Promise<{ isError?: boolean; content: Array<{ text: string }>; structuredContent?: { markdown: string } }>;
+      }>;
+    })._registeredTools['reports.weekly_digest'].handler;
+    const originalFetch = globalThis.fetch;
+    let oversized = false;
+    let requests = 0;
+    try {
+      globalThis.fetch = async (_input, init) => {
+        requests += 1;
+        const body = JSON.parse(String(init?.body)) as { dimensions: string[] };
+        const metric = { clicks: 1, impressions: 100, ctr: 0.01, position: 8 };
+        if (body.dimensions.length === 0) return response({ rows: [{ keys: [], ...metric }] });
+        if (body.dimensions[0] === 'query') return response({ rows: [{ keys: ['normal query'], ...metric }] });
+        const suffix = oversized ? '\u4e2d'.repeat(1800) : 'short';
+        return response({ rows: Array.from({ length: 5 }, (_, i) => ({ keys: [`https://example.com/${i}/${suffix}`], ...metric })) });
+      };
+      const args = { site_url: 'sc-domain:example.com', end_date: '2026-09-17' };
+      const normal = await handler(args);
+      expect(normal.isError).not.toBe(true);
+      expect(normal.structuredContent?.markdown).toContain('https://example.com/0/short');
+      oversized = true;
+      const large = await handler(args);
+      expect(large.isError).toBe(true);
+      expect(large.content[0]?.text).toContain('response byte limit');
+      expect(large.structuredContent).toBeUndefined();
+      expect(requests).toBe(10);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('preserves one exact query across finalized and preliminary weekly digest requests', async () => {
+    const take = vi.fn(async () => ({ allowed: true }));
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly', TOOL_RATE_LIMITER: { idFromName: (name: string) => name, get: () => ({ take }) } } as unknown as Env,
+      { google_id: 'digest-exact-query-user', email: 'digest-exact-query@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{ isError?: boolean; content: Array<{ text: string }> }>;
+      }>;
+    })._registeredTools['reports.weekly_digest'].handler;
+    const exactQuery = 'Technical SEO';
+    const pageUrl = 'https://example.com/de/pricing/';
+    const requests: Array<Record<string, unknown>> = [];
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async (_input, init) => {
+        const body = JSON.parse(String(init?.body)) as { dimensions: string[] };
+        requests.push(body);
+        const keys = body.dimensions[0] === 'query' ? [exactQuery] : body.dimensions[0] === 'page' ? [pageUrl] : [];
+        return response({ rows: [{ keys, clicks: 1, impressions: 100, ctr: 0.01, position: 8 }] });
+      };
+      const args = {
+        site_url: 'sc-domain:example.com', query: exactQuery, page_url: pageUrl,
+        search_type: 'image', countries: ['DEU', 'AUT'], devices: ['mobile', 'desktop'],
+      };
+      for (const [endDate, count] of [['2026-09-17', 5], [getSearchConsoleCalendarDate(), 3]] as const) {
+        requests.length = 0;
+        const result = await handler({ ...args, end_date: endDate });
+        expect(result.isError).not.toBe(true);
+        expect(requests).toHaveLength(count);
+        for (const request of requests) {
+          expect(request.type).toBe('image');
+          expect(request.dimensionFilterGroups).toEqual([{
+            groupType: 'and', filters: [
+              { dimension: 'page', operator: 'equals', expression: pageUrl },
+              { dimension: 'query', operator: 'equals', expression: exactQuery },
+            ], filterLists: [
+              { dimension: 'country', expressions: ['DEU', 'AUT'] },
+              { dimension: 'device', expressions: ['MOBILE', 'DESKTOP'] },
+            ],
+          }]);
+        }
+        expect(result.content[0]?.text).toContain('**Exact query filter:** Technical SEO');
+        expect(result.content[0]?.text).toContain('case-sensitive');
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('reserves five shared Search Analytics units before running a weekly digest', async () => {
     const take = vi.fn(async (_bucket: string, policy: { category: string }, _units: number) => ({
       allowed: policy.category !== 'search-analytics',
@@ -8270,7 +9490,7 @@ describe('Worker orchestration', () => {
 
   it('rejects ambiguous weekly digest single/list scopes before any quota or Google request', async () => {
     const take = vi.fn(async () => ({ allowed: true }));
-    const getAccessToken = vi.fn(async () => 'test-token');
+    const getAccessToken = vi.fn(async () => { throw new Error('Unexpected credential retrieval in conflict fixture'); });
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly', TOOL_RATE_LIMITER: { idFromName: (name: string) => name, get: () => ({ take }) } } as unknown as Env,
       { google_id: 'digest-conflict-user', email: 'conflict@example.test' },
@@ -8284,10 +9504,13 @@ describe('Worker orchestration', () => {
 
     const countryResult = await handler({ site_url: 'sc-domain:example.com', country: 'SVN', countries: ['DEU'] });
     const deviceResult = await handler({ site_url: 'sc-domain:example.com', device: 'mobile', devices: ['desktop'] });
+    const queryResult = await handler({ site_url: 'sc-domain:example.com', query: 'Technical SEO', query_contains: 'SEO' });
     expect(countryResult.isError).toBe(true);
     expect(countryResult.content[0]?.text).toContain('Use country or countries, not both');
     expect(deviceResult.isError).toBe(true);
     expect(deviceResult.content[0]?.text).toContain('Use device or devices, not both');
+    expect(queryResult.isError).toBe(true);
+    expect(queryResult.content[0]?.text).toContain('Use query or query_contains, not both');
     expect(take).not.toHaveBeenCalled();
     expect(getAccessToken).not.toHaveBeenCalled();
   });

@@ -539,6 +539,10 @@ export async function getSite(
   if (!isSiteEntry(data)) {
     throw new Error('Google Search Console sites.get response contains invalid property data.');
   }
+  // Permission metadata must belong to the exact property the caller selected.
+  if (data.siteUrl !== siteUrl) {
+    throw new Error('Google Search Console sites.get response does not match the requested property identifier.');
+  }
   return data;
 }
 
@@ -1425,6 +1429,10 @@ export async function getSitemap(
   const entry: unknown = await readBoundedGoogleSuccessJson(resp);
   if (!isSitemapEntry(entry)) {
     throw new Error('Google Search Console sitemaps.get response contains invalid sitemap data.');
+  }
+  if (entry.path !== feedpath) {
+    // The submitted feed URL is the resource identity, not the property host.
+    throw new Error('Google Search Console sitemaps.get response does not match the requested sitemap.');
   }
   return normalizeSitemap(entry);
 }
@@ -2354,10 +2362,11 @@ export async function checkIndexingEligibility(
 }
 
 function hasRobotsNoindexMeta(html: string): boolean {
-  // HTML permits an omitted </head>, so stop at </head>, <body>, or EOF.
-  const head = /<head\b[^>]*>([\s\S]*?)(?:<\/head\s*>|<body\b|$)/i.exec(
-    stripInertHtml(html),
-  )?.[1];
+  const activeHtml = stripInertHtml(html);
+  // HTML also permits an omitted <head> start tag when metadata comes first.
+  // Only accept leading active meta elements; do not promote body markup.
+  const head = /<head\b[^>]*>([\s\S]*?)(?:<\/head\s*>|<body\b|$)/i.exec(activeHtml)?.[1]
+    ?? /^(?:\s*<!doctype\b[^>]*>)?\s*(?:<html\b[^>]*>)?\s*((?:<meta\b[^>]*>\s*)+)/i.exec(activeHtml)?.[1];
   if (!head) return false;
 
   const metaPattern = /<meta\b([^>]*)>/gi;
@@ -2513,6 +2522,10 @@ async function publishIndexingNotification(
   }
   const root = asUnknownRecord(receipt);
   const metadata = asUnknownRecord(root?.urlNotificationMetadata);
+  const returnedUrls = [root?.url, metadata?.url, asUnknownRecord(metadata?.latestUpdate)?.url, asUnknownRecord(metadata?.latestRemove)?.url];
+  if (returnedUrls.some((returnedUrl) => returnedUrl != null && returnedUrl !== url)) {
+    return unverifiedReceipt;
+  }
   // Preserve the direct UrlNotification shape accepted by existing clients.
   const directNotification = root &&
     typeof root.url === 'string' && root.url.trim().length > 0 &&
@@ -2605,6 +2618,10 @@ export async function getIndexingNotificationMetadata(
       !isOptionalIndexingNotification(metadata.latestUpdate) ||
       !isOptionalIndexingNotification(metadata.latestRemove)) {
     throw new Error('Google Indexing metadata response contains invalid notification data.');
+  }
+  const returnedUrls = [metadata.url, asUnknownRecord(metadata.latestUpdate)?.url, asUnknownRecord(metadata.latestRemove)?.url];
+  if (returnedUrls.some((returnedUrl) => returnedUrl != null && returnedUrl !== url)) {
+    throw new Error('Google Indexing metadata response contains mismatched URL identity.');
   }
   return data as IndexingNotificationMetadata;
 }

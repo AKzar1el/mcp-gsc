@@ -1103,6 +1103,17 @@ test('agency report follow-ups preserve weekly digest device and section scope',
   assert.match(guide, /never compare device-scoped totals with all-device totals/i);
 });
 
+test('agency reporting exposes exact-page digest and scope-preserving comparison instructions', () => {
+  const guide = readFileSync(resolve(projectRoot, 'docs/agency-weekly-reporting.md'), 'utf8');
+  const catalog = indexSource.split("name: 'reports.weekly_digest'")[1]?.split('\n  },')[0] ?? '';
+  assert.match(catalog, /page_url/);
+  assert.match(guide, /Optional exact-page report:/);
+  assert.match(guide, /page_url: "https:\/\/blog\.example\.com\/pricing"/);
+  assert.match(guide, /"dimension":"page","operator":"equals","expression":"https:\/\/blog\.example\.com\/pricing"/);
+  assert.match(guide, /case-sensitive/);
+  assert.match(guide, /Never replace the exact page filter with `page_contains`/);
+});
+
 test('weekly digest country scope is discoverable and documented as ISO alpha-3', () => {
   const catalog = indexSource.split("name: 'reports.weekly_digest'")[1]?.split('\n  },')[0] ?? '';
   const registration = indexSource.match(/this\.server\.registerTool\(\s*'reports\.weekly_digest'([\s\S]*?)outputSchema:/)?.[1] ?? '';
@@ -1110,7 +1121,7 @@ test('weekly digest country scope is discoverable and documented as ISO alpha-3'
   const digestReadmeRow = readmeSource.split('**`reports.weekly_digest`**')[1]?.split('\n')[0] ?? '';
   assert.match(catalog, /country/);
   assert.match(registration, /country:\s*z\.string/);
-  assert.match(indexSource, /device,\s*query_contains,\s*country,\s*countries,\s*devices,\s*page_url,\s*\);\s*return toolResponse/);
+  assert.match(indexSource, /const markdown = await generateWeeklyDigest\([\s\S]*?device,\s*query_contains,\s*country,\s*countries,\s*devices,\s*page_url,\s*query,\s*\);/);
   assert.match(registration, /countries:\s*z\.array/);
   assert.match(registration, /devices:\s*z\.array/);
   assert.match(readmeSource, /weekly reports, `reports\.weekly_digest` also accepts `countries`/);
@@ -1192,9 +1203,20 @@ test('exact page/query drilldowns offer opt-in preliminary data without changing
 });
 
 test('direct page and query drilldowns advertise optional device scope', () => {
-  assert.equal((indexSource.match(/device:\s*DIRECT_INSIGHT_DEVICE_SCHEMA/g) ?? []).length, 2);
+  const registrations = [...indexSource.matchAll(/this\.server\.registerTool\(\s*'insights\.(?:page_queries|query_pages)'([\s\S]*?)outputSchema:/g)];
+  assert.equal(registrations.length, 2);
+  for (const [, registration] of registrations) {
+    assert.match(registration, /device:\s*DIRECT_INSIGHT_DEVICE_SCHEMA/);
+  }
   assert.match(indexSource, /const DIRECT_INSIGHT_DEVICE_SCHEMA[\s\S]*?desktop[\s\S]*?mobile[\s\S]*?tablet/);
   assert.match(readmeSource, /Both accept optional .*device/);
+});
+
+test('search-visible page discovery advertises optional market and device scopes', () => {
+  const registration = indexSource.match(/this\.server\.registerTool\(\s*'indexing\.list_pages'([\s\S]*?)outputSchema:/)?.[1] ?? '';
+  assert.match(registration, /country:\s*DIRECT_INSIGHT_COUNTRY_SCHEMA/);
+  assert.match(registration, /device:\s*DIRECT_INSIGHT_DEVICE_SCHEMA/);
+  assert.match(readmeSource, /To distinguish visitors in Germany on mobile/);
 });
 
 test('content decay country scope is discoverable, validated and not confused with page language', () => {

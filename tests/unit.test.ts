@@ -10,6 +10,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { z } from 'zod';
 import { encryptToken, decryptToken } from '../src/crypto';
 import {
   assertDateNotInFuture,
@@ -22,12 +23,14 @@ import {
 import {
   CONTENT_DECAY_COMPARE_DAYS_SCHEMA,
   CONTENT_DECAY_PAGE_CONTAINS_SCHEMA,
+  CONTENT_DECAY_PAGE_URL_SCHEMA,
   CONTENT_DECAY_QUERY_CONTAINS_SCHEMA,
 } from '../src/content-decay-schema';
 import { resolveWeeklyDigestEndDate, weeklyDigestAnalyticsRequestCount } from '../src/digest';
 import { INDEXED_PAGES_START_ROW_SCHEMA, resolveIndexedPagesDateRange } from '../src/indexed-pages-range';
 import { SEARCH_ANALYTICS_START_ROW_SCHEMA } from '../src/result-bounds';
 import { createQuickWinsInputSchema } from '../src/quick-wins-schema';
+import { EXACT_PAGE_URL_SCHEMA, PRESERVED_URL_SCHEMA } from '../src/exact-page-url-schema';
 import { SITEMAP_URL_SCHEMA } from '../src/sitemap-url-schema';
 import { URL_INSPECTION_LANGUAGE_CODE_SCHEMA } from '../src/url-inspection-language-schema';
 import {
@@ -189,6 +192,23 @@ test('Search Console property schema rejects malformed and unsupported identifie
     'https://example.com\\@other.test/',
   ]) {
     assert.equal(SEARCH_CONSOLE_PROPERTY_SCHEMA.safeParse(property).success, false, property);
+  }
+});
+
+test('Search Console property identifiers reject raw control characters without normalizing them', () => {
+  for (const codepoint of [0x00, 0x01, 0x0e, 0x1f, 0x7f, 0x80, 0x85, 0x9f]) {
+    const character = String.fromCodePoint(codepoint);
+    for (const property of [
+      `https://example.com/path${character}/`,
+      `sc-domain:exa${character}mple.com`,
+    ]) {
+      assert.equal(SEARCH_CONSOLE_PROPERTY_SCHEMA.safeParse(property).success, false, `U+${codepoint.toString(16)}`);
+      assert.equal(classifySearchConsolePropertyIdentifier(property), 'undocumented');
+    }
+  }
+
+  for (const valid of ['https://example.com/path%00/', 'https://example.com/path%C2%85/', 'sc-domain:bücher.example']) {
+    assert.equal(SEARCH_CONSOLE_PROPERTY_SCHEMA.safeParse(valid).success, true, valid);
   }
 });
 
@@ -483,6 +503,56 @@ test('quick wins accepts bounded distinct multi-market selectors without mixing 
   assert.equal(schema.safeParse({ ...base, page_url: 'https://example.com/de/guide' }).success, true);
   assert.equal(schema.safeParse({ ...base, page_url: 'not-a-url' }).success, false);
   assert.equal(schema.safeParse({ ...base, page_url: 'https://example.com/de/guide', page_contains: '/de/' }).success, false);
+});
+
+test('quick wins rejects raw exact-page URL whitespace instead of trimming the caller input', () => {
+  const schema = createQuickWinsInputSchema();
+  const base = { site_url: 'sc-domain:example.com', start_date: '2026-01-01', end_date: '2026-01-31' };
+  assert.equal(schema.safeParse({ ...base, page_url: 'https://example.com/de/guide' }).success, true);
+  assert.equal(schema.safeParse({ ...base, page_url: 'https://example.com/de/my%20guide' }).success, true);
+  for (const page_url of [
+    ' https://example.com/de/guide',
+    'https://example.com/de/guide ',
+    '\thttps://example.com/de/guide',
+    'https://example.com/de/guide\n',
+    'https://example.com/de\\guide',
+  ]) {
+    assert.equal(schema.safeParse({ ...base, page_url }).success, false, JSON.stringify(page_url));
+  }
+});
+
+test('shared exact-page filters reject normalization-prone raw inputs across reporting schemas', () => {
+  for (const pageUrl of [
+    ' https://example.com/de/guide',
+    'https://example.com/de/guide ',
+    'https://example.com/de/guide\t',
+    'https://example.com/de\\guide',
+  ]) {
+    assert.equal(EXACT_PAGE_URL_SCHEMA.safeParse(pageUrl).success, false, JSON.stringify(pageUrl));
+    assert.equal(CONTENT_DECAY_PAGE_URL_SCHEMA.safeParse(pageUrl).success, false, JSON.stringify(pageUrl));
+  }
+  const exact = 'https://example.com/de/my%20guide';
+  assert.equal(EXACT_PAGE_URL_SCHEMA.parse(exact), exact);
+  assert.equal(CONTENT_DECAY_PAGE_URL_SCHEMA.parse(exact), exact);
+});
+
+test('exact-page JSON Schema remains usable by clients compiling patterns without Unicode flags', () => {
+  const descriptor = z.toJSONSchema(PRESERVED_URL_SCHEMA);
+  const validPages = ['https://example.com/de/guide', 'https://example.com/de/my%20guide'];
+  for (const url of validPages) {
+    assert.equal(PRESERVED_URL_SCHEMA.safeParse(url).success, true);
+    if (typeof descriptor.pattern === 'string') {
+      assert.equal(new RegExp(descriptor.pattern).test(url), true, 'MCP clients must not reject valid URL inputs');
+    }
+  }
+  for (const url of [
+    'https://example.com/de\\guide',
+    'https://example.com/de/my guide',
+    'https://example.com/de/\u0085',
+    'https://example.com/de/\u00a0',
+  ]) {
+    assert.equal(PRESERVED_URL_SCHEMA.safeParse(url).success, false, JSON.stringify(url));
+  }
 });
 
 function makeKey(byteLength = 32): string {
