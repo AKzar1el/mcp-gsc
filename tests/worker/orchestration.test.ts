@@ -1306,6 +1306,43 @@ describe('Worker orchestration', () => {
     }
   }, 20_000);
 
+  it('preserves exact query in finalized device movement and compatible follow-ups', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-device-movement-review'];
+    const input = { site_url: 'sc-domain:example.com', end_date: '2026-06-20', query: 'Technical SEO', countries: 'deu,aut', page_contains: '/de/' };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const parsed = await prompt.argsSchema.safeParseAsync(input);
+      expect(parsed.success).toBe(true);
+      expect(parsed.data?.query).toBe(input.query);
+      const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"query":"Technical SEO"');
+      expect(guidance).toContain('query equals the exact query (case-sensitive)');
+      expect(guidance).toContain('dimension=device');
+      expect(guidance).toContain('"start_date_b":"2026-06-07"');
+      expect(guidance).toContain('"countries":["DEU","AUT"]');
+      const followUp = guidance.split('\n6. ')[1].split('\nNever call')[0];
+      expect(followUp).toContain('grouped by page');
+      expect(followUp).toContain('query equals the exact query (case-sensitive)');
+      expect(followUp).toContain('same country list');
+      const both = (await prompt.handler({ ...parsed.data, page_contains: undefined, page_url: 'https://example.com/de/tool' })).messages[0].content.text;
+      expect(both).toContain('stop after the device comparison');
+      expect(both.split('\n6. ')[1].split('\nNever call')[0]).not.toContain('call analytics.query');
+      for (const search_type of ['discover', 'googleNews', 'webMultimodal']) {
+        await expect(prompt.handler({ ...parsed.data, search_type })).rejects.toThrow('Query filtering');
+      }
+      expect((await prompt.argsSchema.safeParseAsync({ ...input, query: '   ' })).success).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a property-scoped index-status triage prompt without Google requests', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
