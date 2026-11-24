@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Let `gsc-traffic-drop-triage` isolate one exact case-sensitive `query` across two finalized date reads and an optional same-scope page comparison, without widening to substring-only follow-ups or changing read quotas.
 - Let `gsc-device-movement-review` isolate a property-validated exact landing page across both finalized device comparison weeks with case-sensitive page equality and an optional same-scope query drilldown (except webMultimodal), preserving normal read quotas.
 - Let `gsc-visual-search-review` compare finalized Google Lens/Circle to Search traffic for a property-validated exact `page_url`, excluding sibling pages and avoiding redundant page-grouped reads without increasing quota.
 - Allow `insights.content_decay` to assess one property-validated exact landing page across both finalized comparison periods with Google's case-sensitive page equality, excluding sibling URLs while retaining all existing searcher/query scopes and read quotas.

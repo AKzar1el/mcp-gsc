@@ -744,6 +744,58 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves an exact query throughout finalized traffic-drop triage without provider calls', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (input: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-traffic-drop-triage'];
+    const input = { site_url: 'sc-domain:example.com', query: 'Technical SEO', end_date: '2026-06-20', search_type: 'image' };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected network request'));
+    try {
+      for (const segment of [{}, { page_url: 'https://example.com/tools/', countries: 'deu,svn', devices: 'mobile,desktop' }, { page_contains: '/de/', country: 'deu', device: 'mobile' }]) {
+        const parsed = await prompt.argsSchema.safeParseAsync({ ...input, ...segment });
+        expect(parsed.success).toBe(true);
+        expect(parsed.data?.query).toBe(input.query);
+        const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+        expect(guidance).toContain('"query":"Technical SEO"');
+        expect(guidance).toContain('query equals the exact query (case-sensitive)');
+        expect(guidance).toContain('call analytics.query exactly twice');
+        expect(guidance).toContain('"start_date_a":"2026-06-14"');
+        expect(guidance).toContain('"start_date_b":"2026-06-07"');
+        expect(guidance).toContain('analytics.compare');
+        expect(guidance).toContain('missing days are unknown');
+        expect(guidance).toContain('"search_type":"image"');
+        if ('page_url' in segment) {
+          expect(guidance).toContain('page equals the exact page_url (case-sensitive)');
+          expect(guidance).toContain('"countries":["DEU","SVN"]');
+          expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
+          expect(guidance).toContain('country filterLists');
+          expect(guidance).toContain('device filterLists');
+        } else if ('page_contains' in segment) {
+          expect(guidance).toContain('page contains the supplied page_contains');
+          expect(guidance).toContain('country equals its uppercase ISO alpha-3 code');
+          expect(guidance).toContain('device equals its uppercase type');
+        }
+        expect(guidance).not.toContain('insights.content_decay');
+        expect(guidance).not.toContain('insights.page_queries');
+        expect(guidance).not.toContain('gsc-page-cohort-review');
+        expect(guidance).not.toContain('gsc-daily-onset-review');
+      }
+      await expect(prompt.handler({ ...input, query_contains: 'SEO' })).rejects.toThrow('query or query_contains');
+      await expect(prompt.handler({ ...input, page_url: 'https://other.test/' })).rejects.toThrow('must belong to the site_url');
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+      await expect(prompt.handler({ ...input, end_date: today })).rejects.toThrow('require finalized Search Console dates');
+      expect((await prompt.argsSchema.safeParseAsync({ ...input, query: '   ' })).success).toBe(false);
+      expect((await prompt.argsSchema.safeParseAsync({ ...input, query: 'x'.repeat(241) })).success).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('keeps multi-region/device traffic-drop triage within matching finalized Google scopes', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
