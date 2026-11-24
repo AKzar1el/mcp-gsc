@@ -285,6 +285,34 @@ test('sitemaps.get rejects malformed successful entries', async () => {
   }
 });
 
+test('sitemaps.get rejects metadata for a different requested sitemap', async () => {
+  const path = 'https://feeds.example.net/Sitemap.xml?lang=en';
+  for (const returnedPath of [
+    'https://feeds.example.net/other.xml?lang=en',
+    'https://feeds.example.net/sitemap.xml?lang=en',
+    'https://feeds.example.net/Sitemap.xml?lang=de',
+    'https://example.org/Sitemap.xml?lang=en',
+  ]) {
+    let calls = 0;
+    await assert.rejects(
+      withMockFetch((input) => {
+        calls++;
+        assert.equal(String(input), `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(SITE)}/sitemaps/${encodeURIComponent(path)}`);
+        return jsonResponse({ path: returnedPath, errors: '0' });
+      }, () => getSitemap('offline-token', SITE, path)),
+      /sitemaps\.get response does not match the requested sitemap/,
+    );
+    assert.equal(calls, 1);
+  }
+});
+
+test('sitemaps.get accepts an exact authorized cross-site sitemap URL', async () => {
+  const path = 'https://feeds.example.net/Sitemap.xml?lang=en';
+  const expected = { path, errors: '0' };
+  const actual = await withMockFetch(() => jsonResponse(expected), () => getSitemap('offline-token', SITE, path));
+  assert.deepEqual(actual, expected);
+});
+
 test('sitemaps.get rejects malformed sitemap counts', async () => {
   const path = 'https://example.org/sitemap.xml';
   await assert.rejects(
