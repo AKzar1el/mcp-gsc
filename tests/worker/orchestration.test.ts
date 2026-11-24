@@ -8911,6 +8911,46 @@ describe('Worker orchestration', () => {
       globalThis.fetch = originalFetch;
     }
   });
+  it('rejects an oversized weekly digest without returning partial Markdown', async () => {
+    const take = vi.fn(async () => ({ allowed: true }));
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly', TOOL_RATE_LIMITER: { idFromName: (name: string) => name, get: () => ({ take }) } } as unknown as Env,
+      { google_id: 'digest-output-bound-user', email: 'digest-output-bound@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, string>) => Promise<{ isError?: boolean; content: Array<{ text: string }>; structuredContent?: { markdown: string } }>;
+      }>;
+    })._registeredTools['reports.weekly_digest'].handler;
+    const originalFetch = globalThis.fetch;
+    let oversized = false;
+    let requests = 0;
+    try {
+      globalThis.fetch = async (_input, init) => {
+        requests += 1;
+        const body = JSON.parse(String(init?.body)) as { dimensions: string[] };
+        const metric = { clicks: 1, impressions: 100, ctr: 0.01, position: 8 };
+        if (body.dimensions.length === 0) return response({ rows: [{ keys: [], ...metric }] });
+        if (body.dimensions[0] === 'query') return response({ rows: [{ keys: ['normal query'], ...metric }] });
+        const suffix = oversized ? '\u4e2d'.repeat(1800) : 'short';
+        return response({ rows: Array.from({ length: 5 }, (_, i) => ({ keys: [`https://example.com/${i}/${suffix}`], ...metric })) });
+      };
+      const args = { site_url: 'sc-domain:example.com', end_date: '2026-09-17' };
+      const normal = await handler(args);
+      expect(normal.isError).not.toBe(true);
+      expect(normal.structuredContent?.markdown).toContain('https://example.com/0/short');
+      oversized = true;
+      const large = await handler(args);
+      expect(large.isError).toBe(true);
+      expect(large.content[0]?.text).toContain('response byte limit');
+      expect(large.structuredContent).toBeUndefined();
+      expect(requests).toBe(10);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('reserves five shared Search Analytics units before running a weekly digest', async () => {
     const take = vi.fn(async (_bucket: string, policy: { category: string }, _units: number) => ({
       allowed: policy.category !== 'search-analytics',
