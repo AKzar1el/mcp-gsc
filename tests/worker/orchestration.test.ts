@@ -354,6 +354,60 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves an exact case-sensitive query in every daily-onset read and follow-up', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompts = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts;
+    const prompt = prompts['gsc-daily-onset-review'];
+    const args = {
+      site_url: 'sc-domain:example.com',
+      end_date: '2026-11-10',
+      search_type: 'image',
+      page_url: 'https://blog.example.com/posts/launch',
+      query: 'Technical SEO',
+      countries: 'deu,aut',
+      devices: 'mobile,desktop',
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected provider call'));
+    try {
+      const parsed = await prompt.argsSchema.safeParseAsync(args);
+      expect(parsed.success).toBe(true);
+      expect(parsed.data?.query).toBe('Technical SEO');
+      for (const [lookback_days, start] of [['14', '2026-10-28'], ['21', '2026-10-21'], ['35', '2026-10-07']]) {
+        const guidance = (await prompt.handler({ ...parsed.data, lookback_days })).messages[0].content.text;
+        expect(guidance).toContain('"query":"Technical SEO"');
+        expect(guidance).toContain('query equals the exact query (case-sensitive)');
+        expect(guidance).toContain('page equals the exact page_url');
+        expect(guidance).toContain('"countries":["DEU","AUT"]');
+        expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
+        expect(guidance).toContain('"search_type":"image"');
+        expect(guidance).toContain(start);
+        expect(guidance).toContain(`row_limit=${lookback_days}`);
+        expect(guidance).toContain('gsc-traffic-drop-triage');
+        expect(guidance).not.toContain('insights.page_queries');
+        expect(guidance).not.toContain('insights.content_decay');
+        expect(guidance).toContain('not measured zero');
+      }
+      const section = (await prompt.handler({ ...parsed.data, page_url: undefined, page_contains: '/tools/' })).messages[0].content.text;
+      expect(section).toContain('page contains the exact page_contains');
+      expect(section).toContain('query equals the exact query (case-sensitive)');
+      expect((await prompt.argsSchema.safeParseAsync({ ...args, query: '   ' })).success).toBe(false);
+      expect((await prompt.argsSchema.safeParseAsync({ ...args, query: 'x'.repeat(241) })).success).toBe(false);
+      await expect(prompt.handler({ ...parsed.data, query_contains: 'seo' })).rejects.toThrow(/query_contains/);
+      await expect(prompt.handler({ ...parsed.data, search_type: 'webMultimodal' })).rejects.toThrow(/webMultimodal/);
+      await expect(prompt.handler({ ...parsed.data, page_url: 'https://elsewhere.example/launch' })).rejects.toThrow();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides bounded top-query cohort movement without Google calls on prompt retrieval', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
