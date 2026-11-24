@@ -147,6 +147,22 @@ test('sites.get preserves all four documented permission levels', async () => {
   }
 });
 
+test('sites.get rejects permission metadata for a different exact property', async () => {
+  for (const [requested, returned] of [
+    [SITE, 'sc-domain:other.example.org'],
+    ['https://example.org/Docs/', 'https://example.org/docs/'],
+    ['https://example.org/', 'sc-domain:example.org'],
+  ]) {
+    await assert.rejects(
+      withMockFetch(
+        () => jsonResponse({ siteUrl: returned, permissionLevel: 'siteOwner' }),
+        () => getSite('offline-token', requested),
+      ),
+      /does not match the requested property identifier/,
+    );
+  }
+});
+
 test('sites.list and sites.get reject whitespace-padded or case-changed permission levels', async () => {
   for (const permissionLevel of ['siteOwner ', ' siteFullUser', 'SiteOwner']) {
     await assert.rejects(
