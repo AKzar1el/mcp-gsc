@@ -867,7 +867,14 @@ describe('Worker orchestration', () => {
           expect(guidance).toContain('country equals its uppercase ISO alpha-3 code');
           expect(guidance).toContain('device equals its uppercase type');
         }
-        expect(guidance).not.toContain('insights.content_decay');
+        expect(guidance).toContain('insights.content_decay with compare_days=28');
+        expect(guidance).toContain('instead of the optional analytics.compare');
+        expect(guidance).toContain('end_date=end_date_a');
+        expect(guidance).toContain('rolling 16-month');
+        expect(guidance).toContain('same case-sensitive query');
+        expect(guidance).toContain('lowercase device values');
+        expect(guidance).toContain('not the seven-day windows');
+        expect(guidance).toContain('not an automatic call');
         expect(guidance).not.toContain('insights.page_queries');
         expect(guidance).not.toContain('gsc-page-cohort-review');
         expect(guidance).not.toContain('gsc-daily-onset-review');
