@@ -5132,6 +5132,89 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('bounds acknowledged indexing publish RPC receipts without retrying the write', async () => {
+    const targetUrl = 'https://example.com/careers/engineer';
+    const originalFetch = globalThis.fetch;
+    let type = 'URL_UPDATED';
+    let extra = 'normal';
+    let siteListCalls = 0;
+    let eligibilityCalls = 0;
+    let posts = 0;
+    try {
+      globalThis.fetch = async (input, init) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'fixture-access-token', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites') {
+          siteListCalls++;
+          return response({ siteEntry: [{ siteUrl: 'sc-domain:example.com', permissionLevel: 'siteOwner' }] });
+        }
+        if (url === targetUrl) {
+          eligibilityCalls++;
+          return type === 'URL_DELETED'
+            ? new Response(null, { status: 404 })
+            : new Response('<script type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting"}</script>', {
+                status: 200, headers: { 'content-type': 'text/html' },
+              });
+        }
+        if (url === 'https://indexing.googleapis.com/v3/urlNotifications:publish') {
+          expect(init?.method).toBe('POST');
+          expect(JSON.parse(String(init?.body))).toEqual({ url: targetUrl, type });
+          posts++;
+          return response({ urlNotificationMetadata: { url: targetUrl, futureField: extra } });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      let id = 0;
+      const call = async (name: string, googleId: string) => {
+        const rpc = await mcpApiHandler.fetch(new Request('https://worker.example/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'MCP-Protocol-Version': '2025-06-18',
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method: 'tools/call',
+            params: { name, arguments: { site_url: 'sc-domain:example.com', url: targetUrl } } }),
+        }), workerEnv, { props: { google_id: googleId, email: 'publish-budget@example.test' } } as unknown as ExecutionContext);
+        expect(rpc.status).toBe(200);
+        return (await readMcpJsonRpc(rpc)).result as {
+          isError?: boolean;
+          content: Array<{ text: string }>;
+          structuredContent?: Record<string, unknown>;
+        };
+      };
+      for (const [name, notificationType] of [['indexing.request', 'URL_UPDATED'], ['indexing.remove', 'URL_DELETED']]) {
+        // Each fixture user has the real two-notifications-per-day limit.
+        const googleId = `indexing-publish-budget-${notificationType}`;
+        await saveUser(workerEnv, googleId, 'publish-budget@example.test', 'fixture-refresh-token');
+        type = notificationType;
+        extra = 'normal';
+        const normal = await call(name, googleId);
+        expect(normal.isError, normal.isError ? normal.content[0].text : undefined).not.toBe(true);
+        expect(normal.structuredContent?.result).toEqual({ urlNotificationMetadata: { url: targetUrl, futureField: 'normal' } });
+        extra = '\u00e9'.repeat(23_000);
+        const oversized = await call(name, googleId);
+        expect(oversized.isError).not.toBe(true);
+        expect(oversized.structuredContent?.result).toMatchObject({
+          receipt_status: 'unverified',
+          receipt_details_omitted: true,
+          note: expect.stringContaining('Google returned HTTP success'),
+        });
+        expect(oversized.content[0].text).toContain('before considering a new submission');
+        expect(JSON.parse(oversized.content[0].text)).toEqual(oversized.structuredContent);
+        expect(new TextEncoder().encode(oversized.content[0].text).byteLength).toBeLessThan(2_000);
+        if (name === 'indexing.remove') expect(oversized.structuredContent?.removal_completion_proven).toBe(false);
+      }
+      expect(posts).toBe(4);
+      expect(siteListCalls).toBe(4);
+      expect(eligibilityCalls).toBe(4);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('accepts a true site-total Search Analytics row when Google omits keys', async () => {
     await saveUser(
       workerEnv,
