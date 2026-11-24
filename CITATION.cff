@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+title: "DigestSEO MCP GSC"
+type: software
+authors:
+  - given-names: Tomi
+    family-names: "Šeregi"
+    orcid: "https://orcid.org/0009-0005-0189-4426"
+abstract: "MCP server for Google Search Console analytics, URL inspection, sitemaps and SEO reporting."
+license: MIT
+repository-code: "https://github.com/AKzar1el/mcp-gsc"
+url: "https://digestseo.com/gsc-mcp/"
