@@ -1118,7 +1118,7 @@ const TOOL_CATALOG = [
   {
     name: 'sitemaps.get',
     description:
-      'Get status and details of a single sitemap submitted to Google Search Console.',
+      'Get status and details of one submitted sitemap. An oversized provider entry returns an explicit bounded error rather than silently truncated MCP data.',
   },
   {
     name: 'insights.quick_wins',
@@ -3401,7 +3401,7 @@ class GscMcpRuntime {
       'sitemaps.get',
       {
         title: 'Get sitemap details',
-        description: 'Get status and details of a single sitemap submitted to Google Search Console. lastSubmitted is when the sitemap was submitted to Search Console; lastDownloaded is when Google last downloaded the sitemap. Neither timestamp is a sitemap-file modification time or a page crawl/indexing time.',
+        description: 'Get status and details of a single sitemap submitted to Google Search Console. Oversized details return an explicit response-byte-limit error rather than partial data. lastSubmitted is when the sitemap was submitted to Search Console; lastDownloaded is when Google last downloaded the sitemap. Neither timestamp is a sitemap-file modification time or a page crawl/indexing time.',
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
           feedpath: SITEMAP_URL_SCHEMA.describe('The full HTTP/HTTPS URL of the sitemap file, e.g. https://example.com/sitemap.xml'),
@@ -3421,7 +3421,11 @@ class GscMcpRuntime {
           () => this.reserveMetadataReadRetry(googleId),
         );
         const payload = { sitemap: details, provider_note: SITEMAP_PROVIDER_NOTE };
-        return toolResponse(JSON.stringify(payload, null, 2), payload);
+        const text = JSON.stringify(payload, null, 2);
+        if (new TextEncoder().encode(text).byteLength > COLLECTION_LIST_BYTE_BUDGET) {
+          return toolError('A single sitemap entry exceeds the response byte limit. Review the sitemap in Search Console; no fields have been silently truncated.');
+        }
+        return toolResponse(text, payload);
       },
     );
 

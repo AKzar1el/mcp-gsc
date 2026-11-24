@@ -2783,6 +2783,54 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('rejects oversized single-sitemap MCP payloads without losing normal sitemap details', async () => {
+    const server = await createGscMcpServer(
+      {
+        GSC_ACCESS_MODE: 'readonly',
+        TOOL_RATE_LIMITER: {
+          idFromName: (name: string) => name,
+          get: () => ({ take: async () => ({ allowed: true }) }),
+        },
+      } as unknown as Env,
+      { google_id: 'sitemap-detail-user', email: 'sitemap-detail@example.test' },
+      { getAccessToken: async () => 'access-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const handler = (server as unknown as {
+      _registeredTools: Record<string, {
+        handler: (args: Record<string, unknown>) => Promise<{
+          isError?: boolean;
+          content: Array<{ text: string }>;
+          structuredContent?: { sitemap: { path: string; errors?: string } };
+        }>;
+      }>;
+    })._registeredTools['sitemaps.get'].handler;
+    const originalFetch = globalThis.fetch;
+    const input = {
+      site_url: 'sc-domain:example.com',
+      feedpath: 'https://example.com/sitemap.xml',
+    };
+    try {
+      globalThis.fetch = async () => response({ path: input.feedpath, errors: '3' });
+      const normal = await handler(input);
+      expect(normal.isError).not.toBe(true);
+      expect(normal.structuredContent?.sitemap).toMatchObject({ path: input.feedpath, errors: '3' });
+
+      globalThis.fetch = async () => response({
+        path: input.feedpath,
+        contents: Array.from({ length: 1200 }, (_, i) => ({
+          type: `web-${i}-${'x'.repeat(50)}`,
+          submitted: '1',
+        })),
+      });
+      const oversized = await handler(input);
+      expect(oversized.isError).toBe(true);
+      expect(oversized.content[0].text).toContain('exceeds the response byte limit');
+      expect(new TextEncoder().encode(oversized.content[0].text).byteLength).toBeLessThan(1_000);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('does not send a Search Analytics retry when the additional unit is denied', async () => {
     const take = vi.fn(async () => (
       take.mock.calls.length === 1
