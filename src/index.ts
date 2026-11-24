@@ -2567,7 +2567,7 @@ class GscMcpRuntime {
       {
         title: 'Get Search Console property',
         description:
-          "Retrieve one exact Google Search Console property and its connected-account access state. The response preserves Google's permissionLevel and derives verification_state plus owner so callers can distinguish an unverified property and recognize owner-only Indexing API prerequisites without listing every property first.",
+          "Retrieve one exact Google Search Console property and its connected-account access state. The response preserves Google's permissionLevel and derives verification_state plus owner so callers can distinguish an unverified property and recognize owner-only Indexing API prerequisites without listing every property first. Oversized details return an explicit response-byte-limit error rather than partial data.",
         inputSchema: {
           site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA,
         },
@@ -2588,7 +2588,11 @@ class GscMcpRuntime {
           ...site,
           ...sitePermissionState(site.permissionLevel),
         };
-        return toolResponse(JSON.stringify(siteWithPermissionState, null, 2), {
+        const text = JSON.stringify(siteWithPermissionState, null, 2);
+        if (new TextEncoder().encode(text).byteLength > COLLECTION_LIST_BYTE_BUDGET) {
+          return toolError('A single Search Console property entry exceeds the response byte limit. Review the property in Search Console; no fields have been silently truncated.');
+        }
+        return toolResponse(text, {
           site: siteWithPermissionState,
         });
       },

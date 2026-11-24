@@ -4864,6 +4864,62 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('bounds single-property MCP RPC details without truncating normal results', async () => {
+    const googleId = 'site-detail-budget-user';
+    await saveUser(workerEnv, googleId, 'site-detail@example.test', 'fixture-refresh-token');
+    const siteUrl = 'sc-domain:example.com';
+    let detailCalls = 0;
+    let extra = 'normal';
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async (input, init) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'fixture-access-token', expires_in: 3600 });
+        }
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com') {
+          expect(init?.method ?? 'GET').toBe('GET');
+          detailCalls++;
+          return response({ siteUrl, permissionLevel: 'siteOwner', futureField: extra });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const call = async (id: number) => {
+        const result = await mcpApiHandler.fetch(new Request('https://worker.example/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'MCP-Protocol-Version': '2025-06-18',
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call',
+            params: { name: 'sites.get', arguments: { site_url: siteUrl } } }),
+        }), workerEnv, { props: { google_id: googleId, email: 'site-detail@example.test' } } as unknown as ExecutionContext);
+        expect(result.status).toBe(200);
+        return (await readMcpJsonRpc(result)).result as {
+          isError?: boolean;
+          content: Array<{ text: string }>;
+          structuredContent?: { site: Record<string, unknown> };
+        };
+      };
+      const normal = await call(1);
+      expect(normal.isError).not.toBe(true);
+      expect(normal.structuredContent?.site).toMatchObject({ siteUrl, permissionLevel: 'siteOwner', verification_state: 'verified', owner: true });
+      expect(JSON.parse(normal.content[0].text).futureField).toBe('normal');
+
+      // Multibyte content fits a character-count limit but exceeds the UTF-8 budget.
+      extra = '\u00e9'.repeat(23_000);
+      const oversized = await call(2);
+      expect(oversized.isError).toBe(true);
+      expect(oversized.content[0].text).toContain('exceeds the response byte limit');
+      expect(oversized.structuredContent).toBeUndefined();
+      expect(new TextEncoder().encode(JSON.stringify(oversized)).byteLength).toBeLessThan(1_000);
+      expect(detailCalls).toBe(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('accepts a true site-total Search Analytics row when Google omits keys', async () => {
     await saveUser(
       workerEnv,
