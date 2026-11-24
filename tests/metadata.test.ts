@@ -1114,6 +1114,20 @@ test('agency reporting exposes exact-page digest and scope-preserving comparison
   assert.match(guide, /Never replace the exact page filter with `page_contains`/);
 });
 
+test('agency reporting keeps exact-query scope in follow-ups and client review', () => {
+  const guide = readFileSync(resolve(projectRoot, 'docs/agency-weekly-reporting.md'), 'utf8');
+  const example = guide.match(/For the exact-query example[^\r\n]*\r?\n\r?\n```json\r?\n([^\r\n]+)\r?\n```/)?.[1];
+  assert.ok(example, 'guide must include a copyable exact-query filter group');
+  assert.deepEqual(JSON.parse(example), [{
+    groupType: 'and',
+    filters: [{ dimension: 'query', operator: 'equals', expression: 'Technical SEO' }],
+  }]);
+  assert.match(guide, /\| Report scope \|[^\n]*exact query/);
+  const checklist = guide.split('## Acceptance checklist')[1] ?? '';
+  assert.match(checklist, /`query`[^\n]*case-sensitive/);
+  assert.match(checklist, /exact-query[^\n]*`analytics\.query`/);
+});
+
 test('weekly digest country scope is discoverable and documented as ISO alpha-3', () => {
   const catalog = indexSource.split("name: 'reports.weekly_digest'")[1]?.split('\n  },')[0] ?? '';
   const registration = indexSource.match(/this\.server\.registerTool\(\s*'reports\.weekly_digest'([\s\S]*?)outputSchema:/)?.[1] ?? '';
