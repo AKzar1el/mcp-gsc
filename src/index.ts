@@ -931,6 +931,24 @@ function toolResponse<T extends Record<string, unknown>>(
   };
 }
 
+function indexingPublishResponse<T extends Record<string, unknown> & { result: unknown }>(payload: T) {
+  const text = JSON.stringify(payload, null, 2);
+  if (new TextEncoder().encode(text).byteLength <= COLLECTION_LIST_BYTE_BUDGET) {
+    return toolResponse(text, payload);
+  }
+  // The provider has already acknowledged the POST; omitting oversized details
+  // must not turn a successful submission into a retryable error.
+  const bounded = {
+    ...payload,
+    result: {
+      receipt_status: 'unverified',
+      receipt_details_omitted: true,
+      note: 'Google returned HTTP success but the Indexing notification receipt exceeds the response byte limit. Verify notification metadata with indexing.status before considering a new submission.',
+    },
+  };
+  return toolResponse(JSON.stringify(bounded, null, 2), bounded);
+}
+
 type InspectionBatchEntry = {
   inspection_url: string;
   inspection_result?: unknown;
@@ -3970,7 +3988,7 @@ class GscMcpRuntime {
           provider_spam_detection_applies: true as const,
           provider_usage_note: INDEXING_PROVIDER_USAGE_NOTE,
         };
-        return toolResponse(JSON.stringify(payload, null, 2), payload);
+        return indexingPublishResponse(payload);
       },
       );
 
@@ -4019,7 +4037,7 @@ class GscMcpRuntime {
           provider_usage_note: INDEXING_PROVIDER_USAGE_NOTE,
           removal_completion_proven: false as const,
         };
-        return toolResponse(JSON.stringify(payload, null, 2), payload);
+        return indexingPublishResponse(payload);
       },
       );
     }
