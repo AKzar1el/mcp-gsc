@@ -7139,6 +7139,68 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves one case-sensitive exact query in both content-decay periods', async () => {
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'decay-exact-query-user', email: 'decay-exact-query@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+    );
+    const tool = (server as unknown as {
+      _registeredTools: Record<string, {
+        inputSchema: { safeParseAsync: (input: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{
+          isError?: boolean;
+          structuredContent: { query: string | null; query_contains: string | null; scope_note: string; comparison_scope: string };
+        }>;
+      }>;
+    })._registeredTools['insights.content_decay'];
+    const args = {
+      site_url: 'sc-domain:example.com', compare_days: 14,
+      page_contains: '/de/', query: 'Technical SEO',
+      countries: ['deu', 'aut'], devices: ['desktop', 'mobile'],
+    };
+    const parsed = await tool.inputSchema.safeParseAsync(args);
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.query).toBe(args.query);
+    expect((await tool.inputSchema.safeParseAsync({ ...args, query: '  ' })).success).toBe(false);
+    const originalFetch = globalThis.fetch;
+    const requests: Array<{ dimensions: string[]; dimensionFilterGroups?: unknown[] }> = [];
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        expect(requestUrl(input)).toContain('/searchAnalytics/query');
+        requests.push(JSON.parse(String(init?.body)));
+        return response({ rows: [{ keys: ['https://example.com/de/guide'],
+          clicks: requests.length === 1 ? 8 : 35,
+          impressions: requests.length === 1 ? 200 : 500, ctr: 0.04, position: 9,
+        }] });
+      };
+      const result = await tool.handler(parsed.data!);
+      expect(result.isError).not.toBe(true);
+      expect(result.structuredContent.query).toBe(args.query);
+      expect(result.structuredContent.query_contains).toBeNull();
+      expect(result.structuredContent.scope_note).toContain('case-sensitive');
+      expect(result.structuredContent.comparison_scope).toBe('common_returned_rows_only');
+      expect(requests).toHaveLength(2);
+      for (const body of requests) {
+        expect(body.dimensions).toEqual(['page']);
+        expect(body.dimensionFilterGroups).toEqual([{
+          groupType: 'and', filters: [
+            { dimension: 'page', operator: 'contains', expression: '/de/' },
+            { dimension: 'query', operator: 'equals', expression: args.query },
+          ], filterLists: [
+            { dimension: 'country', expressions: ['DEU', 'AUT'] },
+            { dimension: 'device', expressions: ['DESKTOP', 'MOBILE'] },
+          ],
+        }]);
+      }
+      expect((await tool.handler({ ...args, query_contains: 'SEO' })).isError).toBe(true);
+      expect((await tool.handler({ ...args, search_type: 'webMultimodal' })).isError).toBe(true);
+      expect(requests).toHaveLength(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('compares webMultimodal page declines without inventing missing average positions', async () => {
     const server = await createGscMcpServer(
       workerEnv,
