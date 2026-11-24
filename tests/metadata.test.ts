@@ -1121,7 +1121,7 @@ test('weekly digest country scope is discoverable and documented as ISO alpha-3'
   const digestReadmeRow = readmeSource.split('**`reports.weekly_digest`**')[1]?.split('\n')[0] ?? '';
   assert.match(catalog, /country/);
   assert.match(registration, /country:\s*z\.string/);
-  assert.match(indexSource, /device,\s*query_contains,\s*country,\s*countries,\s*devices,\s*page_url,\s*\);\s*return toolResponse/);
+  assert.match(indexSource, /const markdown = await generateWeeklyDigest\([\s\S]*?device,\s*query_contains,\s*country,\s*countries,\s*devices,\s*page_url,\s*\);/);
   assert.match(registration, /countries:\s*z\.array/);
   assert.match(registration, /devices:\s*z\.array/);
   assert.match(readmeSource, /weekly reports, `reports\.weekly_digest` also accepts `countries`/);

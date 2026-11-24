@@ -4518,7 +4518,11 @@ class GscMcpRuntime {
             devices,
             page_url,
           );
-          return toolResponse(markdown, { markdown });
+          const payload = { markdown };
+          if (new TextEncoder().encode(JSON.stringify(payload)).byteLength > COLLECTION_LIST_BYTE_BUDGET) {
+            return toolError('Weekly digest exceeds the response byte limit. Use narrower page or query filters, or review the data with bounded Search Analytics tools; no partial report was returned.');
+          }
+          return toolResponse(markdown, payload);
         } catch (err) {
           if (err instanceof GoogleRefreshTokenRevokedError) {
             throw new Error(GSC_ACCESS_REVOKED_MESSAGE);
