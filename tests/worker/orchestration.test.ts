@@ -1700,6 +1700,49 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves an exact case-sensitive query in Search Appearance discovery and follow-ups', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (args: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-search-appearance-review'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      for (const scope of [{ country: 'deu', device: 'mobile' }, { countries: 'deu,usa', devices: 'desktop,mobile' }]) {
+        const parsed = await prompt.argsSchema.safeParseAsync({
+          site_url: 'sc-domain:example.com', end_date: '2026-11-10', search_type: 'web',
+          page_contains: '/guides/', query: 'Technical SEO', ...scope,
+        });
+        expect(parsed.success).toBe(true);
+        expect(parsed.data?.query).toBe('Technical SEO');
+        const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+        expect(guidance).toContain('"query":"Technical SEO"');
+        expect(guidance).toContain('"query_contains":null');
+        expect(guidance).toContain('query equals the exact query (case-sensitive)');
+        expect(guidance).toContain('dimensions=["searchAppearance"]');
+        expect(guidance).toContain('dimensions=["page"]');
+        expect(guidance).toContain('same page and query filters');
+        expect(guidance).not.toContain('query contains query_contains');
+        await expect(prompt.handler({ ...parsed.data!, query_contains: 'seo' })).rejects.toThrow('Supply either query or query_contains');
+      }
+      const exactPage = await prompt.argsSchema.safeParseAsync({
+        site_url: 'sc-domain:example.com', page_url: 'https://example.com/guides/seo', query: 'Technical SEO',
+      });
+      expect(exactPage.success).toBe(true);
+      const guidance = (await prompt.handler(exactPage.data!)).messages[0].content.text;
+      expect(guidance).toContain('page equals page_url (case-sensitive)');
+      expect(guidance).toContain('Skip the optional drilldown');
+      expect(guidance).not.toContain('dimensions=["query"]');
+      expect(guidance).not.toContain('dimensions=["page"]');
+      expect((await prompt.argsSchema.safeParseAsync({ site_url: 'sc-domain:example.com', query: '  ' })).success).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('isolates Search Appearance types and their query follow-up to one authorized exact page', async () => {
     const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
     const prompt = (server as unknown as {
