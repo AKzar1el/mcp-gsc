@@ -3887,7 +3887,11 @@ class GscMcpRuntime {
           indexing_or_removal_completion_proven: false as const,
           note: "This reports the latest successful Indexing API notification receipt(s) Google recorded for the URL. It does not report whether Google crawled, indexed, or removed the URL; use URL Inspection for indexed-state evidence.",
         };
-        return toolResponse(JSON.stringify(payload, null, 2), payload);
+        const text = JSON.stringify(payload, null, 2);
+        if (new TextEncoder().encode(text).byteLength > COLLECTION_LIST_BYTE_BUDGET) {
+          return toolError('Indexing API notification metadata exceeds the response byte limit. No receipt fields have been silently truncated; this does not indicate indexing or removal failure.');
+        }
+        return toolResponse(text, payload);
       },
       );
 
