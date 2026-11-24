@@ -1430,6 +1430,10 @@ export async function getSitemap(
   if (!isSitemapEntry(entry)) {
     throw new Error('Google Search Console sitemaps.get response contains invalid sitemap data.');
   }
+  if (entry.path !== feedpath) {
+    // The submitted feed URL is the resource identity, not the property host.
+    throw new Error('Google Search Console sitemaps.get response does not match the requested sitemap.');
+  }
   return normalizeSitemap(entry);
 }
 
