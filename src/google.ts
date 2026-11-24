@@ -2615,6 +2615,10 @@ export async function getIndexingNotificationMetadata(
       !isOptionalIndexingNotification(metadata.latestRemove)) {
     throw new Error('Google Indexing metadata response contains invalid notification data.');
   }
+  const returnedUrls = [metadata.url, asUnknownRecord(metadata.latestUpdate)?.url, asUnknownRecord(metadata.latestRemove)?.url];
+  if (returnedUrls.some((returnedUrl) => returnedUrl != null && returnedUrl !== url)) {
+    throw new Error('Google Indexing metadata response contains mismatched URL identity.');
+  }
   return data as IndexingNotificationMetadata;
 }
 

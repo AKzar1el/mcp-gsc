@@ -530,10 +530,36 @@ test('Indexing metadata rejects malformed successful root and notification shape
   }
 });
 
+test('Indexing metadata rejects mismatched top-level and nested URL identities', async () => {
+  const wrong = 'https://example.org/other-page';
+  for (const payload of [
+    { url: wrong },
+    { url: URL, latestUpdate: { url: wrong } },
+    { url: URL, latestRemove: { url: wrong } },
+    { latestUpdate: { url: 'https://example.org/Page' } },
+    { latestRemove: { url: `${URL}?other=1` } },
+    { url: '' },
+  ]) {
+    let calls = 0;
+    await assert.rejects(
+      withMockFetch((input) => {
+        calls += 1;
+        const endpoint = new globalThis.URL(String(input));
+        assert.equal(endpoint.origin + endpoint.pathname, 'https://indexing.googleapis.com/v3/urlNotifications/metadata');
+        assert.equal(endpoint.searchParams.get('url'), URL);
+        return jsonResponse(payload);
+      }, () => getIndexingNotificationMetadata('offline-token', URL)),
+      /Google Indexing metadata response contains mismatched URL identity/,
+    );
+    assert.equal(calls, 1);
+  }
+});
+
 test('Indexing metadata preserves absent and nullable notifications with future fields', async () => {
   const values = [
     {},
     { url: URL, latestUpdate: null, latestRemove: null },
+    { latestUpdate: { url: URL }, latestRemove: { url: URL } },
     {
       url: URL,
       latestUpdate: { url: URL, type: 'URL_UPDATED', notifyTime: '2026-11-09T00:00:00Z', future: 1 },
