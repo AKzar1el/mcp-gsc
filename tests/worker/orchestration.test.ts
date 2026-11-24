@@ -4920,6 +4920,69 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('bounds indexing status MCP RPC metadata without truncating normal receipts', async () => {
+    const googleId = 'indexing-status-budget-user';
+    const targetUrl = 'https://example.com/careers/engineer';
+    await saveUser(workerEnv, googleId, 'status-budget@example.test', 'fixture-refresh-token');
+    let extra = 'normal';
+    let siteListCalls = 0;
+    let metadataCalls = 0;
+    const originalFetch = globalThis.fetch;
+    try {
+      globalThis.fetch = async (input, init) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) {
+          return response({ access_token: 'fixture-access-token', expires_in: 3600 });
+        }
+        expect(init?.method ?? 'GET').toBe('GET');
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites') {
+          siteListCalls++;
+          return response({ siteEntry: [{ siteUrl: 'sc-domain:example.com', permissionLevel: 'siteOwner' }] });
+        }
+        const parsed = new URL(url);
+        if (`${parsed.origin}${parsed.pathname}` === 'https://indexing.googleapis.com/v3/urlNotifications/metadata') {
+          expect(parsed.searchParams.get('url')).toBe(targetUrl);
+          metadataCalls++;
+          return response({ url: targetUrl, latestUpdate: { url: targetUrl, type: 'URL_UPDATED', notifyTime: '2026-09-22T07:30:00Z', futureField: extra } });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const call = async (id: number) => {
+        const result = await mcpApiHandler.fetch(new Request('https://worker.example/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'MCP-Protocol-Version': '2025-06-18',
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id, method: 'tools/call',
+            params: { name: 'indexing.status', arguments: { site_url: 'sc-domain:example.com', url: targetUrl } } }),
+        }), workerEnv, { props: { google_id: googleId, email: 'status-budget@example.test' } } as unknown as ExecutionContext);
+        expect(result.status).toBe(200);
+        return (await readMcpJsonRpc(result)).result as {
+          isError?: boolean;
+          content: Array<{ text: string }>;
+          structuredContent?: Record<string, unknown>;
+        };
+      };
+      const normal = await call(1);
+      expect(normal.isError).not.toBe(true);
+      expect(normal.structuredContent).toMatchObject({ notification_metadata: { url: targetUrl, latestUpdate: { type: 'URL_UPDATED' } }, notification_receipt_only: true, index_coverage_report: false, indexing_or_removal_completion_proven: false });
+      expect(JSON.parse(normal.content[0].text).notification_metadata.latestUpdate.futureField).toBe('normal');
+
+      extra = '\u00e9'.repeat(23_000);
+      const oversized = await call(2);
+      expect(oversized.isError).toBe(true);
+      expect(oversized.content[0].text).toContain('exceeds the response byte limit');
+      expect(oversized.structuredContent).toBeUndefined();
+      expect(new TextEncoder().encode(JSON.stringify(oversized)).byteLength).toBeLessThan(1_000);
+      expect(siteListCalls).toBe(2);
+      expect(metadataCalls).toBe(2);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('accepts a true site-total Search Analytics row when Google omits keys', async () => {
     await saveUser(
       workerEnv,
