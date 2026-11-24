@@ -1,0 +1,7 @@
+# Search Console Desktop privacy notice
+
+The local read-only adapter uses user-provided Google OAuth client ID, client secret and refresh token to obtain access tokens from Google's OAuth token endpoint. It sends authorized Search Console property identifiers, requested dates and dimensions, inspection URLs and sitemap identifiers to Google's official API. The adapter does not call DigestSEO-hosted services or third-party analytics, install hooks, start a listening HTTP server, or expose indexing and write operations.
+
+Credentials are supplied via the desktop client's local configuration, not MCP arguments. The process keeps the refreshed access token in memory and does not persist it to its own files. The desktop client controls storage of user configuration and conversation history. Tool results contain Search Console data and are returned to the local MCP client, which may process them under its own policies. Errors returned by the adapter omit upstream response bodies and token details. Google handles OAuth authorization and API requests under its privacy policy: https://policies.google.com/privacy.
+
+Only authorize the read-only Search Console scope and your own accessible properties. Revoke access through your Google Account or OAuth client, remove the extension configuration, and restart to clear process memory. Do not put credentials in prompts or shared logs. Project support: https://github.com/AKzar1el/mcp-gsc/issues.
