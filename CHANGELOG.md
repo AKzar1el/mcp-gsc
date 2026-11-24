@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Let `gsc-country-movement-review` preserve one case-sensitive exact `query` across finalized country comparisons and justified same-scope page drilldown, skipping redundant drilldown when both the page and query are exact without increasing read quotas.
 - Let `gsc-search-appearance-review` preserve one exact case-sensitive `query` across finalized appearance comparisons and optional page drilldown, skipping redundant drilldown when both the page and query are exact without increasing read quotas.
 - Let `gsc-daily-onset-review` isolate one case-sensitive exact `query` across its finalized daily timeline and optional same-scope traffic-drop follow-up, without widening filters or increasing the timeline's read quota.
 - Let `gsc-traffic-drop-triage` isolate one exact case-sensitive `query` across two finalized date reads and an optional same-scope page comparison, without widening to substring-only follow-ups or changing read quotas.
