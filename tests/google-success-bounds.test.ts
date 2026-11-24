@@ -11,6 +11,7 @@ import {
   listSitemaps,
   querySearchAnalytics,
   requestIndexing,
+  requestIndexingRemoval,
   type SearchAnalyticsQuery,
 } from '../src/google';
 
@@ -590,6 +591,42 @@ test('Indexing publish preserves valid wrapped metadata and future fields', asyn
     () => jsonResponse(receipt),
     () => requestIndexing('offline-token', URL),
   ), receipt);
+});
+
+test('Indexing publish acknowledges HTTP success without trusting mismatched receipt URLs or retrying', async () => {
+  const other = 'https://example.org/other';
+  for (const [publish, type] of [[requestIndexing, 'URL_UPDATED'], [requestIndexingRemoval, 'URL_DELETED']] as const) {
+    const cases = [
+      { url: other, type },
+      { urlNotificationMetadata: { url: other } },
+      { urlNotificationMetadata: { url: URL, latestUpdate: { url: other } } },
+      { urlNotificationMetadata: { latestRemove: { url: other } } },
+      { url: URL, type, urlNotificationMetadata: { url: other } },
+    ];
+    for (const receipt of cases) {
+      let posts = 0;
+      const result = await withMockFetch((input, init) => {
+        if (String(input) === URL) {
+          return type === 'URL_DELETED'
+            ? new Response(null, { status: 404 })
+            : new Response('<script type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting"}</script>', {
+                status: 200, headers: { 'content-type': 'text/html' },
+              });
+        }
+        assert.equal(String(input), 'https://indexing.googleapis.com/v3/urlNotifications:publish');
+        assert.equal(init?.method, 'POST');
+        assert.deepEqual(JSON.parse(String(init?.body)), { url: URL, type });
+        posts++;
+        return jsonResponse(receipt);
+      }, () => publish('offline-token', URL));
+      assert.deepEqual(result, {
+        receipt_status: 'unverified',
+        provider_http_status: 200,
+        note: 'Google returned HTTP success but the Indexing notification receipt was malformed or unreadable. Verify notification metadata before considering a new submission.',
+      });
+      assert.equal(posts, 1);
+    }
+  }
 });
 
 test('malformed successful Indexing publish receipts explicitly remain unverified', async () => {
