@@ -2522,6 +2522,10 @@ async function publishIndexingNotification(
   }
   const root = asUnknownRecord(receipt);
   const metadata = asUnknownRecord(root?.urlNotificationMetadata);
+  const returnedUrls = [root?.url, metadata?.url, asUnknownRecord(metadata?.latestUpdate)?.url, asUnknownRecord(metadata?.latestRemove)?.url];
+  if (returnedUrls.some((returnedUrl) => returnedUrl != null && returnedUrl !== url)) {
+    return unverifiedReceipt;
+  }
   // Preserve the direct UrlNotification shape accepted by existing clients.
   const directNotification = root &&
     typeof root.url === 'string' && root.url.trim().length > 0 &&
