@@ -2594,6 +2594,28 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves an exact quick-win query in guided follow-ups without provider calls', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, { handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }> }>;
+    })._registeredPrompts['gsc-quick-win-review'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const base = { site_url: 'sc-domain:example.com', start_date: '2026-10-01', end_date: '2026-10-28', search_type: 'web', query: 'Technical SEO' };
+      const scoped = (await prompt.handler({ ...base, page_contains: '/de/', countries: ['DEU', 'AUT'] })).messages[0].content.text;
+      expect(scoped).toContain('"query":"Technical SEO"');
+      expect(scoped).toContain('same exact case-sensitive query');
+      expect(scoped).toContain('same page_contains URL-section');
+      expect(scoped).toContain('original country/device arrays');
+      const pair = (await prompt.handler({ ...base, page_url: 'https://example.com/de/guide' })).messages[0].content.text;
+      expect(pair).toContain('skip redundant drilldown');
+      await expect(prompt.handler({ ...base, query_contains: 'seo' })).rejects.toThrow('not both');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides a scoped query/page overlap review without asserting cannibalization or making provider calls', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
@@ -6240,6 +6262,48 @@ describe('Worker orchestration', () => {
       expect(all.structuredContent.quick_wins).toHaveLength(3);
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('applies exact quick-win query equality before pagination without widening case or page scope', async () => {
+    const server = await createGscMcpServer(workerEnv,
+      { google_id: 'quick-wins-exact-query-user', email: 'quick-wins-exact-query@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle);
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const requests: unknown[] = [];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const body = JSON.parse(String(init?.body));
+      requests.push(body);
+      const filters = body.dimensionFilterGroups[0].filters as Array<{ dimension: string; operator: string; expression: string }>;
+      const rows = ['Technical SEO', 'technical seo', 'Technical SEO guide'].map((query) => ({
+        keys: [query, 'https://example.com/de/guide'], clicks: 10, impressions: 200, ctr: 0.05, position: 12,
+      }));
+      return response({ rows: rows.filter((row) => filters.every((filter) => {
+        const value = row.keys[filter.dimension === 'query' ? 0 : 1];
+        return filter.operator === 'equals' ? value === filter.expression : value.includes(filter.expression);
+      })) });
+    });
+    try {
+      const args = { site_url: 'sc-domain:example.com', start_date: '2026-07-01', end_date: '2026-07-31',
+        min_impressions: 100, min_position: 8, max_position: 20, limit: 20, start_row: 0,
+        query: 'Technical SEO', page_url: 'https://example.com/de/guide', search_type: 'image', data_state: 'final' };
+      const result = await registered['insights.quick_wins'].handler(args) as { structuredContent: {
+        query: string; query_contains: null; quick_wins: Array<{ query: string }>;
+      } };
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({ type: 'image', dataState: 'final', dimensions: ['query', 'page'], dimensionFilterGroups: [{ groupType: 'and', filters: [
+        { dimension: 'page', operator: 'equals', expression: args.page_url },
+        { dimension: 'query', operator: 'equals', expression: args.query },
+      ] }] });
+      expect(result.structuredContent.query).toBe(args.query);
+      expect(result.structuredContent.query_contains).toBeNull();
+      expect(result.structuredContent.quick_wins.map((row) => row.query)).toEqual([args.query]);
+      expect(await registered['insights.quick_wins'].handler({ ...args, query_contains: 'seo' })).toMatchObject({ isError: true });
+      expect(requests).toHaveLength(1);
+    } finally {
+      fetchSpy.mockRestore();
     }
   });
 

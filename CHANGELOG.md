@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Allow exact case-sensitive `query` filtering in quick-win discovery and guided reviews, preserving existing scope and quotas.
 - Let exact-query traffic-drop triage recommend a separately justified same-scope 28-day content-decay assessment instead of the optional matched-week page comparison, retaining history and quota boundaries.
 - Allow `insights.content_decay` to isolate one exact case-sensitive `query` across both finalized comparison periods without widening scope or increasing read quotas.
 - Let `gsc-page-cohort-review` isolate one case-sensitive exact `query` across finalized landing-page comparisons, preserving all supplied scopes and avoiding redundant query-grouped reads without increasing read quotas.
