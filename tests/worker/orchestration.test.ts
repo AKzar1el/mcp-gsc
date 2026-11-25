@@ -470,6 +470,52 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves finalized Discover and Google News daily-onset scope without query or ranking inference', async () => {
+    const server = await createGscMcpServer(
+      { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
+    );
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-daily-onset-review'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected provider call'));
+    try {
+      for (const search_type of ['discover', 'googleNews']) {
+        const parsed = await prompt.argsSchema.safeParseAsync({
+          site_url: 'sc-domain:example.com', end_date: '2026-11-10', lookback_days: '35',
+          search_type, page_url: 'https://blog.example.com/posts/launch', countries: 'deu,aut', devices: 'mobile,desktop',
+        });
+        expect(parsed.success).toBe(true);
+        const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+        expect(guidance).toContain(`"search_type":"${search_type}"`);
+        expect(guidance).toContain('2026-10-07');
+        expect(guidance).toContain('dimensions=["date"] only, row_limit=35');
+        expect(guidance).toContain('aggregation_type="auto", data_state="final"');
+        expect(guidance).toContain('page equals the exact page_url');
+        expect(guidance).toContain('"countries":["DEU","AUT"]');
+        expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
+        expect(guidance).toContain('average position is unavailable');
+        expect(guidance).toContain('not measured zero');
+        expect(guidance).toContain('same exact property');
+        expect(guidance).toContain('same search_type');
+        expect(guidance).not.toContain('insights.page_queries');
+        expect(guidance).not.toContain('recommend gsc-traffic-drop-triage');
+        const section = (await prompt.handler({ ...parsed.data, page_url: undefined, page_contains: '/posts/' })).messages[0].content.text;
+        expect(section).toContain('page contains the exact page_contains');
+        expect(section).not.toContain('page equals the exact page_url');
+        expect(section).toContain('same search_type');
+        for (const selector of [{ query: 'Technical SEO' }, { query_contains: 'seo' }]) {
+          await expect(prompt.handler({ ...parsed.data, ...selector })).rejects.toThrow(new RegExp(search_type));
+        }
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides bounded top-query cohort movement without Google calls on prompt retrieval', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
