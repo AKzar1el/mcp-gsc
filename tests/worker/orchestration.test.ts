@@ -138,6 +138,47 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves explicit historical page-discovery dates and rejects invalid ranges before any provider call', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-search-visible-pages-review'];
+    const scope = { site_url: 'sc-domain:example.com', query: 'Technical SEO', search_type: 'image' };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const args = { ...scope, start_date: '2025-06-02', end_date: '2025-06-08' };
+      const parsed = await prompt.argsSchema.safeParseAsync(args);
+      expect(parsed.success).toBe(true);
+      expect(parsed.data).toEqual(args);
+      const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"start_date":"2025-06-02"');
+      expect(guidance).toContain('"end_date":"2025-06-08"');
+      expect(guidance).toContain('"query":"Technical SEO"');
+      for (const invalid of [
+        { start_date: '2025-06-09', end_date: '2025-06-08' },
+        { start_date: '2025-02-30' },
+        { end_date: '9999-01-01' },
+        { start_date: '9999-01-01' },
+      ]) {
+        expect((await prompt.argsSchema.safeParseAsync({ ...scope, ...invalid })).success).toBe(false);
+      }
+      for (const dates of [{}, { start_date: '2025-06-02' }, { end_date: '2025-06-08' }]) {
+        const input = { ...scope, ...dates };
+        const result = await prompt.argsSchema.safeParseAsync(input);
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(input);
+        const text = (await prompt.handler(result.data!)).messages[0].content.text;
+        expect(JSON.parse(text.split('\n')[1])).toEqual(input);
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides one combined non-Web page-discovery segment without suggesting invalid query filters', async () => {
     const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
     const prompts = (server as unknown as {
