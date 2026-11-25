@@ -2666,6 +2666,16 @@ describe('Worker orchestration', () => {
       expect(combinedGuidance).toContain('insights.query_pages');
       expect(combinedGuidance).toContain('combined');
       expect(combinedGuidance).toContain('same');
+      const exact = await prompts['gsc-query-overlap-review'].handler({
+        site_url: 'sc-domain:example.com', start_date: '2026-10-01', end_date: '2026-10-28',
+        query: 'Technical SEO', page_contains: '/de/', countries: ['DEU', 'AUT'], devices: ['mobile', 'desktop'],
+      });
+      expect(exact.messages[0].content.text).toContain('"query":"Technical SEO"');
+      expect(exact.messages[0].content.text).toContain('case-sensitive');
+      await expect(prompts['gsc-query-overlap-review'].handler({
+        site_url: 'sc-domain:example.com', start_date: '2026-10-01', end_date: '2026-10-28',
+        query: 'Technical SEO', query_contains: 'seo',
+      })).rejects.toThrow(/query or query_contains/);
       await expect(prompts['gsc-query-overlap-review'].handler({
         site_url: 'sc-domain:example.com', start_date: '2026-10-01', end_date: '2026-10-28',
         country: 'DEU', countries: ['AUT'],
@@ -6997,6 +7007,51 @@ describe('Worker orchestration', () => {
       expect(requests).toHaveLength(1);
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('keeps competing pages for one exact case-sensitive overlap query', async () => {
+    const server = await createGscMcpServer(workerEnv,
+      { google_id: 'overlap-exact-query-user', email: 'overlap-exact-query@example.test' },
+      { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle);
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const requests: unknown[] = [];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const body = JSON.parse(String(init?.body));
+      requests.push(body);
+      const filters = body.dimensionFilterGroups[0].filters as Array<{ dimension: string; operator: string; expression: string }>;
+      const rows = ['Technical SEO', 'technical seo', 'Technical SEO guide'].flatMap((query) =>
+        ['/de/guide', '/de/overview', '/en/guide'].map((page) => ({
+          keys: [query, `https://example.com${page}`], clicks: 10, impressions: 200, ctr: 0.05, position: 12,
+        })));
+      return response({ rows: rows.filter((row) => filters.every((filter) => {
+        const value = row.keys[filter.dimension === 'query' ? 0 : 1];
+        return filter.operator === 'equals' ? value === filter.expression : value.includes(filter.expression);
+      })) });
+    });
+    try {
+      const args = { site_url: 'sc-domain:example.com', start_date: '2026-07-01', end_date: '2026-07-31',
+        min_impressions: 1, min_page_percentage: 1, limit: 20, start_row: 0,
+        query: 'Technical SEO', page_contains: '/de/', search_type: 'image', data_state: 'final',
+        countries: ['DEU', 'AUT'], devices: ['mobile', 'desktop'] };
+      const result = await registered['insights.cannibalization'].handler(args) as { structuredContent: {
+        query: string; query_contains: null; candidates: Array<{ query: string; page_count: number }>;
+      } };
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toMatchObject({ type: 'image', dataState: 'final', dimensions: ['query', 'page'], dimensionFilterGroups: [{ groupType: 'and', filters: [
+        { dimension: 'page', operator: 'contains', expression: '/de/' },
+        { dimension: 'query', operator: 'equals', expression: args.query },
+      ], filterLists: [{ dimension: 'country', expressions: ['DEU', 'AUT'] }, { dimension: 'device', expressions: ['MOBILE', 'DESKTOP'] }] }] });
+      expect(result.structuredContent.query).toBe(args.query);
+      expect(result.structuredContent.query_contains).toBeNull();
+      expect(result.structuredContent.candidates).toHaveLength(1);
+      expect(result.structuredContent.candidates[0]).toMatchObject({ query: args.query, page_count: 2 });
+      expect(await registered['insights.cannibalization'].handler({ ...args, query_contains: 'seo' })).toMatchObject({ isError: true });
+      expect(requests).toHaveLength(1);
+    } finally {
+      fetchSpy.mockRestore();
     }
   });
 

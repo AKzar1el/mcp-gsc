@@ -22,6 +22,10 @@ export const CANNIBALIZATION_QUERY_CONTAINS_SCHEMA = z
   .optional()
   .describe('Optional case-insensitive query substring filtered by Google before source pagination. Query/page aggregation still includes all returned competing pages for matching queries.');
 
+export const CANNIBALIZATION_QUERY_SCHEMA = z.string().min(1).max(240)
+  .refine((value) => value.trim().length > 0, 'Exact query cannot be blank.')
+  .optional().describe('Optional exact case-sensitive Search Console query, preserved verbatim and filtered at Google before pagination. Use instead of query_contains; retains returned competing pages.');
+
 export const CANNIBALIZATION_PAGE_CONTAINS_SCHEMA = z
   .string()
   .trim()
