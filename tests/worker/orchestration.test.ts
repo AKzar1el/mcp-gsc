@@ -66,7 +66,7 @@ describe('Worker orchestration', () => {
     const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
     const prompts = (server as unknown as {
       _registeredPrompts: Record<string, {
-        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean }> };
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
         handler: (args: Record<string, string>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
       }>;
     })._registeredPrompts;
@@ -107,6 +107,26 @@ describe('Worker orchestration', () => {
       const exactGuidance = (await prompt.handler(exactArgs)).messages[0].content.text;
       expect(exactGuidance).toContain('"page_url":"https://example.com/de/guide/"');
       expect(exactGuidance).toContain('case-sensitive page equals');
+      const queryArgs = {
+        site_url: 'sc-domain:example.com',
+        page_url: exactArgs.page_url,
+        query: 'Technical SEO',
+        search_type: 'image',
+        country: 'deu',
+        device: 'mobile',
+      };
+      const parsed = await prompt.argsSchema.safeParseAsync(queryArgs);
+      expect(parsed.success).toBe(true);
+      expect(parsed.data).toMatchObject(queryArgs);
+      const queryGuidance = (await prompt.handler(queryArgs)).messages[0].content.text;
+      expect(queryGuidance).toContain('"query":"Technical SEO"');
+      expect(queryGuidance).toContain('case-sensitive query equals');
+      expect(queryGuidance).not.toContain('"query_contains":');
+      expect((await prompt.argsSchema.safeParseAsync({ ...queryArgs, query_contains: 'SEO' })).success).toBe(false);
+      expect((await prompt.argsSchema.safeParseAsync({ ...queryArgs, query: '   ' })).success).toBe(false);
+      for (const search_type of ['discover', 'googleNews', 'webMultimodal']) {
+        expect((await prompt.argsSchema.safeParseAsync({ ...queryArgs, search_type })).success).toBe(false);
+      }
       await expect(prompt.handler({
         site_url: 'sc-domain:example.com',
         page_url: 'https://outside.example.net/private/',
@@ -8144,6 +8164,7 @@ describe('Worker orchestration', () => {
     );
     const registered = (server as unknown as {
       _registeredTools: Record<string, {
+        inputSchema: { safeParseAsync: (input: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
         handler: (args: Record<string, unknown>) => Promise<unknown>;
       }>;
     })._registeredTools;
@@ -8209,6 +8230,42 @@ describe('Worker orchestration', () => {
       });
       expect(result.structuredContent.pages[0].position).toBeNull();
       expect(result.structuredContent.note).toMatch(/combined|OR within/i);
+      const { query_contains: _topic, ...otherScope } = args;
+      const exactArgs = { ...otherScope, query: 'Technical SEO' };
+      const exactParsed = await registered['indexing.list_pages'].inputSchema.safeParseAsync(exactArgs);
+      expect(exactParsed.success).toBe(true);
+      expect(exactParsed.data).toMatchObject({ query: 'Technical SEO' });
+      expect((await registered['indexing.list_pages'].inputSchema.safeParseAsync({ ...exactArgs, query: '   ' })).success).toBe(false);
+      const exactResult = (await registered['indexing.list_pages'].handler(exactArgs)) as {
+        structuredContent: { query?: string; query_contains: string | null; note: string };
+      };
+      expect(requests).toHaveLength(2);
+      expect(requests[1]).toMatchObject({
+        type: 'image',
+        dimensions: ['page'],
+        rowLimit: 25,
+        startRow: 6,
+        dimensionFilterGroups: [{
+          groupType: 'and',
+          filters: [
+            { dimension: 'page', operator: 'contains', expression: '/de/' },
+            { dimension: 'query', operator: 'equals', expression: 'Technical SEO' },
+          ],
+          filterLists: [
+            { dimension: 'country', expressions: ['DEU', 'AUT'] },
+            { dimension: 'device', expressions: ['DESKTOP', 'MOBILE'] },
+          ],
+        }],
+      });
+      expect(exactResult.structuredContent).toMatchObject({ query: 'Technical SEO', query_contains: null });
+      expect(exactResult.structuredContent.note).toMatch(/case-sensitive query equals/);
+      for (const invalid of [
+        { ...exactArgs, query_contains: 'SEO' },
+        ...['discover', 'googleNews', 'webMultimodal'].map(search_type => ({ ...exactArgs, search_type })),
+      ]) {
+        const rejected = await registered['indexing.list_pages'].handler(invalid) as { isError?: boolean };
+        expect(rejected.isError).toBe(true);
+      }
       for (const invalid of [
         { ...args, country: 'DEU' },
         { ...args, device: 'desktop' },
@@ -8219,7 +8276,7 @@ describe('Worker orchestration', () => {
         const rejected = await registered['indexing.list_pages'].handler(invalid);
         expect(JSON.stringify(rejected)).toMatch(/country|device|query_contains/i);
       }
-      expect(requests).toHaveLength(1);
+      expect(requests).toHaveLength(2);
     } finally {
       globalThis.fetch = originalFetch;
     }
