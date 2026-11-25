@@ -44,6 +44,7 @@ import {
   CANNIBALIZATION_COUNTRIES_SCHEMA,
   CANNIBALIZATION_DEVICES_SCHEMA,
   CANNIBALIZATION_QUERY_CONTAINS_SCHEMA,
+  CANNIBALIZATION_QUERY_SCHEMA,
 } from '../src/cannibalization-schema';
 import {
   buildAuthUrl,
@@ -430,6 +431,14 @@ test('cannibalization query substring is optional, bounded, and trimmed before q
   assert.equal(CANNIBALIZATION_QUERY_CONTAINS_SCHEMA.safeParse('  pricing  ').data, 'pricing');
   for (const value of ['', '   ', 'x'.repeat(121), 17]) {
     assert.equal(CANNIBALIZATION_QUERY_CONTAINS_SCHEMA.safeParse(value).success, false);
+  }
+});
+
+test('cannibalization exact query preserves case and whitespace and rejects blank or oversized input', () => {
+  assert.equal(CANNIBALIZATION_QUERY_SCHEMA.parse(undefined), undefined);
+  assert.equal(CANNIBALIZATION_QUERY_SCHEMA.parse(' Technical SEO '), ' Technical SEO ');
+  for (const value of ['', '   ', 'x'.repeat(241), 17]) {
+    assert.equal(CANNIBALIZATION_QUERY_SCHEMA.safeParse(value).success, false);
   }
 });
 

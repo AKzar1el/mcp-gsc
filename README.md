@@ -252,6 +252,8 @@ For `insights.cannibalization`, optional `data_state: "all"` includes fresh, pos
 
 The `min_page_percentage` threshold is checked against each page's **unrounded observed impression share**; the returned `impression_share` is rounded to one decimal place for readability. A page just below the threshold is not treated as qualifying merely because its displayed share rounds up. These shares are based on returned query/page rows, not unique searches or an exhaustive query-level total.
 
+For `insights.cannibalization` and `gsc-query-overlap-review`, use optional `query` instead of `query_contains` to investigate one case-sensitive query verbatim. Google applies exact query equality before pagination, retaining competing pages within the requested URL section, search surface and searcher segments. The tool echoes the selected query in its structured output; the prompt preserves it in optional follow-ups. No extra requests or quota units are added. The observed overlap is not evidence of harmful competition by itself.
+
 Both `insights.quick_wins` and `insights.cannibalization` echo the exact requested `site_url`, inclusive `start_date`, and inclusive `end_date` in their structured results, so saved opportunity and overlap snapshots can be attributed to the correct Search Console property and time window. These fields are response metadata only; they do not change Google requests, quota accounting, property permissions or filters.
 
 Search Analytics calendar dates (`start_date`, `end_date`, and comparison-period dates) use Google's Pacific Time calendar (`America/Los_Angeles`, UTC-8/UTC-7 depending on daylight saving time), not the caller's local timezone or UTC. This also governs the server's generated/default Search Analytics date ranges.
