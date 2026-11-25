@@ -806,6 +806,9 @@ const INDEXING_STATUS_OUTPUT_SCHEMA = {
 };
 
 const INDEXED_PAGES_OUTPUT_SCHEMA = {
+  site_url: SEARCH_CONSOLE_PROPERTY_SCHEMA.describe('The exact Search Console property queried.'),
+  start_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Resolved inclusive start date; reuse for subsequent pages.')),
+  end_date: SEARCH_CONSOLE_DATE_SCHEMA.describe(searchConsoleDateDescription('Resolved inclusive end date; reuse for subsequent pages.')),
   pages: z.array(z.object({
     page: z.string(),
     ...METRIC_OUTPUT_SCHEMA,
@@ -2404,7 +2407,7 @@ class GscMcpRuntime {
               '1. Confirm exact property access using sites.get before requesting property data. Never change properties, grant permissions or use a different site_url to expand scope.',
               '2. If authorized and quota permits, call indexing.list_pages once with the exact JSON fields above, row_limit=100 and start_row=0. Omit missing optional fields rather than inventing defaults; Web is the default surface and the tool derives its usual inclusive 30-day date range when a boundary is absent. Use page_url for one exact authorized landing page with Google-side case-sensitive page equals, not the broader page_contains substring; never combine those two. Use query for Google-side case-sensitive query equals, not the broader query_contains substring; never combine those two or change the query text. Google applies AND across page, supported text-query and searcher dimensions, OR within selected countries/devices. Never combine singular and plural selectors or split a combined segment into multiple Google requests. Searcher country is not the language of a URL section.',
               '3. Report returned page URLs with observed clicks, impressions, CTR and nullable average position (null is not rank zero). Non-Web observations describe only their selected Search surface. Combined countries or devices describe one combined segment, not separate per-country or per-device attribution. Discover, Google News and webMultimodal do not expose text-query filters: never invent queries for those surfaces. Missing rows are not measured zero traffic; anonymized queries and limited source rows may be absent. This is Search performance visibility, not index coverage or a complete list of indexed pages.',
-              '4. When result_page.has_more is true, show next_start_row and offer a separately authorized follow-up page with identical site_url, dates and filters. Do not automatically exhaust pages, change scope or claim complete coverage. Every requested page consumes the normal read quota.',
+              '4. When result_page.has_more is true, show next_start_row and offer a separately authorized follow-up page with the returned site_url, resolved start_date and end_date, and identical surface and filters. Pass both returned date boundaries explicitly even if omitted initially; otherwise defaults can shift between requests. Do not automatically exhaust pages, change scope or claim complete coverage. Every requested page consumes the normal read quota.',
               '5. Recommend urls.inspect only if a specific observed or independently supplied exact URL warrants a separate Google-indexed-state check and URL Inspection budget/permission is explicitly verified; never infer index status from this result.',
               'Never call indexing.request, indexing.remove, sitemap writes or other mutations. Retrieving this prompt performs no Google API request; executing the suggested reads does.',
             ].join('\n'),
@@ -4128,7 +4131,7 @@ class GscMcpRuntime {
               'End date (inclusive) in YYYY-MM-DD format. If start_date is omitted, the generated start date is 29 days earlier. Defaults to 3 days ago. Note the 2-3 day data lag.',
             ),
           ),
-          row_limit: z.number().int().min(1).max(25000).default(1000).describe(`Maximum pages requested for this logical response (1-25000). Output is safely bounded; continue with result_page.next_start_row while result_page.has_more is true.`),
+          row_limit: z.number().int().min(1).max(25000).default(1000).describe(`Maximum pages requested for this logical response (1-25000). Output is safely bounded; continue with result_page.next_start_row while result_page.has_more is true, passing the returned site_url, start_date and end_date with the same surface and filters.`),
           start_row: INDEXED_PAGES_START_ROW_SCHEMA.default(0).describe('Zero-based page-row offset for pagination (0 through 2147483647).'),
         },
         outputSchema: INDEXED_PAGES_OUTPUT_SCHEMA,
@@ -4207,6 +4210,9 @@ class GscMcpRuntime {
         );
 
         const payload = {
+          site_url,
+          start_date: startDate,
+          end_date: endDate,
           pages: bounded.items,
           page_contains: page_contains ?? null,
           ...(page_url ? { page_url } : {}),

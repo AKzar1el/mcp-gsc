@@ -94,6 +94,7 @@ describe('Worker orchestration', () => {
       expect(guidance).toContain('"device":"mobile"');
       expect(guidance).toContain('"end_date":"2026-11-10"');
       expect(guidance).toContain('result_page.has_more');
+      expect(guidance).toContain('resolved start_date and end_date');
       expect(guidance).toContain('not index coverage');
       expect(guidance).toContain('anonymized queries');
       expect(guidance).toContain('Never call indexing.request');
@@ -7967,6 +7968,59 @@ describe('Worker orchestration', () => {
       expect(first.structuredContent.result_page.next_start_row).toBeUndefined();
     } finally {
       globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('pins Search-visible page continuation to the resolved property and dates across a Pacific day change', async () => {
+    await saveUser(workerEnv, 'window-pages-user', 'window@example.test', 'window-refresh-token');
+    const server = await createGscMcpServer(
+      workerEnv,
+      { google_id: 'window-pages-user', email: 'window@example.test' },
+      new GoogleAccessTokenLifecycle(workerEnv),
+    );
+    const registered = (server as unknown as {
+      _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+    })._registeredTools;
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-25T07:59:00Z'));
+    try {
+      globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = requestUrl(input);
+        if (url === GOOGLE_TOKEN_URL) return response({ access_token: 'window-pages-access', expires_in: 3600 });
+        if (url === 'https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query') {
+          const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+          requests.push(body);
+          return response({ rows: body.startRow === 0 ? [{
+            keys: ['https://example.com/de/guide/'], clicks: 2, impressions: 40, ctr: 0.05, position: 8,
+          }] : [] });
+        }
+        throw new Error(`Unexpected outbound request: ${url}`);
+      };
+      const scope = { site_url: 'sc-domain:example.com', query: 'Technical SEO', search_type: 'image', country: 'deu', row_limit: 1 };
+      type PageResult = { content: Array<{ text: string }>; structuredContent: {
+        site_url: string; start_date: string; end_date: string;
+        result_page: { has_more: boolean; next_start_row?: number };
+      } };
+      const first = await registered['indexing.list_pages'].handler(scope) as PageResult;
+      expect(first.structuredContent).toMatchObject({
+        site_url: scope.site_url, start_date: '2026-10-23', end_date: '2026-11-21',
+        result_page: { has_more: true, next_start_row: 1 },
+      });
+      expect(JSON.parse(first.content[0].text)).toEqual(first.structuredContent);
+      vi.setSystemTime(new Date('2026-11-25T08:01:00Z'));
+      const { site_url, start_date, end_date, result_page } = first.structuredContent;
+      const next = await registered['indexing.list_pages'].handler({
+        ...scope, site_url, start_date, end_date, start_row: result_page.next_start_row,
+      }) as PageResult;
+      expect(requests).toHaveLength(2);
+      expect(requests[0]).toMatchObject({ startDate: '2026-10-23', endDate: '2026-11-21', startRow: 0 });
+      expect(requests[1]).toEqual({ ...requests[0], startRow: 1 });
+      expect(next.structuredContent).toMatchObject({ site_url, start_date, end_date, result_page: { has_more: false } });
+    } finally {
+      globalThis.fetch = originalFetch;
+      vi.useRealTimers();
     }
   });
 
