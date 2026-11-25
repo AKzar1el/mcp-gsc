@@ -1707,6 +1707,43 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it.each(['discover', 'googleNews', 'webMultimodal'])('keeps exact-page visibility and index evidence separate for %s', async (search_type) => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (args: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-url-index-visibility-review'];
+    const scope = {
+      site_url: 'sc-domain:example.com', page_url: 'https://example.com/de/tool/',
+      end_date: '2026-11-10', search_type, countries: 'DEU,AUT', devices: 'mobile,desktop',
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const parsed = await prompt.argsSchema.safeParseAsync(scope);
+      expect(parsed.success).toBe(true);
+      const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      for (const required of [
+        `"search_type":"${search_type}"`, '"page_url":"https://example.com/de/tool/"',
+        '"countries":["DEU","AUT"]', '"devices":["MOBILE","DESKTOP"]',
+        '2026-11-04', '2026-10-28', 'dimensions=[]', 'aggregation_type="auto"',
+        'data_state="final"', 'dimension="page", operator="equals"', 'filterLists',
+        'Omit query filtering', 'not measured zero', 'urls.inspect once',
+        '20 inspections/user/day', 'not proof of eligibility', 'cannot establish causation',
+        'Never call indexing.request',
+      ]) expect(guidance).toContain(required);
+      expect(guidance).not.toContain('Add query contains');
+      if (search_type !== 'webMultimodal') expect(guidance).toContain('average position is unavailable');
+      for (const queryScope of [{ query: 'Technical SEO' }, { query_contains: 'SEO' }]) {
+        await expect(prompt.handler({ ...parsed.data!, ...queryScope })).rejects.toThrow('unavailable');
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a property-bounded batch index review without requesting Google or hiding errors', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
