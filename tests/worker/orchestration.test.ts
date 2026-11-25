@@ -1308,6 +1308,47 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it.each(['discover', 'googleNews'])('preserves country movement scope for %s without inventing query or position evidence', async (search_type) => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-country-movement-review'];
+    const input = {
+      site_url: 'sc-domain:example.com', end_date: '2026-06-20',
+      search_type, page_url: 'https://example.com/de/guide/', devices: 'mobile,tablet',
+    };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const parsed = await prompt.argsSchema.safeParseAsync(input);
+      expect(parsed.success).toBe(true);
+      const exact = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(exact).toContain(JSON.stringify(search_type));
+      expect(exact).toContain('"start_date_a":"2026-06-14"');
+      expect(exact).toContain('"start_date_b":"2026-06-07"');
+      expect(exact).toContain('"devices":["MOBILE","TABLET"]');
+      expect(exact).toContain('dimension=country');
+      expect(exact).toContain('dimension="page", operator="equals"');
+      expect(exact).toContain('data_state=final');
+      expect(exact).toContain('average position is unavailable');
+      expect(exact).toContain('no text-query drilldown');
+      expect(exact).not.toContain('dimension=query');
+      expect(exact).not.toContain('dimension=page');
+      const section = (await prompt.handler({ ...parsed.data, page_url: undefined, page_contains: '/de/' })).messages[0].content.text;
+      expect(section).toContain('page contains the exact page_contains');
+      expect(section).toContain('dimension=page');
+      expect(section).toContain('same search surface');
+      expect(section).toContain('same device list');
+      await expect(prompt.handler({ ...parsed.data, query: 'Technical SEO' })).rejects.toThrow('Query filtering');
+      await expect(prompt.handler({ ...parsed.data, query_contains: 'seo' })).rejects.toThrow('Query filtering');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('guides a finalized device-movement comparison without contacting Google', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
