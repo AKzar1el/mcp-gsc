@@ -505,6 +505,16 @@ test('quick wins accepts bounded distinct multi-market selectors without mixing 
   assert.equal(schema.safeParse({ ...base, page_url: 'https://example.com/de/guide', page_contains: '/de/' }).success, false);
 });
 
+test('quick wins preserves exact query text and rejects competing query selectors', () => {
+  const schema = createQuickWinsInputSchema();
+  const base = { site_url: 'sc-domain:example.com', start_date: '2026-01-01', end_date: '2026-01-31' };
+  assert.equal(schema.parse({ ...base, query: 'Technical SEO' }).query, 'Technical SEO');
+  assert.equal(schema.safeParse({ ...base, query: 'Technical SEO', query_contains: 'seo' }).success, false);
+  for (const query of ['', '   ', 'a'.repeat(241)]) {
+    assert.equal(schema.safeParse({ ...base, query }).success, false);
+  }
+});
+
 test('quick wins rejects raw exact-page URL whitespace instead of trimming the caller input', () => {
   const schema = createQuickWinsInputSchema();
   const base = { site_url: 'sc-domain:example.com', start_date: '2026-01-01', end_date: '2026-01-31' };

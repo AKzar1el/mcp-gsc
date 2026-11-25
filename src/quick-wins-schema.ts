@@ -50,6 +50,9 @@ export function createQuickWinsInputSchema() {
       query_contains: z.string().trim().min(1).max(240).optional().describe(
         'Optional case-insensitive query topic substring (for example technical seo). Google filters matching queries before query/page pagination; combine with page_contains to target one topic in one URL section. Filtered results are not property-wide.',
       ),
+      query: z.string().min(1).max(240).refine((value) => value.trim().length > 0, 'Exact query cannot be blank.').optional().describe(
+        'Optional exact case-sensitive Search Console query, preserved verbatim and filtered at Google before pagination. Use instead of query_contains.',
+      ),
       country: z.string().trim().regex(/^[a-zA-Z]{3}$/, 'Use a three-letter ISO 3166-1 alpha-3 country code such as SVN or DEU.').optional().describe(
         'Optional searcher country (ISO 3166-1 alpha-3, e.g. DEU for Germany), not URL language. Combined with page_contains and query_contains as Google-side AND filters before pagination; the result is not property-wide.',
       ),
@@ -80,8 +83,9 @@ export function createQuickWinsInputSchema() {
       ({ min_position, max_position }) => min_position <= max_position,
       POSITION_RANGE_ERROR,
     )
-    .superRefine(({ page_url, page_contains, country, countries, device, devices }, ctx) => {
+    .superRefine(({ page_url, page_contains, query, query_contains, country, countries, device, devices }, ctx) => {
       if (page_url && page_contains) ctx.addIssue({ code: 'custom', path: ['page_url'], message: 'Supply either page_contains or page_url, not both.' });
+      if (query !== undefined && query_contains !== undefined) ctx.addIssue({ code: 'custom', path: ['query'], message: 'Supply either query or query_contains, not both.' });
       if (country && countries) ctx.addIssue({ code: 'custom', path: ['countries'], message: 'Use country or countries, not both.' });
       if (device && devices) ctx.addIssue({ code: 'custom', path: ['devices'], message: 'Use device or devices, not both.' });
     });
