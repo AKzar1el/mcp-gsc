@@ -2361,10 +2361,20 @@ class GscMcpRuntime {
           countries: promptCountries.describe('Optional 1-10 distinct searcher countries ORed at Google; use instead of country, not for individual market reports.'),
           device: DIRECT_INSIGHT_DEVICE_SCHEMA,
           devices: promptDevices.describe('Optional 1-3 distinct searcher devices ORed at Google; use instead of device, not separate device reports.'),
+          start_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(
+            searchConsoleDateDescription('Optional inclusive start date. If end_date is omitted, the tool derives an end date up to 29 days later, capped at the latest complete date.'),
+          ),
           end_date: SEARCH_CONSOLE_DATE_SCHEMA.optional().describe(
-            searchConsoleDateDescription('Optional inclusive end date; if omitted, the tool uses its usually finalized default.'),
+            searchConsoleDateDescription('Optional inclusive end date. If start_date is omitted, the tool derives a start date 29 days earlier. If both are omitted, the tool uses its usually finalized default window.'),
           ),
         }).superRefine((scope, ctx) => {
+          if (scope.start_date !== undefined || scope.end_date !== undefined) {
+            try {
+              resolveIndexedPagesDateRange(scope.start_date, scope.end_date, getSearchConsoleCalendarDate());
+            } catch (error) {
+              ctx.addIssue({ code: 'custom', message: error instanceof Error ? error.message : 'Invalid reporting date range.' });
+            }
+          }
           if (scope.page_contains && scope.page_url) {
             ctx.addIssue({ code: 'custom', path: ['page_url'], message: 'Use page_contains or page_url, not both.' });
           }
@@ -2382,7 +2392,7 @@ class GscMcpRuntime {
           }
         }),
       },
-      async ({ site_url, search_type, page_contains, page_url, query_contains, query, country, countries, device, devices, end_date }) => {
+      async ({ site_url, search_type, page_contains, page_url, query_contains, query, country, countries, device, devices, start_date, end_date }) => {
         if (page_url) assertUrlWithinSearchConsoleProperty(page_url, site_url, 'page_url');
         return {
         messages: [{
@@ -2402,6 +2412,7 @@ class GscMcpRuntime {
                 ...(countries ? { countries: countries.map((value) => value.toUpperCase()) } : {}),
                 ...(device ? { device } : {}),
                 ...(devices ? { devices } : {}),
+                ...(start_date ? { start_date } : {}),
                 ...(end_date ? { end_date } : {}),
               }),
               '1. Confirm exact property access using sites.get before requesting property data. Never change properties, grant permissions or use a different site_url to expand scope.',
