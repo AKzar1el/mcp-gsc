@@ -721,6 +721,41 @@ describe('Worker orchestration', () => {
     }
   }, 20_000);
 
+  it('supports finalized Discover and Google News page cohorts without query or position inference', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-page-cohort-review'];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      for (const search_type of ['discover', 'googleNews']) {
+        const parsed = await prompt.argsSchema.safeParseAsync({ site_url: 'sc-domain:example.com', end_date: '2026-06-20', search_type, page_contains: '/articles/', countries: 'deu,svn', devices: 'mobile,desktop' });
+        expect(parsed.success).toBe(true);
+        const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+        expect(guidance).toContain(`"search_type":"${search_type}"`);
+        expect(guidance).toContain('"start_date_b":"2026-06-07"');
+        expect(guidance).toContain('dimensions=["page"]');
+        expect(guidance).toContain('Call analytics.query exactly twice');
+        expect(guidance).toContain('aggregation_type="auto"');
+        expect(guidance).toContain('"countries":["DEU","SVN"]');
+        expect(guidance).toContain('"devices":["MOBILE","DESKTOP"]');
+        expect(guidance).toContain('identically to BOTH');
+        expect(guidance).toContain('average position is unavailable');
+        const followUp = guidance.split('\n5. ')[1].split('\n6. ')[0];
+        expect(followUp).toContain('Do not request query grouping or query filters');
+        expect(followUp).not.toContain('call one additional analytics.query');
+        await expect(prompt.handler({ ...parsed.data, query: 'SEO' })).rejects.toThrow('Query filtering is not available');
+        await expect(prompt.handler({ ...parsed.data, query_contains: 'seo' })).rejects.toThrow('Query topic filtering is not available');
+      }
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('omits nonexistent page-cohort filters when unscoped and preserves device-only scope', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
