@@ -2046,16 +2046,18 @@ class GscMcpRuntime {
           search_type: z.enum(['web', 'image', 'video', 'news', 'discover', 'googleNews', 'webMultimodal']).default('web').describe('One fixed search surface for both periods.'),
           page_contains: z.string().trim().min(1).max(120).optional().describe('Optional exact URL-section substring.'),
           page_url: EXACT_PAGE_URL_SCHEMA.optional().describe('Optional exact page within this Search Console property; use instead of page_contains.'),
-          query: z.string().min(1).max(240).refine((value) => value.trim().length > 0, 'Exact query cannot be blank.').optional().describe('Optional exact Search Console query text, case-sensitive; unavailable for Discover, Google News and webMultimodal.'),
+          query: z.string().min(1).max(240).refine((value) => value.trim().length > 0, 'Exact query cannot be blank.').optional().describe('Optional exact Search Console query text, case-sensitive; use instead of query_contains. Unavailable for Discover, Google News and webMultimodal.'),
+          query_contains: z.string().trim().min(1).max(120).optional().describe('Optional search-query topic substring, applied at Google in both weeks; unavailable for Discover, Google News and webMultimodal.'),
           country: z.string().trim().regex(/^[a-zA-Z]{3}$/).optional().describe('Optional ISO alpha-3 searcher country, not URL locale.'),
           countries: promptCountries.describe('Optional 1-10 ISO alpha-3 searcher countries, comma/newline-separated or JSON-array text; use instead of country for one combined segment.'),
         }),
       },
-      ({ site_url, end_date, search_type, page_contains, page_url, query, country, countries }) => {
+      ({ site_url, end_date, search_type, page_contains, page_url, query, query_contains, country, countries }) => {
         if (page_contains && page_url) throw new Error('Supply either page_contains or page_url, not both.');
         if (page_url) assertUrlWithinSearchConsoleProperty(page_url, site_url, 'page_url');
         if (country && countries) throw new Error('Supply either country or countries, not both.');
-        if (query !== undefined && (search_type === 'discover' || search_type === 'googleNews' || search_type === 'webMultimodal')) {
+        if (query !== undefined && query_contains) throw new Error('Supply either query or query_contains, not both.');
+        if ((query !== undefined || query_contains) && (search_type === 'discover' || search_type === 'googleNews' || search_type === 'webMultimodal')) {
           throw new Error('Query filtering is not available for Discover, Google News or webMultimodal Search Analytics.');
         }
         const selectedCountries = countries?.map((value) => value.toUpperCase());
@@ -2078,7 +2080,7 @@ class GscMcpRuntime {
           page_url
             ? 'page equals the exact page_url (case-sensitive Google-side equality, not a substring)'
             : page_contains ? 'page contains the exact page_contains' : null,
-          query !== undefined ? 'query equals the exact query (case-sensitive)' : null,
+          query !== undefined ? 'query equals the exact query (case-sensitive)' : query_contains ? 'query contains the exact query_contains topic (case-insensitive)' : null,
           selectedCountries
             ? 'Google-side country filterLists with uppercase exact expressions for the supplied countries (OR within the country dimension, AND with page and other dimensions)'
             : country ? 'country equals the uppercase singular ISO alpha-3 code' : null,
@@ -2097,10 +2099,10 @@ class GscMcpRuntime {
                   site_url, start_date_a: offset(-6), end_date_a: selectedEnd,
                   start_date_b: offset(-13), end_date_b: offset(-7),
                   search_type, page_contains: page_contains ?? null, page_url: page_url ?? null, country: country?.toUpperCase() ?? null,
-                  countries: selectedCountries ?? null, query: query ?? null,
+                  countries: selectedCountries ?? null, query: query ?? null, query_contains: query_contains ?? null,
                 }),
                 '1. Confirm read access to exactly this Search Console property with server.capabilities and sites.get. Do not read another property or assume credentials alone imply authorization.',
-                `2. Call analytics.compare once with these adjacent nonoverlapping seven-day Pacific windows, dimension=device, data_state=final, the identical search_type, sort_by=absolute_impression_change, limit=10, start_row=0. ${comparisonFilterGuidance} Apply the same country list or singular country and page scope identically to both weeks when supplied; never narrow a list to one country. Do not postfilter rows or filter device while grouping by device. This costs two normal Search Analytics requests plus any charged retries.`,
+                `2. Call analytics.compare once with these adjacent nonoverlapping seven-day Pacific windows, dimension=device, data_state=final, the identical search_type, sort_by=absolute_impression_change, limit=10, start_row=0. ${comparisonFilterGuidance} Apply the same country list or singular country, page scope and exact query or query topic identically to both weeks when supplied; never narrow a list to one country. Do not postfilter rows or filter device while grouping by device. This costs two normal Search Analytics requests plus any charged retries.`,
                 '3. Show only observed DESKTOP, MOBILE and TABLET keys present in both returned periods, including real clicks, impressions and CTR. Separate observed impression losses from gains, with percentage changes only when the observed baseline is positive. If a device appears in one response only, it is a follow-up lead, not a confirmed lost or new device segment: missing rows are not zero. An empty result is insufficient evidence, not zero traffic. Returned rows may be incomplete, so do not call the device sum a property-wide total.',
                 '4. Searcher device describes Google\'s reported search context, not the device of a crawler, mobile-friendliness of the page, or a proven mobile indexing problem. A page_contains filter gives section-only numbers; a page_url filter gives exact-page-only numbers, not sibling URLs or property totals. Country and countries select searcher geography rather than URL locale. A multi-country filter is one combined searcher-country scope, not separate country-by-country device measurements. Do not claim rankings, indexing, algorithm penalties, or technical causality from these comparisons alone.',
                 '5. For search_type="webMultimodal", compare image-initiated Google Lens/Circle to Search device observations only, with no text-query dimension or filter; do not add these figures to normal Web or Image-tab totals as though disjoint. For discover or googleNews, average position is unavailable and must remain null rather than an invented zero or rank.',
@@ -2113,10 +2115,10 @@ class GscMcpRuntime {
                     ? '6. For this exact page on webMultimodal there is no query drilldown; stop after the device comparison instead of repeating a one-page result or broadening the exact-page scope. Do not infer missing query evidence.'
                     : search_type === 'discover' || search_type === 'googleNews'
                       ? '6. For this exact page on Google Discover or Google News there is no text-query drilldown: these surfaces do not support text-query grouping or filters. Stop after the device comparison rather than making a redundant exact-page read grouped by page. Preserve the exact page and any supplied country scope; do not substitute the Search News tab or Web results or infer missing query evidence.'
-                      : '6. Only if one observed device warrants a read-only follow-up and quota remains, call analytics.query at most once grouped by query (dimension=query) for one exact finalized period with device equals the returned device and page equals the identical exact page_url; keep the same search surface and country list using Google-side filterLists (or singular country equals). Treat returned queries as a bounded non-exhaustive sample; missing queries are not zero and query positions are not a live ranking.'
-                  : '6. Only if one observed device warrants an actionable follow-up and normal read quota remains, call analytics.query at most once grouped by page for one of the exact finalized periods, with device equals that returned device and the identical page and search-surface scopes. Keep the same country list using Google-side filterLists (or the same singular country equals); never change to a single selected country when the comparison used a list. Label page rows as a bounded non-exhaustive sample; do not infer absent pages are deindexed.',
+                      : '6. Only if one observed device warrants a read-only follow-up and quota remains, call analytics.query at most once grouped by query (dimension=query) for one exact finalized period with device equals the returned device and page equals the identical exact page_url; keep the same search surface, query contains topic filter if supplied, and country list using Google-side filterLists (or singular country equals). Treat returned queries as a bounded non-exhaustive sample; missing queries are not zero and query positions are not a live ranking.'
+                  : '6. Only if one observed device warrants an actionable follow-up and normal read quota remains, call analytics.query at most once grouped by page for one of the exact finalized periods, with device equals that returned device and the identical page and search-surface scopes. Keep the same query contains topic filter if supplied and the same country list using Google-side filterLists (or the same singular country equals); never change to a single selected country when the comparison used a list. Label page rows as a bounded non-exhaustive sample; do not infer absent pages are deindexed.',
                 'Never call indexing.request, indexing.remove, sitemap/property writes, publication, outreach or other mutations. Retrieving the prompt makes no Google request.',
-                'Return the exact property, finalized dates, surface, filters (including any exact case-sensitive query), observed device-level changes and missing-data limits, plus no more than one justified read-only next check. Scoped results are not property totals; never broaden exact filters. Do not promise traffic recovery, revenue or adoption.',
+                'Return the exact property, finalized dates, surface, filters (including any exact case-sensitive query or query topic), observed device-level changes and missing-data limits, plus no more than one justified read-only next check. Scoped results are not property totals; never broaden filters. Do not promise traffic recovery, revenue or adoption.',
               ].join('\n'),
             },
           }],

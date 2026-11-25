@@ -1446,6 +1446,46 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('preserves query-topic scope in device movement and the bounded drilldown', async () => {
+    const server = await createGscMcpServer({ GSC_ACCESS_MODE: 'readonly' } as unknown as Env);
+    const prompt = (server as unknown as {
+      _registeredPrompts: Record<string, {
+        argsSchema: { safeParseAsync: (value: unknown) => Promise<{ success: boolean; data?: Record<string, unknown> }> };
+        handler: (args: Record<string, unknown>) => Promise<{ messages: Array<{ content: { text: string } }> }>;
+      }>;
+    })._registeredPrompts['gsc-device-movement-review'];
+    const input = { site_url: 'sc-domain:example.com', end_date: '2026-06-20', search_type: 'web', query_contains: 'technical seo', countries: 'deu,aut', page_contains: '/de/' };
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      const parsed = await prompt.argsSchema.safeParseAsync(input);
+      expect(parsed.success).toBe(true);
+      expect(parsed.data?.query_contains).toBe(input.query_contains);
+      const guidance = (await prompt.handler(parsed.data!)).messages[0].content.text;
+      expect(guidance).toContain('"query_contains":"technical seo"');
+      expect(guidance).toContain('"countries":["DEU","AUT"]');
+      expect(guidance).toContain('"start_date_b":"2026-06-07"');
+      expect(guidance).toContain('query contains the exact query_contains topic');
+      const followUp = guidance.split('\n6. ')[1].split('\nNever call')[0];
+      expect(followUp).toContain('grouped by page');
+      expect(followUp).toContain('query contains');
+      expect(followUp).toContain('same country list');
+      const exactPage = (await prompt.handler({ ...parsed.data, page_contains: undefined, page_url: 'https://example.com/de/tool' })).messages[0].content.text;
+      const exactPageFollowUp = exactPage.split('\n6. ')[1].split('\nNever call')[0];
+      expect(exactPageFollowUp).toContain('dimension=query');
+      expect(exactPageFollowUp).toContain('query contains');
+      expect(exactPageFollowUp).toContain('page equals');
+      await expect(prompt.handler({ ...parsed.data, query: 'Technical SEO' })).rejects.toThrow('either query or query_contains');
+      for (const search_type of ['discover', 'googleNews', 'webMultimodal']) {
+        await expect(prompt.handler({ ...parsed.data, search_type })).rejects.toThrow('Query filtering');
+      }
+      expect((await prompt.argsSchema.safeParseAsync({ ...input, query_contains: '   ' })).success).toBe(false);
+      expect((await prompt.argsSchema.safeParseAsync({ ...input, query_contains: 'x'.repeat(121) })).success).toBe(false);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   it('offers a property-scoped index-status triage prompt without Google requests', async () => {
     const server = await createGscMcpServer(
       { GSC_ACCESS_MODE: 'readonly' } as unknown as Env,
