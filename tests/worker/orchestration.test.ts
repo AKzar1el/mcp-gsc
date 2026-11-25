@@ -1452,6 +1452,27 @@ describe('Worker orchestration', () => {
         'Do not invent a remaining budget or exact retry-unit total',
       ]) expect(text).toContain(required);
       expect(text).not.toContain('page contains page_url');
+      const exact = await prompt.argsSchema.safeParseAsync({
+        site_url: 'sc-domain:example.com', page_url: 'https://example.com/de/tool/',
+        end_date: '2026-11-10', query: 'Technical SEO', search_type: 'image',
+        countries: 'DEU,AUT', devices: 'mobile,desktop',
+      });
+      expect(exact.success).toBe(true);
+      expect(exact.data?.query).toBe('Technical SEO');
+      const exactText = (await prompt.handler(exact.data!)).messages[0].content.text;
+      for (const required of [
+        '"query":"Technical SEO"', '"page_url":"https://example.com/de/tool/"',
+        '"countries":["DEU","AUT"]', '"devices":["MOBILE","DESKTOP"]',
+        '"search_type":"image"', '2026-11-04', '2026-10-28',
+        'dimension="query", operator="equals", expression=query',
+        'never replace exact query equality with a substring',
+        'URL Inspection is URL-level', 'cannot inherit Search Analytics query',
+        'not measured zero', 'normal Search Analytics', 'not a live URL test',
+      ]) expect(exactText).toContain(required);
+      await expect(prompt.handler({ ...exact.data!, query_contains: 'SEO' }))
+        .rejects.toThrow('query or query_contains');
+      expect((await prompt.argsSchema.safeParseAsync({ ...exact.data!, query: '   ' })).success).toBe(false);
+      expect((await prompt.argsSchema.safeParseAsync({ ...exact.data!, query: 'x'.repeat(241) })).success).toBe(false);
       expect(fetchSpy).not.toHaveBeenCalled();
       await expect(prompt.handler({ site_url: 'sc-domain:example.com', page_url: 'https://elsewhere.test/' }))
         .rejects.toThrow('must belong to the site_url');
