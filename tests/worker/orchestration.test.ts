@@ -2607,8 +2607,19 @@ describe('Worker orchestration', () => {
       expect(scoped).toContain('same exact case-sensitive query');
       expect(scoped).toContain('same page_contains URL-section');
       expect(scoped).toContain('original country/device arrays');
+      expect(scoped).toContain('insights.cannibalization');
+      expect(scoped).toContain('instead of insights.query_pages, not both');
+      expect(scoped).toContain('observed impression shares');
+      expect(scoped).toContain('not proof of harmful cannibalization');
+      expect(scoped).toContain('default min_impressions and min_page_percentage');
+      const single = (await prompt.handler({ ...base, search_type: 'image', country: 'DEU', device: 'mobile' })).messages[0].content.text;
+      expect(single).toContain('insights.cannibalization');
+      expect(single).toContain('"search_type":"image"');
+      expect(single).toContain('"country":"DEU"');
+      expect(single).toContain('"device":"mobile"');
       const pair = (await prompt.handler({ ...base, page_url: 'https://example.com/de/guide' })).messages[0].content.text;
       expect(pair).toContain('skip redundant drilldown');
+      expect(pair).not.toContain('insights.cannibalization');
       await expect(prompt.handler({ ...base, query_contains: 'seo' })).rejects.toThrow('not both');
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
