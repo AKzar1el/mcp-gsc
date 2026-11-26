@@ -394,11 +394,13 @@ See **[SETUP.md](SETUP.md)** for every step in detail.
 ## Development
 
 ```bash
-npm install
-npm test              # typecheck + offline unit tests (what CI runs)
+npm ci                # install the locked development dependencies
+npm test              # full offline qualification, including metadata and launcher checks
 npm run dev           # wrangler dev (local)
 npm run test:smoke    # structural smoke tests against a deployment
 ```
+
+The GitHub CI Node matrix runs `npm run typecheck`, `npm run test:worker` and `npm run test:unit`, plus a separate Docker transport smoke job. Run the broader local `npm test` before submitting a change; the Node matrix alone does not cover every package and launcher check.
 
 Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
