@@ -144,6 +144,88 @@ describe('Glama inspection mode', () => {
     expect(dataText).not.toContain('Settings → Connectors');
   });
 
+  it('advertises regex patterns all MCP clients can compile without implicit flags', async () => {
+    const inspectionEnv: InspectionEnv = {
+      ...workerEnv,
+      GLAMA_INSPECTION_MODE: 'true',
+    };
+    const response = await callWorker(
+      request({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      inspectionEnv,
+    );
+    expect(response.status).toBe(200);
+    const envelope = await readJsonRpc(response);
+    expect(envelope).not.toHaveProperty('error');
+    const tools = (envelope.result as {
+      tools: Array<{ name: string; inputSchema?: unknown; outputSchema?: unknown }>;
+    }).tools;
+    let patternCount = 0;
+    const checkPatterns = (value: unknown, location: string): void => {
+      if (Array.isArray(value)) {
+        value.forEach((entry, index) => checkPatterns(entry, `${location}[${index}]`));
+      } else if (value && typeof value === 'object') {
+        for (const [key, entry] of Object.entries(value)) {
+          const childLocation = `${location}.${key}`;
+          if (key === 'pattern' && typeof entry === 'string') {
+            // JSON Schema has no regex-flags property; clients may use new RegExp(pattern).
+            expect(() => new RegExp(entry), childLocation).not.toThrow();
+            // Without the u flag, \p{...} silently changes meaning rather than throwing.
+            expect(entry, childLocation).not.toMatch(/\\[pP]\{/);
+            patternCount += 1;
+          } else {
+            checkPatterns(entry, childLocation);
+          }
+        }
+      }
+    };
+    for (const tool of tools) {
+      checkPatterns(tool.inputSchema, `${tool.name}.inputSchema`);
+      checkPatterns(tool.outputSchema, `${tool.name}.outputSchema`);
+    }
+    expect(patternCount).toBeGreaterThan(0);
+  });
+
+  it('exposes guided prompts through the client-facing MCP protocol without provider access', async () => {
+    const inspectionEnv: InspectionEnv = {
+      ...workerEnv,
+      GLAMA_INSPECTION_MODE: 'true',
+    };
+
+    const listed = await callWorker(
+      request({ jsonrpc: '2.0', id: 1, method: 'prompts/list' }),
+      inspectionEnv,
+    );
+    expect(listed.status).toBe(200);
+    const listedEnvelope = await readJsonRpc(listed);
+    expect(listedEnvelope).not.toHaveProperty('error');
+    const prompts = (listedEnvelope.result as {
+      prompts: Array<{ name: string; description?: string }>;
+    }).prompts;
+    const names = prompts.map((prompt) => prompt.name);
+    expect(names.length).toBeGreaterThanOrEqual(17);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).toEqual(expect.arrayContaining([
+      'gsc-property-readiness-review',
+      'gsc-weekly-client-report',
+      'gsc-sitemap-health-review',
+    ]));
+    expect(prompts.every((prompt) => Boolean(prompt.description?.trim()))).toBe(true);
+
+    const retrieved = await callWorker(
+      request({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'prompts/get',
+        params: { name: 'gsc-property-readiness-review', arguments: {} },
+      }),
+      inspectionEnv,
+    );
+    expect(retrieved.status).toBe(200);
+    const retrievedEnvelope = await readJsonRpc(retrieved);
+    expect(retrievedEnvelope).not.toHaveProperty('error');
+    expect(JSON.stringify(retrievedEnvelope.result)).toContain('sites.list');
+  });
+
   it('serves the MCP 2026-07-28 stateless lifecycle without initialize', async () => {
     const inspectionEnv: InspectionEnv = {
       ...workerEnv,

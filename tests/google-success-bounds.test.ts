@@ -11,6 +11,7 @@ import {
   listSitemaps,
   querySearchAnalytics,
   requestIndexing,
+  requestIndexingRemoval,
   type SearchAnalyticsQuery,
 } from '../src/google';
 
@@ -147,6 +148,22 @@ test('sites.get preserves all four documented permission levels', async () => {
   }
 });
 
+test('sites.get rejects permission metadata for a different exact property', async () => {
+  for (const [requested, returned] of [
+    [SITE, 'sc-domain:other.example.org'],
+    ['https://example.org/Docs/', 'https://example.org/docs/'],
+    ['https://example.org/', 'sc-domain:example.org'],
+  ]) {
+    await assert.rejects(
+      withMockFetch(
+        () => jsonResponse({ siteUrl: returned, permissionLevel: 'siteOwner' }),
+        () => getSite('offline-token', requested),
+      ),
+      /does not match the requested property identifier/,
+    );
+  }
+});
+
 test('sites.list and sites.get reject whitespace-padded or case-changed permission levels', async () => {
   for (const permissionLevel of ['siteOwner ', ' siteFullUser', 'SiteOwner']) {
     await assert.rejects(
@@ -267,6 +284,34 @@ test('sitemaps.get rejects malformed successful entries', async () => {
       /sitemaps\.get response contains invalid sitemap data/,
     );
   }
+});
+
+test('sitemaps.get rejects metadata for a different requested sitemap', async () => {
+  const path = 'https://feeds.example.net/Sitemap.xml?lang=en';
+  for (const returnedPath of [
+    'https://feeds.example.net/other.xml?lang=en',
+    'https://feeds.example.net/sitemap.xml?lang=en',
+    'https://feeds.example.net/Sitemap.xml?lang=de',
+    'https://example.org/Sitemap.xml?lang=en',
+  ]) {
+    let calls = 0;
+    await assert.rejects(
+      withMockFetch((input) => {
+        calls++;
+        assert.equal(String(input), `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(SITE)}/sitemaps/${encodeURIComponent(path)}`);
+        return jsonResponse({ path: returnedPath, errors: '0' });
+      }, () => getSitemap('offline-token', SITE, path)),
+      /sitemaps\.get response does not match the requested sitemap/,
+    );
+    assert.equal(calls, 1);
+  }
+});
+
+test('sitemaps.get accepts an exact authorized cross-site sitemap URL', async () => {
+  const path = 'https://feeds.example.net/Sitemap.xml?lang=en';
+  const expected = { path, errors: '0' };
+  const actual = await withMockFetch(() => jsonResponse(expected), () => getSitemap('offline-token', SITE, path));
+  assert.deepEqual(actual, expected);
 });
 
 test('sitemaps.get rejects malformed sitemap counts', async () => {
@@ -486,10 +531,36 @@ test('Indexing metadata rejects malformed successful root and notification shape
   }
 });
 
+test('Indexing metadata rejects mismatched top-level and nested URL identities', async () => {
+  const wrong = 'https://example.org/other-page';
+  for (const payload of [
+    { url: wrong },
+    { url: URL, latestUpdate: { url: wrong } },
+    { url: URL, latestRemove: { url: wrong } },
+    { latestUpdate: { url: 'https://example.org/Page' } },
+    { latestRemove: { url: `${URL}?other=1` } },
+    { url: '' },
+  ]) {
+    let calls = 0;
+    await assert.rejects(
+      withMockFetch((input) => {
+        calls += 1;
+        const endpoint = new globalThis.URL(String(input));
+        assert.equal(endpoint.origin + endpoint.pathname, 'https://indexing.googleapis.com/v3/urlNotifications/metadata');
+        assert.equal(endpoint.searchParams.get('url'), URL);
+        return jsonResponse(payload);
+      }, () => getIndexingNotificationMetadata('offline-token', URL)),
+      /Google Indexing metadata response contains mismatched URL identity/,
+    );
+    assert.equal(calls, 1);
+  }
+});
+
 test('Indexing metadata preserves absent and nullable notifications with future fields', async () => {
   const values = [
     {},
     { url: URL, latestUpdate: null, latestRemove: null },
+    { latestUpdate: { url: URL }, latestRemove: { url: URL } },
     {
       url: URL,
       latestUpdate: { url: URL, type: 'URL_UPDATED', notifyTime: '2026-11-09T00:00:00Z', future: 1 },
@@ -520,6 +591,42 @@ test('Indexing publish preserves valid wrapped metadata and future fields', asyn
     () => jsonResponse(receipt),
     () => requestIndexing('offline-token', URL),
   ), receipt);
+});
+
+test('Indexing publish acknowledges HTTP success without trusting mismatched receipt URLs or retrying', async () => {
+  const other = 'https://example.org/other';
+  for (const [publish, type] of [[requestIndexing, 'URL_UPDATED'], [requestIndexingRemoval, 'URL_DELETED']] as const) {
+    const cases = [
+      { url: other, type },
+      { urlNotificationMetadata: { url: other } },
+      { urlNotificationMetadata: { url: URL, latestUpdate: { url: other } } },
+      { urlNotificationMetadata: { latestRemove: { url: other } } },
+      { url: URL, type, urlNotificationMetadata: { url: other } },
+    ];
+    for (const receipt of cases) {
+      let posts = 0;
+      const result = await withMockFetch((input, init) => {
+        if (String(input) === URL) {
+          return type === 'URL_DELETED'
+            ? new Response(null, { status: 404 })
+            : new Response('<script type="application/ld+json">{"@context":"https://schema.org","@type":"JobPosting"}</script>', {
+                status: 200, headers: { 'content-type': 'text/html' },
+              });
+        }
+        assert.equal(String(input), 'https://indexing.googleapis.com/v3/urlNotifications:publish');
+        assert.equal(init?.method, 'POST');
+        assert.deepEqual(JSON.parse(String(init?.body)), { url: URL, type });
+        posts++;
+        return jsonResponse(receipt);
+      }, () => publish('offline-token', URL));
+      assert.deepEqual(result, {
+        receipt_status: 'unverified',
+        provider_http_status: 200,
+        note: 'Google returned HTTP success but the Indexing notification receipt was malformed or unreadable. Verify notification metadata before considering a new submission.',
+      });
+      assert.equal(posts, 1);
+    }
+  }
 });
 
 test('malformed successful Indexing publish receipts explicitly remain unverified', async () => {

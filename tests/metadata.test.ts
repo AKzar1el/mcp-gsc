@@ -1107,6 +1107,31 @@ test('agency report follow-ups preserve weekly digest device and section scope',
   assert.match(guide, /never compare device-scoped totals with all-device totals/i);
 });
 
+test('agency reporting exposes exact-page digest and scope-preserving comparison instructions', () => {
+  const guide = readFileSync(resolve(projectRoot, 'docs/agency-weekly-reporting.md'), 'utf8');
+  const catalog = indexSource.split("name: 'reports.weekly_digest'")[1]?.split('\n  },')[0] ?? '';
+  assert.match(catalog, /page_url/);
+  assert.match(guide, /Optional exact-page report:/);
+  assert.match(guide, /page_url: "https:\/\/blog\.example\.com\/pricing"/);
+  assert.match(guide, /"dimension":"page","operator":"equals","expression":"https:\/\/blog\.example\.com\/pricing"/);
+  assert.match(guide, /case-sensitive/);
+  assert.match(guide, /Never replace the exact page filter with `page_contains`/);
+});
+
+test('agency reporting keeps exact-query scope in follow-ups and client review', () => {
+  const guide = readFileSync(resolve(projectRoot, 'docs/agency-weekly-reporting.md'), 'utf8');
+  const example = guide.match(/For the exact-query example[^\r\n]*\r?\n\r?\n```json\r?\n([^\r\n]+)\r?\n```/)?.[1];
+  assert.ok(example, 'guide must include a copyable exact-query filter group');
+  assert.deepEqual(JSON.parse(example), [{
+    groupType: 'and',
+    filters: [{ dimension: 'query', operator: 'equals', expression: 'Technical SEO' }],
+  }]);
+  assert.match(guide, /\| Report scope \|[^\n]*exact query/);
+  const checklist = guide.split('## Acceptance checklist')[1] ?? '';
+  assert.match(checklist, /`query`[^\n]*case-sensitive/);
+  assert.match(checklist, /exact-query[^\n]*`analytics\.query`/);
+});
+
 test('weekly digest country scope is discoverable and documented as ISO alpha-3', () => {
   const catalog = indexSource.split("name: 'reports.weekly_digest'")[1]?.split('\n  },')[0] ?? '';
   const registration = indexSource.match(/this\.server\.registerTool\(\s*'reports\.weekly_digest'([\s\S]*?)outputSchema:/)?.[1] ?? '';
@@ -1114,7 +1139,7 @@ test('weekly digest country scope is discoverable and documented as ISO alpha-3'
   const digestReadmeRow = readmeSource.split('**`reports.weekly_digest`**')[1]?.split('\n')[0] ?? '';
   assert.match(catalog, /country/);
   assert.match(registration, /country:\s*z\.string/);
-  assert.match(indexSource, /device,\s*query_contains,\s*country,\s*countries,\s*devices,\s*page_url,\s*\);\s*return toolResponse/);
+  assert.match(indexSource, /const markdown = await generateWeeklyDigest\([\s\S]*?device,\s*query_contains,\s*country,\s*countries,\s*devices,\s*page_url,\s*query,\s*\);/);
   assert.match(registration, /countries:\s*z\.array/);
   assert.match(registration, /devices:\s*z\.array/);
   assert.match(readmeSource, /weekly reports, `reports\.weekly_digest` also accepts `countries`/);
@@ -1132,9 +1157,9 @@ test('capabilities catalog advertises supported insight filters and weekly repor
   for (const [toolName, filters] of [
     ['insights.page_queries', ['query_contains', 'country', 'device']],
     ['insights.query_pages', ['page_contains', 'country', 'device']],
-    ['insights.quick_wins', ['page_contains', 'query_contains', 'country', 'countries', 'device', 'devices']],
+    ['insights.quick_wins', ['page_url', 'page_contains', 'query_contains', 'country', 'countries', 'device', 'devices']],
     ['insights.cannibalization', ['page_contains', 'query_contains', 'country', 'device']],
-    ['insights.content_decay', ['page_contains', 'query_contains', 'country', 'countries', 'device', 'devices']],
+    ['insights.content_decay', ['page_url', 'page_contains', 'query_contains', 'country', 'countries', 'device', 'devices']],
     ['reports.weekly_digest', ['search_type', 'page_contains', 'device', 'devices', 'country', 'countries', 'query_contains']],
   ] as const) {
     const entry = catalog.split(`name: '${toolName}'`)[1]?.split('\n  },')[0] ?? '';
@@ -1196,9 +1221,20 @@ test('exact page/query drilldowns offer opt-in preliminary data without changing
 });
 
 test('direct page and query drilldowns advertise optional device scope', () => {
-  assert.equal((indexSource.match(/device:\s*DIRECT_INSIGHT_DEVICE_SCHEMA/g) ?? []).length, 2);
+  const registrations = [...indexSource.matchAll(/this\.server\.registerTool\(\s*'insights\.(?:page_queries|query_pages)'([\s\S]*?)outputSchema:/g)];
+  assert.equal(registrations.length, 2);
+  for (const [, registration] of registrations) {
+    assert.match(registration, /device:\s*DIRECT_INSIGHT_DEVICE_SCHEMA/);
+  }
   assert.match(indexSource, /const DIRECT_INSIGHT_DEVICE_SCHEMA[\s\S]*?desktop[\s\S]*?mobile[\s\S]*?tablet/);
   assert.match(readmeSource, /Both accept optional .*device/);
+});
+
+test('search-visible page discovery advertises optional market and device scopes', () => {
+  const registration = indexSource.match(/this\.server\.registerTool\(\s*'indexing\.list_pages'([\s\S]*?)outputSchema:/)?.[1] ?? '';
+  assert.match(registration, /country:\s*DIRECT_INSIGHT_COUNTRY_SCHEMA/);
+  assert.match(registration, /device:\s*DIRECT_INSIGHT_DEVICE_SCHEMA/);
+  assert.match(readmeSource, /To distinguish visitors in Germany on mobile/);
 });
 
 test('content decay country scope is discoverable, validated and not confused with page language', () => {
@@ -1208,6 +1244,15 @@ test('content decay country scope is discoverable, validated and not confused wi
   assert.match(schema, /CONTENT_DECAY_COUNTRY_SCHEMA/);
   assert.match(schema, /ISO 3166-1 alpha-3/);
   assert.match(readmeSource, /For `insights\.content_decay`, optional `country` scopes[^\n]*searcher/i);
+});
+
+test('content decay exact page is discoverable and property-validated before Google reads', () => {
+  const schema = readFileSync(resolve(projectRoot, 'src/content-decay-schema.ts'), 'utf8');
+  const registration = indexSource.match(/this\.server\.registerTool\(\s*'insights\.content_decay'([\s\S]*?)outputSchema:/)?.[1] ?? '';
+  assert.match(schema, /CONTENT_DECAY_PAGE_URL_SCHEMA/);
+  assert.match(registration, /page_url:\s*CONTENT_DECAY_PAGE_URL_SCHEMA/);
+  assert.match(indexSource, /const CONTENT_DECAY_OUTPUT_SCHEMA = \{[\s\S]*?page_url:\s*z\.string\(\)\.nullable\(\)/);
+  assert.match(readmeSource, /For `insights\.content_decay`, optional `page_url`/);
 });
 
 test('content decay device scope is discoverable and consistent between comparison periods', () => {

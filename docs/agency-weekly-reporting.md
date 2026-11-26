@@ -27,6 +27,8 @@ The digest makes five Search Analytics queries against the shared quota and has 
 
 **Optional section-level report:** For a multilingual site, call `reports.weekly_digest` with the same exact `site_url` and, for example, `page_contains: "/de/"`. This applies the page-URL substring filter to the digest's totals, query movers, and page rows, and labels the report as filtered rather than property-wide. The filter matches URLs containing the supplied text; it does not identify a language automatically or guarantee that all matching URLs are German. Check the actual URL structure first. A filtered digest makes the same number of Search Analytics requests as an unfiltered digest, but each separate invocation still consumes its own quota allowance.
 
+**Optional exact-page report:** To report on one authorized landing page without merging similarly named sibling URLs, select the exact `site_url: "sc-domain:example.com"` and `page_url: "https://blog.example.com/pricing"` (illustrative values). The server validates that the URL belongs to the selected property, then applies a **case-sensitive** Google-side page-equals filter to every digest request before aggregation. A Domain property can span multiple hosts; do not replace the full URL with a path or assume that `shop.example.com/pricing` is the same page. Never combine `page_url` with `page_contains`. An exact-page report is not property-wide and consumes the same five finalized or three preliminary Search Analytics requests as any other single digest call; the separate hourly and shared quota limits still apply.
+
 **Optional search-surface report:** Supply `search_type: "image"`, `"video"`, or `"news"` when the client needs performance for that specific Search Console surface instead of the default `"web"`. The `"news"` value is the Google Search News tab, not the Google News app; Discover and Google News reports cannot provide the query-based movers used here. Every request in the digest uses the same selected type, and the report labels that scope. Non-Web reports refrain from Web-specific SEO prescriptions until the underlying query/page evidence is reviewed. You can combine `search_type` and `page_contains`, without changing the number of Google requests.
 
 **Optional device-scoped report:** Supply `device: "mobile"`, `"desktop"`, or `"tablet"` to the digest when the client needs performance for one device category. You can combine this with `search_type` and `page_contains`. All digest requests apply the same Google-side device filter (MOBILE, DESKTOP, or TABLET), so the resulting metrics are for that device only. A device-scoped digest is **not** interchangeable with an all-device report. Each new invocation still consumes its normal shared Search Analytics quota.
@@ -35,11 +37,29 @@ The digest makes five Search Analytics queries against the shared quota and has 
 
 **Optional topic report:** Supply `query_contains: "technical seo"` to see only Search Console query topics containing that phrase. Matching queries can be omitted or anonymized by Google. Do not treat the resulting totals as sitewide or compare them with an unfiltered report.
 
+**Optional exact-query report:** Supply `query: "Technical SEO"` instead of `query_contains` in `reports.weekly_digest` or `gsc-weekly-client-report`. The exact query is preserved verbatim and matched at Google with case-sensitive equality on every request. Keep that query equality and the original page, searcher, date and surface scopes in `analytics.query` and `analytics.compare` follow-ups. Do not replace it with a substring filter, including when drilling into a page. The same five finalized or three preliminary requests apply; missing or anonymized queries remain unknown.
+
 ### 3. Reconcile client-facing performance and movers
 
-> For the same property and exact seven-day window from the digest, call `analytics.query` with `dimensions: []` and `data_state: "final"` for genuine site-wide totals. Compare them to the previous seven-day window using the same search type and filters. For row-level movers, use `analytics.compare` with `start_date_a`, `end_date_a`, `start_date_b`, `end_date_b`, `dimension: "query"`, and `data_state: "final"`. Clearly identify preliminary or mismatched date states; do not quietly mix them.
+> For the same property and exact seven-day window from the digest, call `analytics.query` with `dimensions: []` and `data_state: "final"` for matched-scope totals (site-wide only if unfiltered). Compare them to the previous seven-day window using the same search type and filters. For row-level movers, use `analytics.compare` with `start_date_a`, `end_date_a`, `start_date_b`, `end_date_b`, `dimension: "query"`, and `data_state: "final"`. Clearly identify preliminary or mismatched date states; do not quietly mix them.
 
-The default steps above produce **property-wide, all-device Web** comparisons. Preserve the digest's exact `site_url`, date windows, `search_type`, `page_contains`, `device`, `query_contains`, `country` and data-state interpretation when comparing totals or movers. If the digest used a non-default search type, pass that same type to both follow-up tools; never compare Image/Video/News-tab totals to Web totals as though they were the same population. If it used a URL section filter or query topic, both tools need the corresponding page or query filter. **Both `analytics.query` and `analytics.compare` must preserve the same device filter** whenever the digest selected a device; never compare device-scoped totals with all-device totals. Likewise, both must preserve any country filter before claiming geographic trends.
+The unfiltered default steps above produce **property-wide, all-device Web** comparisons. Preserve the digest's exact `site_url`, date windows, `search_type`, `page_url` or `page_contains`, `device` or `devices`, `query` or `query_contains`, `country` or `countries` and data-state interpretation when comparing totals or movers. If the digest used a non-default search type, pass that same type to both follow-up tools; never compare Image/Video/News-tab totals to Web totals as though they were the same population. If it used an exact page, a URL section, an exact query or a query topic, both tools need the corresponding Google-side page or query filter. **Both `analytics.query` and `analytics.compare` must preserve the same device filter** whenever the digest selected a device; never compare device-scoped totals with all-device totals. Likewise, both must preserve any country filter before claiming geographic trends.
+
+For the exact-page example, add this AND filter group to **both** `analytics.query` and `analytics.compare`, keeping the same authorized property, search surface, finalized nonoverlapping periods and any additional original query, country or device filters:
+
+```json
+[{"groupType":"and","filters":[{"dimension":"page","operator":"equals","expression":"https://blog.example.com/pricing"}]}]
+```
+
+Never replace the exact page filter with `page_contains` in a follow-up: substring matches can include sibling URLs and silently broaden the report. If a query or device/country scope was selected for the digest, append its identical Google-side filters to this group; for plural countries/devices, use the original `filterLists` values rather than silently choosing one. Treat all resulting totals and query movers as scoped to that exact URL and searcher segment, not the full property. A further `insights.page_queries` investigation is appropriate only if it can preserve the same exact `page_url` and selected scope, with its own read quota. For an exact query, use `analytics.query` with the original equality filter instead, and avoid a redundant drilldown when both the page and query are already exact.
+
+For the exact-query example, add this AND group to both follow-ups as `dimension_filter_groups`, retaining all other original filters in the same group:
+
+```json
+[{"groupType":"and","filters":[{"dimension":"query","operator":"equals","expression":"Technical SEO"}]}]
+```
+
+Keep the original spelling and case. Do not add a `query_contains` filter or broaden the equality to a substring. Use the page dimension for an independently justified landing-page comparison within that query; an exact query is not a list of related queries.
 
 For a `/de/` **mobile-only** digest, combine the page and device filters in one AND group, passing the same `dimension_filter_groups` value to `analytics.query` and `analytics.compare` (for both periods). When also filtering by searcher country `DEU` and query topic `seo`, append both filters to that same group:
 
@@ -55,9 +75,9 @@ For a combined searcher segment, a digest with `countries: ["DEU", "AUT"]`, `dev
 [{"groupType":"and","filters":[{"dimension":"page","operator":"contains","expression":"/de/"}],"filterLists":[{"dimension":"country","expressions":["DEU","AUT"]},{"dimension":"device","expressions":["MOBILE","DESKTOP"]}]}]
 ```
 
-Within each list, Google ORs values; across lists and the page filter it ANDs dimensions. Retain any original `query_contains` as an additional query-contains filter and do not combine a singular country/device equals filter with a list for that dimension. Compare only query or page keys observed in **both** bounded period samples; missing rows are not measured zero, and a combined segment cannot be attributed to individual countries or devices. The extra comparison uses its normal two Search Analytics requests plus any charged retries. A preliminary digest does not justify finalized trend claims without independently matched finalized periods.
+Within each list, Google ORs values; across lists and the page filter it ANDs dimensions. Retain any original `query_contains` as a query-contains filter or `query` as a case-sensitive query-equals filter; do not combine a singular country/device equals filter with a list for that dimension. Compare only query or page keys observed in **both** bounded period samples; missing rows are not measured zero, and a combined segment cannot be attributed to individual countries or devices. The extra comparison uses its normal two Search Analytics requests plus any charged retries. A preliminary digest does not justify finalized trend claims without independently matched finalized periods.
 
-> For the most important page behind a reported mover, use `insights.page_queries` with its exact URL, and include only the supporting observed query/page rows. Where the question is query-first, `insights.query_pages` may be more suitable. If there are no comparable returned rows, withhold any claim of a measured gain or loss for that row.
+> For the most important page behind a reported mover, use `insights.page_queries` with its exact URL, and include only the supporting observed query/page rows. Where the question is query-first, `insights.query_pages` may be more suitable. For an exact-query report, use `analytics.query` with the original query equality and all other selected filters, including exact page equality when supplied, rather than broadening the scope. If there are no comparable returned rows, withhold any claim of a measured gain or loss for that row.
 
 The comparison tool covers only keys present in both bounded period responses. **A missing row is not zero**. Google's Search Analytics API may return top rows rather than a complete dataset. Average position is an aggregate metric, not a current SERP rank or an exact page placement. A change in clicks or impressions does not establish that an SEO edit, algorithm change, or competitor caused it.
 
@@ -68,9 +88,9 @@ Use this reusable skeleton, filling values only from independently returned tool
 | Section | Client-facing content |
 |---|---|
 | Client property | `[exact Google siteUrl]` |
-| Report scope | `[search type, device, searcher country, query topic, page URL scope and limitations; state unfiltered where applicable]` |
+| Report scope | `[search type, device(s), searcher country/countries, exact query or query topic, page URL scope and limitations; state unfiltered where applicable]` |
 | Reporting period | `[current dates, Search Console Pacific Time]` vs. `[previous dates]` |
-| Consistently scoped totals | `[measured clicks and impressions, source, data_state, search type and matching page/device filters if used]` |
+| Consistently scoped totals | `[measured clicks and impressions, source, data_state, search type and matching page/query/country/device filters if used]` |
 | Query/page movement | `[observed comparable rows, or insufficient comparable data]` |
 | One priority action | `[specific, evidence-linked recommendation or no action justified]` |
 | Method and limitations | `[Search Analytics row coverage, freshness, average-position caveats]` |
@@ -81,6 +101,6 @@ Review the property, dates, metric definitions, privacy requirements, and factua
 ## Acceptance checklist
 
 - A permitted client account returns the exact property through `sites.list` and `sites.get`; the server exposes only read-capable tools under `readonly`.
-- One `reports.weekly_digest` call produces a dated draft; `analytics.query` with empty dimensions is used for totals and `analytics.compare` uses matching periods/data state. When `page_contains`, `device`, `query_contains` or `country` is selected, both follow-ups apply equivalent page/device/topic/country filters, and all figures are labeled with their actual scope rather than property-wide or all-device.
-- Important movers are supported by actual `insights.page_queries` evidence; absent rows, unsupported causal claims, unmeasured conversions, and unverified business value are excluded.
+- One `reports.weekly_digest` call produces a dated draft; `analytics.query` with empty dimensions is used for totals and `analytics.compare` uses matching periods/data state. When `page_url`, `page_contains`, `device`, `devices`, `query`, `query_contains`, `country` or `countries` is selected, both follow-ups preserve equivalent filters, including case-sensitive query equality and combined searcher segments where selected. All figures are labeled with their actual scope rather than property-wide or all-device.
+- Important movers are supported by actual same-scope evidence from `insights.page_queries` or, for an exact-query report, `analytics.query` with the original equality and other filters; absent rows, unsupported causal claims, unmeasured conversions, and unverified business value are excluded.
 - The final client report has a truthful methodology note, no invented customer outcomes, and requires human approval before any external delivery.
