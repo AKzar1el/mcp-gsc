@@ -5018,6 +5018,7 @@ describe('Worker orchestration', () => {
         end_date: '2026-08-31',
         search_type: 'web',
         queries: [{ query: 'seo audit', clicks: 7, impressions: 90, position: null }],
+        scope_note: expect.stringContaining('Missing average position is null, not zero; observed clicks and impressions are retained.'),
         data_state: 'all',
         preliminary_data_possible: true,
       });
@@ -5130,6 +5131,7 @@ describe('Worker orchestration', () => {
         expect(result.structuredContent).toMatchObject({ countries: ['DEU', 'AUT'], devices: ['mobile', 'desktop'] });
         expect(String(result.structuredContent.scope_note)).toContain('combined');
       }
+      expect(String(pageResult.structuredContent.scope_note)).toContain('Missing average position is null, not zero; observed clicks and impressions are retained.');
       const conflicting = await tools['insights.query_pages'].handler({
         ...input, query: 'seo tools', country: 'deu',
       }) as { isError?: boolean };
@@ -5172,7 +5174,7 @@ describe('Worker orchestration', () => {
               clicks: 4,
               impressions: 80,
               ctr: 0.05,
-              position: 8,
+              ...(topicScoped ? {} : { position: 8 }),
             }],
           });
         }
@@ -5200,17 +5202,18 @@ describe('Worker orchestration', () => {
       expect(unfiltered.structuredContent).toMatchObject({
         query_contains: null,
         device: null,
-        queries: [{ query: 'brand name' }],
+        queries: [{ query: 'brand name', position: 8 }],
       });
       expect(scoped.structuredContent).toMatchObject({
         query_contains: 'seo',
         country: 'DEU',
         device: 'mobile',
-        queries: [{ query: 'seo audit' }],
+        queries: [{ query: 'seo audit', clicks: 4, impressions: 80, ctr: 0.05, position: null }],
       });
       expect(scoped.structuredContent.scope_note).toContain('not all queries');
       expect(scoped.structuredContent.scope_note).toContain('searcher country');
       expect(scoped.structuredContent.scope_note).toContain('device');
+      expect(scoped.structuredContent.scope_note).toContain('Missing average position is null, not zero; observed clicks and impressions are retained.');
       expect(requests).toHaveLength(2);
       expect(requests[0]).toMatchObject({
         dimensions: ['query'],
@@ -5229,6 +5232,24 @@ describe('Worker orchestration', () => {
             { dimension: 'device', operator: 'equals', expression: 'MOBILE' },
           ],
         }],
+      });
+      const topicOnly = await tools['insights.page_queries'].handler({ ...input, query_contains: 'seo' }) as {
+        structuredContent: Record<string, unknown>;
+      };
+      expect(topicOnly.structuredContent).toMatchObject({
+        query_contains: 'seo',
+        country: null,
+        device: null,
+        queries: [{ query: 'seo audit', clicks: 4, impressions: 80, ctr: 0.05, position: null }],
+        scope_note: expect.stringContaining('Missing average position is null, not zero; observed clicks and impressions are retained.'),
+      });
+      expect(requests).toHaveLength(3);
+      expect(requests[2]).toMatchObject({
+        dimensions: ['query'],
+        dimensionFilterGroups: [{ filters: [
+          { dimension: 'page', operator: 'equals', expression: input.page_url },
+          { dimension: 'query', operator: 'contains', expression: 'seo' },
+        ] }],
       });
     } finally {
       globalThis.fetch = originalFetch;

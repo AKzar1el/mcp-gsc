@@ -3277,12 +3277,12 @@ class GscMcpRuntime {
           countries: countries?.map((value) => value.toUpperCase()) ?? null,
           devices: devices ?? null,
           scope_note: countries || devices
-            ? 'Queries reflect one combined Google-side searcher segment (OR within country/device lists, AND across dimensions and exact page/topic filters), not separately measured country/device traffic. Searcher country is not page language; pagination and omitted rows mean this is not exhaustive and missing rows are not zero impressions.'
+            ? 'Queries reflect one combined Google-side searcher segment (OR within country/device lists, AND across dimensions and exact page/topic filters), not separately measured country/device traffic. Searcher country is not page language; pagination and omitted rows mean this is not exhaustive and missing rows are not zero impressions. Missing average position is null, not zero; observed clicks and impressions are retained.'
             : country || device
-            ? `Queries are filtered to the requested ${country ? 'searcher country' : ''}${country && device ? ' and ' : ''}${device ? 'device' : ''} and optional query topic at Google before pagination; these are not all queries for this page${device ? ' or all-device results' : ''}, and missing rows do not mean zero impressions.${country ? ' Searcher country is not page language.' : ''}`
+            ? `Queries are filtered to the requested ${country ? 'searcher country' : ''}${country && device ? ' and ' : ''}${device ? 'device' : ''} and optional query topic at Google before pagination; these are not all queries for this page${device ? ' or all-device results' : ''}, and missing rows do not mean zero impressions.${country ? ' Searcher country is not page language.' : ''} Missing average position is null, not zero; observed clicks and impressions are retained.`
             : query_contains
-              ? 'Queries are filtered to the requested case-insensitive topic substring at Google before pagination; these are not all queries for this page, and missing rows do not mean zero impressions.'
-            : 'Observed page/query rows may be incomplete because Search Console can omit or truncate data; missing rows do not mean zero impressions.',
+              ? 'Queries are filtered to the requested case-insensitive topic substring at Google before pagination; these are not all queries for this page, and missing rows do not mean zero impressions. Missing average position is null, not zero; observed clicks and impressions are retained.'
+            : 'Observed page/query rows may be incomplete because Search Console can omit or truncate data; missing rows do not mean zero impressions. Missing average position is null, not zero; observed clicks and impressions are retained.',
           queries: bounded.items,
           pagination: paginationMetadata(source),
           result_page: bounded.resultPage,
