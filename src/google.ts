@@ -1243,6 +1243,17 @@ export async function querySearchAnalytics(
   if (rows.length > body.rowLimit) {
     throw new Error('Search Analytics response contains invalid rows: requested rowLimit exceeded.');
   }
+  // Grouped rows must be unique by their complete ordered dimension tuple.
+  if (body.dimensions.length > 0) {
+    const seen = new Set<string>();
+    for (const row of rows) {
+      const tuple = JSON.stringify(row.keys);
+      if (seen.has(tuple)) {
+        throw new Error('Search Analytics returned a duplicate dimension tuple; no combined results are available.');
+      }
+      seen.add(tuple);
+    }
+  }
   const rawMetadata = data.metadata === undefined ? undefined : asUnknownRecord(data.metadata);
   if ((data.metadata !== undefined && !rawMetadata) ||
       (data.responseAggregationType !== undefined &&

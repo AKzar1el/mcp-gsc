@@ -923,15 +923,16 @@ test('Search Analytics rejects a successful response with non-array rows', async
 
 test('Search Analytics rejects successful pages that exceed the requested row limit', async () => {
   const row = { keys: ['example'], clicks: 1, impressions: 2, ctr: 0.5, position: 3 };
+  const makeRows = (length: number) => Array.from({ length }, (_, index) => ({ ...row, keys: [`example-${index}`] }));
   const exactlyFull = await withMockFetch(
-    () => jsonResponse({ rows: Array.from({ length: ANALYTICS_QUERY.rowLimit }, () => row) }),
+    () => jsonResponse({ rows: makeRows(ANALYTICS_QUERY.rowLimit) }),
     () => querySearchAnalytics('offline-token', SITE, ANALYTICS_QUERY),
   );
   assert.equal(exactlyFull.rows.length, ANALYTICS_QUERY.rowLimit);
 
   await assert.rejects(
     withMockFetch(
-      () => jsonResponse({ rows: Array.from({ length: ANALYTICS_QUERY.rowLimit + 1 }, () => row) }),
+      () => jsonResponse({ rows: makeRows(ANALYTICS_QUERY.rowLimit + 1) }),
       () => querySearchAnalytics('offline-token', SITE, ANALYTICS_QUERY),
     ),
     /Search Analytics response contains invalid rows/,

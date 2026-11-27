@@ -80,6 +80,35 @@ test('querySearchAnalytics preserves rows when Google sends no optional metadata
   assert.equal('metadata' in response, false);
 });
 
+test('querySearchAnalytics rejects repeated grouped tuples without retrying', async () => {
+  const originalFetch = globalThis.fetch;
+  let calls = 0;
+  try {
+    for (const duplicate of [rows[0], { ...rows[0], clicks: 90, ctr: 0.45 }]) {
+      globalThis.fetch = async () => {
+        calls += 1;
+        return json({ rows: [rows[0], duplicate] });
+      };
+      await assert.rejects(querySearchAnalytics('token', 'sc-domain:example.com', QUERY), /duplicate dimension tuple/i);
+    }
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('querySearchAnalytics preserves distinct ordered compound tuples', async () => {
+  const distinct = [
+    { ...rows[0], keys: ['a|b', 'c'] },
+    { ...rows[0], keys: ['a', 'b|c'] },
+    { ...rows[0], keys: ['c', 'a|b'] },
+  ];
+  const result = await withMockFetch({ rows: distinct }, () =>
+    querySearchAnalytics('token', 'sc-domain:example.com', { ...QUERY, dimensions: ['query', 'page'] }),
+  );
+  assert.deepEqual(result.rows, distinct);
+});
+
 test('querySearchAnalytics preserves Google response aggregation type', async () => {
   const response = await withMockFetch(
     { rows, responseAggregationType: 'byPage' },
