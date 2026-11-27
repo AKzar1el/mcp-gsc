@@ -97,6 +97,44 @@ test('paginator rejects conflicting concrete aggregation types instead of mixing
   );
 });
 
+test('paginator rejects a repeated dimension tuple across pages, regardless of metric equality', async () => {
+  const firstPage = makeRows(SEARCH_ANALYTICS_PAGE_SIZE);
+  for (const clicks of [10, 99]) {
+    await withMockAnalyticsPages(new Map([
+      [0, firstPage],
+      [SEARCH_ANALYTICS_PAGE_SIZE, [{ ...firstPage[0], clicks }]],
+    ]), async (startRows) => {
+      await assert.rejects(
+        querySearchAnalyticsPaginated('token', 'sc-domain:example.com', baseQuery),
+        /duplicate dimension tuple/i,
+      );
+      assert.deepEqual(startRows, [0, SEARCH_ANALYTICS_PAGE_SIZE]);
+    });
+  }
+});
+
+test('paginator rejects duplicate tuples within a page but preserves distinct compound keys', async () => {
+  const row = makeRows(1)[0];
+  const distinct = [
+    { ...row, keys: ['a,b', 'c'] },
+    { ...row, keys: ['a', 'b,c'] },
+    { ...row, keys: ['a', 'c'] },
+    { ...row, keys: ['c', 'a'] },
+  ];
+  await withMockAnalyticsPages(new Map([[0, distinct]]), async (startRows) => {
+    const result = await querySearchAnalyticsPaginated('token', 'sc-domain:example.com', baseQuery);
+    assert.deepEqual(result.rows, distinct);
+    assert.deepEqual(startRows, [0]);
+  });
+  await withMockAnalyticsPages(new Map([[0, [row, row]]]), async (startRows) => {
+    await assert.rejects(
+      querySearchAnalyticsPaginated('token', 'sc-domain:example.com', baseQuery),
+      /duplicate dimension tuple/i,
+    );
+    assert.deepEqual(startRows, [0]);
+  });
+});
+
 test('paginator retains known aggregation evidence across a page with unknown metadata', async () => {
   await withMockAnalyticsPages(
     new Map([
@@ -175,9 +213,9 @@ test('paginator reports when its local safety ceiling is reached', async () => {
   await withMockAnalyticsPages(
     new Map([
       [0, fullPage],
-      [SEARCH_ANALYTICS_PAGE_SIZE, fullPage],
-      [SEARCH_ANALYTICS_PAGE_SIZE * 2, fullPage],
-      [SEARCH_ANALYTICS_PAGE_SIZE * 3, fullPage],
+      [SEARCH_ANALYTICS_PAGE_SIZE, makeRows(SEARCH_ANALYTICS_PAGE_SIZE, SEARCH_ANALYTICS_PAGE_SIZE)],
+      [SEARCH_ANALYTICS_PAGE_SIZE * 2, makeRows(SEARCH_ANALYTICS_PAGE_SIZE, SEARCH_ANALYTICS_PAGE_SIZE * 2)],
+      [SEARCH_ANALYTICS_PAGE_SIZE * 3, makeRows(SEARCH_ANALYTICS_PAGE_SIZE, SEARCH_ANALYTICS_PAGE_SIZE * 3)],
     ]),
     async (startRows) => {
       const result = await querySearchAnalyticsPaginated(
