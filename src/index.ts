@@ -465,7 +465,8 @@ const SEARCH_ANALYTICS_OUTPUT_SCHEMA = {
     'True because search_type webMultimodal now selects the dedicated API surface, separate from ordinary web Search. Availability of rows is property-dependent.',
   ),
   multimodal_note: z.string(),
-  next_start_row: z.number().int().nonnegative().optional(),
+  next_start_row: SEARCH_ANALYTICS_START_ROW_SCHEMA.optional(),
+  offset_exhausted: z.literal(true).optional().describe('No representable provider continuation remains; results may still be partial.'),
   has_more: z.boolean(),
   truncated: z.boolean(),
   byte_limit_reached: z.boolean(),
@@ -542,6 +543,7 @@ const RESULT_PAGE_OUTPUT_SCHEMA = z.object({
   truncated: z.boolean(),
   byte_limit_reached: z.boolean(),
   next_start_row: z.number().int().nonnegative().optional(),
+  offset_exhausted: z.literal(true).optional().describe('No representable provider continuation remains; results may still be partial.'),
 });
 
 const SITES_OUTPUT_SCHEMA = {
@@ -3170,6 +3172,9 @@ class GscMcpRuntime {
         }
         if (bounded.resultPage.next_start_row !== undefined) {
           payload.next_start_row = bounded.resultPage.next_start_row;
+        }
+        if (bounded.resultPage.offset_exhausted) {
+          payload.offset_exhausted = true;
         }
         // Compact JSON on purpose: analytics responses are the largest this
         // server produces, and pretty-printing them costs ~3x the tokens.

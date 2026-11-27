@@ -418,3 +418,32 @@ test('oversized first source row still provides a progressing continuation curso
   assert.deepEqual(continuation.items, ['next-row']);
   assert.equal(continuation.resultPage.has_more, false);
 });
+
+test('source windows never advertise a continuation beyond the signed 32-bit offset', () => {
+  const max = 2_147_483_647;
+  const last = windowSourceRows(['last'], max, 1, true, max + 1);
+  assert.deepEqual(last.items, ['last']);
+  assert.equal(last.resultPage.next_start_row, undefined);
+  assert.equal(last.resultPage.has_more, false);
+  assert.equal(last.resultPage.truncated, true);
+  assert.equal(last.resultPage.offset_exhausted, true);
+
+  const prior = windowSourceRows(['prior'], max - 1, 1, true, max);
+  assert.equal(prior.resultPage.next_start_row, max);
+  assert.equal(prior.resultPage.has_more, true);
+  assert.equal(prior.resultPage.offset_exhausted, undefined);
+
+  const oversized = windowSourceRows(['x'.repeat(48_000)], max, 1, false);
+  assert.deepEqual(oversized.items, []);
+  assert.equal(oversized.resultPage.byte_limit_reached, true);
+  assert.equal(oversized.resultPage.next_start_row, undefined);
+  assert.equal(oversized.resultPage.offset_exhausted, true);
+
+  const filtered = windowSourceRows([], max, 1, true, max + 1, []);
+  assert.equal(filtered.resultPage.offset_exhausted, true);
+  assert.equal(filtered.resultPage.next_start_row, undefined);
+
+  const terminal = windowSourceRows([], max, 1, false);
+  assert.equal(terminal.resultPage.offset_exhausted, undefined);
+  assert.equal(terminal.resultPage.truncated, false);
+});

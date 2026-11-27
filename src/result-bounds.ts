@@ -80,6 +80,7 @@ export interface ResultPageMetadata {
   truncated: boolean;
   byte_limit_reached: boolean;
   next_start_row?: number;
+  offset_exhausted?: true;
 }
 
 export function resultPageMetadata(input: {
@@ -149,6 +150,14 @@ export function windowSourceRows<T>(
     // One oversized source row cannot be returned within the byte ceiling.
     // Advance past it instead of leaving clients stuck on an unpageable offset.
     resultPage.next_start_row = sourceStartRow + (sourceRowOffsets?.[0] ?? 0) + 1;
+  }
+  // A continuation must be accepted by the same tool's provider-offset input.
+  // Keep observed rows and partial-coverage evidence when no valid cursor remains.
+  if (resultPage.next_start_row !== undefined &&
+      !SEARCH_ANALYTICS_START_ROW_SCHEMA.safeParse(resultPage.next_start_row).success) {
+    delete resultPage.next_start_row;
+    resultPage.has_more = false;
+    resultPage.offset_exhausted = true;
   }
   return { items: bounded.items, resultPage };
 }

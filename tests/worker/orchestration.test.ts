@@ -5273,6 +5273,53 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('reports exhausted provider offsets in direct analytics and page-list RPC results', async () => {
+    const originalFetch = globalThis.fetch;
+    const max = 2_147_483_647;
+    try {
+      for (const [index, name] of ['analytics.query', 'indexing.list_pages'].entries()) {
+        const user = `offset-exhausted-${index}`;
+        await saveUser(workerEnv, user, 'offset@example.test', 'test-refresh');
+        let requests = 0;
+        globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = requestUrl(input);
+          if (url === GOOGLE_TOKEN_URL) return response({ access_token: 'test-access', expires_in: 3600 });
+          expect(url).toBe('https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query');
+          requests++;
+          expect(JSON.parse(String(init?.body))).toMatchObject({ dimensions: ['page'], startRow: max, rowLimit: 1 });
+          return response({ rows: [{ keys: ['https://example.com/guide/'], clicks: 4, impressions: 80, ctr: 0.05, position: 3 }] });
+        };
+        const rpcResponse = await mcpApiHandler.fetch(new Request('https://worker.example/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json', Accept: 'application/json, text/event-stream',
+            'MCP-Protocol-Version': '2025-06-18',
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id: index + 1, method: 'tools/call', params: {
+            name, arguments: {
+              site_url: 'sc-domain:example.com', start_date: '2026-08-01', end_date: '2026-08-31',
+              row_limit: 1, start_row: max,
+              ...(name === 'analytics.query' ? { dimensions: ['page'] } : {}),
+            },
+          } }),
+        }), workerEnv, { props: { google_id: user, email: 'offset@example.test' } } as unknown as ExecutionContext);
+        expect(rpcResponse.status).toBe(200);
+        const envelope = await readMcpJsonRpc(rpcResponse) as {
+          result: { isError?: boolean; structuredContent: { rows?: unknown[]; pages?: unknown[]; result_page?: Record<string, unknown> } };
+        };
+        expect(envelope.result.isError).not.toBe(true);
+        const result = envelope.result.structuredContent;
+        expect(result.rows ?? result.pages).toHaveLength(1);
+        const page = result.result_page ?? result;
+        expect(page).toMatchObject({ has_more: false, truncated: true, offset_exhausted: true });
+        expect(page).not.toHaveProperty('next_start_row');
+        expect(requests).toBe(1);
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('scopes exact-page query drilldowns by topic at Google before source pagination', async () => {
     await saveUser(workerEnv, 'page-topic-user', 'page-topic@example.test', 'page-topic-refresh');
     const server = await createGscMcpServer(
