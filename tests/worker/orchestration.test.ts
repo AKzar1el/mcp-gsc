@@ -1674,6 +1674,9 @@ describe('Worker orchestration', () => {
         'cannot establish causation', 'Never call indexing.request',
         'no remaining URL Inspection budget counter',
         'Do not invent a remaining budget or exact retry-unit total',
+        'response_aggregation_type="byPage" in both responses',
+        'missing, auto, byProperty or any other aggregation type',
+        'withhold absolute and percentage differences',
       ]) expect(text).toContain(required);
       expect(text).not.toContain('page contains page_url');
       const exact = await prompt.argsSchema.safeParseAsync({
@@ -1692,6 +1695,8 @@ describe('Worker orchestration', () => {
         'never replace exact query equality with a substring',
         'URL Inspection is URL-level', 'cannot inherit Search Analytics query',
         'not measured zero', 'normal Search Analytics', 'not a live URL test',
+        'response_aggregation_type="byPage" in both responses',
+        'withhold absolute and percentage differences',
       ]) expect(exactText).toContain(required);
       await expect(prompt.handler({ ...exact.data!, query_contains: 'SEO' }))
         .rejects.toThrow('query or query_contains');
@@ -1732,6 +1737,8 @@ describe('Worker orchestration', () => {
         'Omit query filtering', 'not measured zero', 'urls.inspect once',
         '20 inspections/user/day', 'not proof of eligibility', 'cannot establish causation',
         'Never call indexing.request',
+        'response_aggregation_type="byPage" in both responses',
+        'withhold absolute and percentage differences',
       ]) expect(guidance).toContain(required);
       expect(guidance).not.toContain('Add query contains');
       if (search_type !== 'webMultimodal') expect(guidance).toContain('average position is unavailable');
