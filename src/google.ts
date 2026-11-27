@@ -877,6 +877,20 @@ export interface PaginatedSearchAnalyticsResult {
   rows: SearchAnalyticsRow[];
   pagesFetched: number;
   localLimitReached: boolean;
+  /** Concrete aggregation observed on a page contributing rows, if reported. */
+  responseAggregationType?: string;
+}
+
+export function assertComparableSearchAnalyticsAggregation(
+  first: PaginatedSearchAnalyticsResult,
+  second: PaginatedSearchAnalyticsResult,
+): void {
+  const firstMode = first.responseAggregationType;
+  const secondMode = second.responseAggregationType;
+  if (first.rows.length && second.rows.length && firstMode && secondMode
+      && firstMode !== 'auto' && secondMode !== 'auto' && firstMode !== secondMode) {
+    throw new Error('Search Analytics returned inconsistent response aggregation across periods; no comparable results are available.');
+  }
 }
 
 interface SearchAnalyticsPaginationOptions {
@@ -1289,6 +1303,10 @@ export async function querySearchAnalyticsPaginated(
   }
   let pagesFetched = 0;
   let observedAggregationType: string | undefined;
+  const result = (localLimitReached: boolean): PaginatedSearchAnalyticsResult => ({
+    rows, pagesFetched, localLimitReached,
+    ...(observedAggregationType === undefined ? {} : { responseAggregationType: observedAggregationType }),
+  });
 
   while (rows.length < maximumRows) {
     const requestedRows = Math.min(
@@ -1314,16 +1332,16 @@ export async function querySearchAnalyticsPaginated(
     }
     rows.push(...acceptedRows);
     if (page.rows.length < requestedRows) {
-      return { rows, pagesFetched, localLimitReached: false };
+      return result(false);
     }
     if (rows.length >= maximumRows || page.rows.length > requestedRows) {
-      return { rows, pagesFetched, localLimitReached: true };
+      return result(true);
     }
 
     startRow += requestedRows;
   }
 
-  return { rows, pagesFetched, localLimitReached: true };
+  return result(true);
 }
 
 export async function addSite(

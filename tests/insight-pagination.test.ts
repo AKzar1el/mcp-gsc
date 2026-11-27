@@ -125,9 +125,25 @@ test('paginator preserves compatible rows and ignores aggregation on an empty te
       assert.deepEqual(result.rows, [...firstPage, ...secondPage]);
       assert.deepEqual(startRows, [0, SEARCH_ANALYTICS_PAGE_SIZE, SEARCH_ANALYTICS_PAGE_SIZE * 2]);
       assert.equal(result.localLimitReached, false);
+      assert.equal(result.responseAggregationType, 'byPage');
     },
     new Map([[0, 'byPage'], [SEARCH_ANALYTICS_PAGE_SIZE, 'byPage'], [SEARCH_ANALYTICS_PAGE_SIZE * 2, 'byProperty']]),
   );
+});
+
+test('paginator retains concrete aggregation on short and capped results but not empty or automatic results', async () => {
+  for (const scenario of [
+    { rows: makeRows(1), mode: 'byProperty', maxRows: 2, expected: 'byProperty' },
+    { rows: makeRows(1), mode: 'byPage', maxRows: 1, expected: 'byPage' },
+    { rows: [], mode: 'byPage', maxRows: 2, expected: undefined },
+    { rows: makeRows(1), mode: 'auto', maxRows: 2, expected: undefined },
+  ]) {
+    await withMockAnalyticsPages(new Map([[0, scenario.rows]]), async (startRows) => {
+      const result = await querySearchAnalyticsPaginated('token', 'sc-domain:example.com', baseQuery, { maxRows: scenario.maxRows });
+      assert.equal(result.responseAggregationType, scenario.expected);
+      assert.deepEqual(startRows, [0]);
+    }, new Map([[0, scenario.mode]]));
+  }
 });
 
 test('paginator requests an empty page after exactly full pages', async () => {

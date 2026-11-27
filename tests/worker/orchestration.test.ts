@@ -9603,6 +9603,59 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('withholds cross-period analytics and decay comparisons only for contradictory concrete aggregation', async () => {
+    const scenarios = [
+      { modes: ['byPage', 'byProperty'], empty: false, reject: true },
+      { modes: ['byPage', 'byPage'], empty: false, reject: false },
+      { modes: ['byPage', undefined], empty: false, reject: false },
+      { modes: ['auto', 'byProperty'], empty: false, reject: false },
+      { modes: ['byPage', 'byProperty'], empty: true, reject: false },
+    ];
+    const originalFetch = globalThis.fetch;
+    try {
+      for (const tool of ['analytics.compare', 'insights.content_decay']) {
+        for (const [index, scenario] of scenarios.entries()) {
+          const server = await createGscMcpServer(
+            workerEnv,
+            { google_id: `period-aggregation-${tool}-${index}`, email: 'aggregation@example.test' },
+            { getAccessToken: async () => 'test-token' } as unknown as GoogleAccessTokenLifecycle,
+          );
+          const tools = (server as unknown as {
+            _registeredTools: Record<string, { handler: (args: Record<string, unknown>) => Promise<unknown> }>;
+          })._registeredTools;
+          let requests = 0;
+          globalThis.fetch = async (input: RequestInfo | URL) => {
+            expect(requestUrl(input)).toBe('https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query');
+            const period = requests++;
+            return response({
+              rows: scenario.empty && period === 0 ? [] : [{
+                keys: ['https://example.com/shared'], clicks: period === 0 ? 10 : 50,
+                impressions: period === 0 ? 100 : 500, ctr: 0.1, position: 10,
+              }],
+              responseAggregationType: scenario.modes[period],
+            });
+          };
+          const args = tool === 'analytics.compare' ? {
+            site_url: 'sc-domain:example.com', dimension: 'page',
+            start_date_a: '2026-09-01', end_date_a: '2026-09-07',
+            start_date_b: '2026-08-25', end_date_b: '2026-08-31',
+          } : { site_url: 'sc-domain:example.com', compare_days: 14 };
+          const result = tools[tool].handler(args);
+          if (scenario.reject) {
+            await expect(result).rejects.toThrow(/inconsistent response aggregation/i);
+          } else {
+            const payload = (await result) as { structuredContent: Record<string, unknown> };
+            expect(payload.structuredContent[tool === 'analytics.compare' ? 'comparisons' : 'decay_results'])
+              .toHaveLength(scenario.empty ? 0 : 1);
+          }
+          expect(requests).toBe(2);
+        }
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('compares Discover page evidence without manufacturing average positions or permitting query grouping', async () => {
     await saveUser(workerEnv, 'discover-compare-user', 'discover@example.test', 'discover-refresh');
     const server = await createGscMcpServer(
