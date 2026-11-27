@@ -524,6 +524,9 @@ const SEARCH_ANALYTICS_PAGINATION_OUTPUT_SCHEMA = z.object({
   rows_fetched: z.number().int().nonnegative(),
   pages_fetched: z.number().int().positive(),
   local_limit_reached: z.boolean(),
+  response_aggregation_type: z.enum(['byPage', 'byProperty', 'byNewsShowcasePanel']).optional().describe(
+    'Concrete aggregation observed on a nonempty provider page, when available. Not proof that every page reported its aggregation.',
+  ),
   provider_exhaustiveness_guaranteed: z.literal(false).describe(
     'False because Google does not guarantee that Search Analytics exposes every data row.',
   ),
@@ -1040,10 +1043,14 @@ const MULTIMODAL_REPORT_API_NOTE =
   "Google added the webMultimodal Search Analytics API type on 2026-11-16. Pass search_type='webMultimodal' to isolate performance from Google Lens, Circle to Search, and image uploads in Google Search. Text query grouping/filtering is unavailable for image-led searches; use page, country, device, or date. Ordinary web and webMultimodal are separate reporting scopes; an empty response is not proof of zero visual-search traffic. Do not pass search_type='multimodal' or guess a searchAppearance identifier.";
 
 function paginationMetadata(result: PaginatedSearchAnalyticsResult) {
+  const mode = result.responseAggregationType;
   return {
     rows_fetched: result.rows.length,
     pages_fetched: result.pagesFetched,
     local_limit_reached: result.localLimitReached,
+    ...(mode === 'byPage' || mode === 'byProperty' || mode === 'byNewsShowcasePanel'
+      ? { response_aggregation_type: mode }
+      : {}),
     provider_exhaustiveness_guaranteed: false as const,
     provider_note: SEARCH_ANALYTICS_PROVIDER_NOTE,
   };
