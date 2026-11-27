@@ -18,6 +18,7 @@ import {
 async function withMockAnalyticsPages<T>(
   pages: Map<number, SearchAnalyticsRow[]>,
   callback: (startRows: number[]) => Promise<T>,
+  aggregationTypes: Map<number, string> = new Map(),
 ): Promise<T> {
   const originalFetch = globalThis.fetch;
   const startRows: number[] = [];
@@ -25,7 +26,11 @@ async function withMockAnalyticsPages<T>(
     const request = JSON.parse(String(init?.body)) as SearchAnalyticsQuery;
     const startRow = request.startRow ?? 0;
     startRows.push(startRow);
-    return Response.json({ rows: pages.get(startRow) ?? [] });
+    const responseAggregationType = aggregationTypes.get(startRow);
+    return Response.json({
+      rows: pages.get(startRow) ?? [],
+      ...(responseAggregationType === undefined ? {} : { responseAggregationType }),
+    });
   }) as typeof fetch;
 
   try {
@@ -72,6 +77,56 @@ test('paginator stops after a short non-empty page', async () => {
       assert.equal(result.pagesFetched, 2);
       assert.equal(result.localLimitReached, false);
     },
+  );
+});
+
+test('paginator rejects conflicting concrete aggregation types instead of mixing rows', async () => {
+  await withMockAnalyticsPages(
+    new Map([
+      [0, makeRows(SEARCH_ANALYTICS_PAGE_SIZE)],
+      [SEARCH_ANALYTICS_PAGE_SIZE, makeRows(1, SEARCH_ANALYTICS_PAGE_SIZE)],
+    ]),
+    async (startRows) => {
+      await assert.rejects(
+        querySearchAnalyticsPaginated('token', 'sc-domain:example.com', baseQuery),
+        /inconsistent response aggregation/i,
+      );
+      assert.deepEqual(startRows, [0, SEARCH_ANALYTICS_PAGE_SIZE]);
+    },
+    new Map([[0, 'byPage'], [SEARCH_ANALYTICS_PAGE_SIZE, 'byProperty']]),
+  );
+});
+
+test('paginator retains known aggregation evidence across a page with unknown metadata', async () => {
+  await withMockAnalyticsPages(
+    new Map([
+      [0, makeRows(SEARCH_ANALYTICS_PAGE_SIZE)],
+      [SEARCH_ANALYTICS_PAGE_SIZE, makeRows(SEARCH_ANALYTICS_PAGE_SIZE, SEARCH_ANALYTICS_PAGE_SIZE)],
+      [SEARCH_ANALYTICS_PAGE_SIZE * 2, makeRows(1, SEARCH_ANALYTICS_PAGE_SIZE * 2)],
+    ]),
+    async (startRows) => {
+      await assert.rejects(
+        querySearchAnalyticsPaginated('token', 'sc-domain:example.com', baseQuery),
+        /inconsistent response aggregation/i,
+      );
+      assert.deepEqual(startRows, [0, SEARCH_ANALYTICS_PAGE_SIZE, SEARCH_ANALYTICS_PAGE_SIZE * 2]);
+    },
+    new Map([[0, 'byPage'], [SEARCH_ANALYTICS_PAGE_SIZE * 2, 'byProperty']]),
+  );
+});
+
+test('paginator preserves compatible rows and ignores aggregation on an empty terminal probe', async () => {
+  const firstPage = makeRows(SEARCH_ANALYTICS_PAGE_SIZE);
+  const secondPage = makeRows(SEARCH_ANALYTICS_PAGE_SIZE, SEARCH_ANALYTICS_PAGE_SIZE);
+  await withMockAnalyticsPages(
+    new Map([[0, firstPage], [SEARCH_ANALYTICS_PAGE_SIZE, secondPage]]),
+    async (startRows) => {
+      const result = await querySearchAnalyticsPaginated('token', 'sc-domain:example.com', baseQuery);
+      assert.deepEqual(result.rows, [...firstPage, ...secondPage]);
+      assert.deepEqual(startRows, [0, SEARCH_ANALYTICS_PAGE_SIZE, SEARCH_ANALYTICS_PAGE_SIZE * 2]);
+      assert.equal(result.localLimitReached, false);
+    },
+    new Map([[0, 'byPage'], [SEARCH_ANALYTICS_PAGE_SIZE, 'byPage'], [SEARCH_ANALYTICS_PAGE_SIZE * 2, 'byProperty']]),
   );
 });
 
