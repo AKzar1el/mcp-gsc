@@ -1294,6 +1294,7 @@ export async function querySearchAnalyticsPaginated(
   const maximumRows = Math.min(requestedMaximum, MAX_PAGINATED_SEARCH_ANALYTICS_ROWS);
 
   const rows: SearchAnalyticsRow[] = [];
+  const seenDimensionTuples = new Set<string>();
   let startRow = body.startRow ?? 0;
   const lastPossibleStartRow = startRow +
     Math.floor((maximumRows - 1) / SEARCH_ANALYTICS_PAGE_SIZE) * SEARCH_ANALYTICS_PAGE_SIZE;
@@ -1329,6 +1330,17 @@ export async function querySearchAnalyticsPaginated(
         throw new Error('Search Analytics returned inconsistent response aggregation across pages; no combined results are available.');
       }
       observedAggregationType = aggregationType;
+    }
+    // A repeated grouped row can double count metrics or overwrite a comparison
+    // baseline. Preserve tuple boundaries and do not guess which row is correct.
+    if (body.dimensions.length > 0) {
+      for (const row of acceptedRows) {
+        const tuple = JSON.stringify(row.keys);
+        if (seenDimensionTuples.has(tuple)) {
+          throw new Error('Search Analytics returned a duplicate dimension tuple; no combined results are available.');
+        }
+        seenDimensionTuples.add(tuple);
+      }
     }
     rows.push(...acceptedRows);
     if (page.rows.length < requestedRows) {
