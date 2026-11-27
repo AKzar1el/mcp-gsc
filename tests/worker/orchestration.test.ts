@@ -5149,6 +5149,70 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('exposes observed concrete aggregation in paginated drilldown RPC results', async () => {
+    const scenarios = [
+      { mode: 'byPage', empty: false, expected: 'byPage' },
+      { mode: 'byProperty', empty: false, expected: 'byProperty' },
+      { mode: 'byNewsShowcasePanel', empty: false, expected: 'byNewsShowcasePanel' },
+      { mode: 'auto', empty: false, expected: undefined },
+      { mode: undefined, empty: false, expected: undefined },
+      { mode: 'byPage', empty: true, expected: undefined },
+    ];
+    const originalFetch = globalThis.fetch;
+    try {
+      for (const [index, scenario] of scenarios.entries()) {
+        const user = `pagination-evidence-${index}`;
+        await saveUser(workerEnv, user, 'pagination@example.test', 'test-refresh');
+        let requests = 0;
+        globalThis.fetch = async (input: RequestInfo | URL) => {
+          const url = requestUrl(input);
+          if (url === GOOGLE_TOKEN_URL) return response({ access_token: 'test-access', expires_in: 3600 });
+          expect(url).toBe('https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query');
+          requests++;
+          return response({
+            rows: scenario.empty ? [] : [{ keys: ['seo'], clicks: 4, impressions: 80, ctr: 0.05, position: 8 }],
+            responseAggregationType: scenario.mode,
+          });
+        };
+        const rpcResponse = await mcpApiHandler.fetch(new Request('https://worker.example/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            'MCP-Protocol-Version': '2025-06-18',
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0', id: index + 1, method: 'tools/call',
+            params: {
+              name: 'insights.page_queries',
+              arguments: {
+                site_url: 'sc-domain:example.com', page_url: 'https://example.com/guide/',
+                start_date: '2026-08-01', end_date: '2026-08-31',
+              },
+            },
+          }),
+        }), workerEnv, {
+          props: { google_id: user, email: 'pagination@example.test' },
+        } as unknown as ExecutionContext);
+        expect(rpcResponse.status).toBe(200);
+        const envelope = await readMcpJsonRpc(rpcResponse) as {
+          result: { isError?: boolean; structuredContent: { pagination: Record<string, unknown> } };
+        };
+        expect(envelope.result.isError).not.toBe(true);
+        const pagination = envelope.result.structuredContent.pagination;
+        expect(pagination.rows_fetched).toBe(scenario.empty ? 0 : 1);
+        if (scenario.expected === undefined) {
+          expect(pagination).not.toHaveProperty('response_aggregation_type');
+        } else {
+          expect(pagination.response_aggregation_type).toBe(scenario.expected);
+        }
+        expect(requests).toBe(1);
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('scopes exact-page query drilldowns by topic at Google before source pagination', async () => {
     await saveUser(workerEnv, 'page-topic-user', 'page-topic@example.test', 'page-topic-refresh');
     const server = await createGscMcpServer(
@@ -9647,6 +9711,16 @@ describe('Worker orchestration', () => {
             const payload = (await result) as { structuredContent: Record<string, unknown> };
             expect(payload.structuredContent[tool === 'analytics.compare' ? 'comparisons' : 'decay_results'])
               .toHaveLength(scenario.empty ? 0 : 1);
+            const pagination = payload.structuredContent.pagination as Record<string, Record<string, unknown>>;
+            const periodKeys = tool === 'analytics.compare' ? ['period_a', 'period_b'] : ['recent', 'previous'];
+            for (const [period, key] of periodKeys.entries()) {
+              const mode = scenario.modes[period];
+              if ((scenario.empty && period === 0) || mode === undefined || mode === 'auto') {
+                expect(pagination[key]).not.toHaveProperty('response_aggregation_type');
+              } else {
+                expect(pagination[key].response_aggregation_type).toBe(mode);
+              }
+            }
           }
           expect(requests).toBe(2);
         }
