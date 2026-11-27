@@ -1288,6 +1288,7 @@ export async function querySearchAnalyticsPaginated(
     throw new Error('Search Analytics pagination startRow window exceeds the nonnegative 32-bit limit.');
   }
   let pagesFetched = 0;
+  let observedAggregationType: string | undefined;
 
   while (rows.length < maximumRows) {
     const requestedRows = Math.min(
@@ -1302,6 +1303,15 @@ export async function querySearchAnalyticsPaginated(
     pagesFetched += 1;
 
     const acceptedRows = page.rows.slice(0, requestedRows);
+    const aggregationType = page.responseAggregationType;
+    // Concrete aggregation modes calculate metrics differently. Never combine
+    // contradictory observations; an empty probe contributes no metric rows.
+    if (acceptedRows.length > 0 && aggregationType !== undefined && aggregationType !== 'auto') {
+      if (observedAggregationType !== undefined && observedAggregationType !== aggregationType) {
+        throw new Error('Search Analytics returned inconsistent response aggregation across pages; no combined results are available.');
+      }
+      observedAggregationType = aggregationType;
+    }
     rows.push(...acceptedRows);
     if (page.rows.length < requestedRows) {
       return { rows, pagesFetched, localLimitReached: false };
