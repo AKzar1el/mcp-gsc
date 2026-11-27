@@ -5213,6 +5213,66 @@ describe('Worker orchestration', () => {
     }
   });
 
+  it('exposes direct page listing aggregation evidence without extra provider reads', async () => {
+    const scenarios = [
+      { mode: 'byPage', empty: false, expected: 'byPage' },
+      { mode: 'byProperty', empty: false, expected: 'byProperty' },
+      { mode: 'byNewsShowcasePanel', empty: false, expected: 'byNewsShowcasePanel' },
+      { mode: 'auto', empty: false, expected: undefined },
+      { mode: undefined, empty: false, expected: undefined },
+      { mode: 'byPage', empty: true, expected: undefined },
+    ];
+    const originalFetch = globalThis.fetch;
+    try {
+      for (const [index, scenario] of scenarios.entries()) {
+        const user = `page-list-evidence-${index}`;
+        await saveUser(workerEnv, user, 'page-list@example.test', 'test-refresh');
+        let requests = 0;
+        globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+          const url = requestUrl(input);
+          if (url === GOOGLE_TOKEN_URL) return response({ access_token: 'test-access', expires_in: 3600 });
+          expect(url).toBe('https://www.googleapis.com/webmasters/v3/sites/sc-domain%3Aexample.com/searchAnalytics/query');
+          requests++;
+          expect(JSON.parse(String(init?.body))).toMatchObject({ dimensions: ['page'], startRow: 7, rowLimit: 1 });
+          return response({
+            rows: scenario.empty ? [] : [{ keys: ['https://example.com/guide/'], clicks: 4, impressions: 80, ctr: 0.05 }],
+            responseAggregationType: scenario.mode,
+          });
+        };
+        const rpcResponse = await mcpApiHandler.fetch(new Request('https://worker.example/mcp', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json', Accept: 'application/json, text/event-stream',
+            'MCP-Protocol-Version': '2025-06-18',
+          },
+          body: JSON.stringify({ jsonrpc: '2.0', id: index + 1, method: 'tools/call', params: {
+            name: 'indexing.list_pages', arguments: {
+              site_url: 'sc-domain:example.com', start_date: '2026-08-01', end_date: '2026-08-31',
+              row_limit: 1, start_row: 7,
+            },
+          } }),
+        }), workerEnv, { props: { google_id: user, email: 'page-list@example.test' } } as unknown as ExecutionContext);
+        expect(rpcResponse.status).toBe(200);
+        const envelope = await readMcpJsonRpc(rpcResponse) as {
+          result: { isError?: boolean; structuredContent: { pages: unknown[]; result_page: { has_more: boolean; next_start_row?: number }; response_aggregation_type?: string } };
+        };
+        expect(envelope.result.isError).not.toBe(true);
+        const result = envelope.result.structuredContent;
+        expect(result.pages).toHaveLength(scenario.empty ? 0 : 1);
+        expect(result.result_page.has_more).toBe(!scenario.empty);
+        expect(result.result_page.next_start_row).toBe(scenario.empty ? undefined : 8);
+        if (scenario.expected === undefined) {
+          expect(result).not.toHaveProperty('response_aggregation_type');
+        } else {
+          expect(result.response_aggregation_type).toBe(scenario.expected);
+        }
+        expect(requests).toBe(1);
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('scopes exact-page query drilldowns by topic at Google before source pagination', async () => {
     await saveUser(workerEnv, 'page-topic-user', 'page-topic@example.test', 'page-topic-refresh');
     const server = await createGscMcpServer(

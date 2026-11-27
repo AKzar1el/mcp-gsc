@@ -829,6 +829,9 @@ const INDEXED_PAGES_OUTPUT_SCHEMA = {
   countries: z.array(z.string()).optional().describe('Selected uppercase searcher countries ORed at Google; one combined segment, not separate country reports.'),
   devices: z.array(z.enum(['desktop', 'mobile', 'tablet'])).optional().describe('Selected searcher devices ORed at Google; not separate device reports.'),
   note: z.string(),
+  response_aggregation_type: z.enum(['byPage', 'byProperty', 'byNewsShowcasePanel']).optional().describe(
+    'Concrete aggregation observed on this nonempty provider response, when available. Not proof of exhaustive coverage.',
+  ),
   result_page: RESULT_PAGE_OUTPUT_SCHEMA,
 };
 
@@ -4248,6 +4251,7 @@ class GscMcpRuntime {
           pages.sourceRowOffsets,
         );
 
+        const mode = response.responseAggregationType;
         const payload = {
           site_url,
           start_date: startDate,
@@ -4262,6 +4266,9 @@ class GscMcpRuntime {
           ...(device ? { device } : {}),
           ...(selectedCountries ? { countries: selectedCountries } : {}),
           ...(devices ? { devices } : {}),
+          ...(response.rows.length > 0 && (mode === 'byPage' || mode === 'byProperty' || mode === 'byNewsShowcasePanel')
+            ? { response_aggregation_type: mode }
+            : {}),
           result_page: bounded.resultPage,
           note: SEARCH_VISIBLE_PAGES_NOTE
             + (page_contains ? ` Results are scoped to URLs containing ${JSON.stringify(page_contains)}.` : '')
