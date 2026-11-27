@@ -1,6 +1,7 @@
 import {
   querySearchAnalytics,
   type DimensionFilterGroup,
+  type SearchAnalyticsResponse,
   type SearchAnalyticsRow,
 } from './google';
 import type { GoogleAccessTokenProvider } from './access-token-lifecycle';
@@ -90,6 +91,23 @@ export function resolveWeeklyDigestEndDate(
 /** Preliminary snapshots use current-week evidence only; finalized reports compare both weeks. */
 export function weeklyDigestAnalyticsRequestCount(endDate: string, today: string): 3 | 5 {
   return endDate > resolveWeeklyDigestEndDate(undefined, today) ? 3 : 5;
+}
+
+function assertConsistentWeeklyAggregation(
+  current: SearchAnalyticsResponse,
+  previous: SearchAnalyticsResponse,
+  group: 'totals' | 'queries',
+): void {
+  const currentMode = current.responseAggregationType;
+  const previousMode = previous.responseAggregationType;
+  // Only compare aggregation evidence from responses that contribute metric rows.
+  // Missing/auto metadata does not establish a concrete contradictory mode.
+  if (current.rows.length > 0 && previous.rows.length > 0
+    && currentMode !== undefined && currentMode !== 'auto'
+    && previousMode !== undefined && previousMode !== 'auto'
+    && currentMode !== previousMode) {
+    throw new Error(`Search Analytics returned inconsistent response aggregation for weekly ${group}; no week-over-week report is available.`);
+  }
 }
 
 export async function generateWeeklyDigest(
@@ -353,6 +371,8 @@ export async function generateWeeklyDigest(
       '3. Search Analytics alone does not tell us whether Google crawled or indexed a URL; use this server\'s `urls.inspect` tool to inspect Google\'s indexed version of a representative URL, not the live page, before diagnosing an indexing issue.',
     ].join('\n');
   }
+  assertConsistentWeeklyAggregation(currentTotalsResponse, prevTotalsResponse, 'totals');
+  assertConsistentWeeklyAggregation(currentQueriesResponse, prevQueriesResponse, 'queries');
   const currentTotals = totalsFromRow(currentTotalsResponse.rows[0]);
   const prevTotals = totalsFromRow(prevTotalsResponse.rows[0]);
   const currentQueries = rowsToQueries(currentQueriesResponse.rows);

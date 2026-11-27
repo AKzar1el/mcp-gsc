@@ -321,6 +321,49 @@ test('weekly digest ranks impression-only queries by net growth, not current imp
   assert.ok(higherGrowth < lowerGrowth, '98 new impressions must rank ahead of 96');
 });
 
+test('weekly digest withholds comparisons for inconsistent concrete aggregation modes', async () => {
+  const { generateWeeklyDigest } = await import('../src/digest');
+  const cases: Array<{ group: 'totals' | 'queries'; current: string; previous?: string; rejects: boolean; emptyPrevious?: boolean }> = [
+    { group: 'totals', current: 'byPage', previous: 'byProperty', rejects: true },
+    { group: 'queries', current: 'byProperty', previous: 'byPage', rejects: true },
+    { group: 'totals', current: 'byProperty', previous: 'byProperty', rejects: false },
+    { group: 'queries', current: 'byPage', previous: undefined, rejects: false },
+    { group: 'totals', current: 'auto', previous: 'byPage', rejects: false },
+    { group: 'queries', current: 'byProperty', previous: 'byPage', rejects: false, emptyPrevious: true },
+  ];
+  for (const scenario of cases) {
+    let calls = 0;
+    await withMockFetch(
+      (_url, init) => {
+        calls += 1;
+        const body = JSON.parse(String(init?.body)) as { startDate: string; dimensions: string[] };
+        const previous = body.startDate === '2026-09-07';
+        const dimension = body.dimensions[0];
+        const group = dimension === 'query' ? 'queries' : 'totals';
+        const mode = dimension === 'page' ? 'byPage'
+          : group === scenario.group ? (previous ? scenario.previous : scenario.current) : 'byProperty';
+        return json(200, {
+          responseAggregationType: mode,
+          rows: previous && dimension === 'query' && scenario.emptyPrevious ? [] : [{ ...(dimension ? { keys: [dimension === 'page' ? 'https://example.com/' : 'seo'] } : {}),
+            clicks: previous ? 1 : 2, impressions: 10, ctr: previous ? 0.1 : 0.2, position: 5 }],
+        });
+      },
+      async () => {
+        const report = generateWeeklyDigest(
+          { getAccessToken: async () => 'mock-access-token' }, 'mock-user',
+          'sc-domain:example.com', '2026-09-20', undefined, '2026-09-24',
+        );
+        if (scenario.rejects) {
+          await assert.rejects(report, new RegExp(`inconsistent response aggregation.*${scenario.group}`, 'i'));
+        } else {
+          assert.match(await report, /Quick numbers/);
+        }
+      },
+    );
+    assert.equal(calls, 5, 'the guard must not introduce any additional provider calls');
+  }
+});
+
 test('content decay comparison days fit both periods within Search Console history', () => {
   assert.deepEqual(CONTENT_DECAY_COMPARE_DAYS_SCHEMA.safeParse(1), {
     success: true,
