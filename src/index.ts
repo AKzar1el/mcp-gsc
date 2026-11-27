@@ -20,6 +20,7 @@ import {
   getSite,
   querySearchAnalytics,
   querySearchAnalyticsPaginated,
+  assertComparableSearchAnalyticsAggregation,
   addSite,
   deleteSite,
   submitSitemap,
@@ -3883,6 +3884,7 @@ class GscMcpRuntime {
           ...scopedDimensionFilters,
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
+        assertComparableSearchAnalyticsAggregation(recentSource, previousSource);
         const pageFilter = page_contains?.toLowerCase();
         const decayResults = processContentDecay(
           recentSource.rows,
@@ -4411,6 +4413,7 @@ class GscMcpRuntime {
             : {}),
         }, { beforeRetry: () => this.reserveSearchAnalyticsRetry(googleId) });
 
+        assertComparableSearchAnalyticsAggregation(sourceA, sourceB);
         const allComparisons = processPerformanceComparison(sourceA.rows, sourceB.rows);
         const dailyBasis = sort_by === 'absolute_daily_click_change'
           || sort_by === 'absolute_daily_impression_change';

@@ -286,6 +286,8 @@ Finalized weekly digests now report observed click-through rate (CTR) alongside 
 
 If Google returns contradictory concrete aggregation types (such as `byPage` and `byProperty`) for the two nonempty weekly totals or query responses, the finalized digest returns an error instead of comparing differently calculated metrics. Missing or `auto` aggregation metadata is not treated as a concrete contradiction. The check uses the existing responses and adds no API calls.
 
+`analytics.compare` and `insights.content_decay` likewise reject contradictory concrete aggregation types between two nonempty paginated periods. Empty pagination probes, omitted metadata and `auto` do not establish a contradiction; this check adds no Google API requests.
+
 The finalized digest links each returned top page directly to its page URL for manual review, retaining short, disambiguated display labels. Recent preliminary snapshots also link their selected page rows and show observed clicks alongside impressions for both selected pages and queries, without asserting week-over-week trends. Only ordinary HTTP(S) URLs become clickable links; malformed or unsafe URL schemes remain escaped plain text. Following a link is the reader's choice and does not make any extra Search Console API request.
 
 Finalized digests also highlight up to three **returned pages with impressions but no observed clicks**, ordered by observed impressions, for follow-up query/page inspection. This uses only the existing up-to-10 current-week page rows and adds no Google API requests. It is not an exhaustive zero-click page audit: Google's top-row selection can omit pages, and absence from this section does not establish that a page had clicks, no impressions, or no opportunity.
