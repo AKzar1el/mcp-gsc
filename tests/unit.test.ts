@@ -321,6 +321,31 @@ test('weekly digest ranks impression-only queries by net growth, not current imp
   assert.ok(higherGrowth < lowerGrowth, '98 new impressions must rank ahead of 96');
 });
 
+test('weekly digest rejects duplicate current or previous query rows rather than emitting contradictory movers', async () => {
+  const { generateWeeklyDigest } = await import('../src/digest');
+  for (const duplicatePrevious of [false, true]) {
+    let calls = 0;
+    await withMockFetch(
+      (_url, init) => {
+        calls += 1;
+        const body = JSON.parse(String(init?.body)) as { startDate: string; dimensions: string[] };
+        const previous = body.startDate === '2026-09-07';
+        const dimension = body.dimensions[0];
+        const row = { ...(dimension ? { keys: [dimension === 'page' ? 'https://example.com/' : 'seo'] } : {}),
+          clicks: 50, impressions: 200, ctr: 0.25, position: 5 };
+        return json(200, { rows: dimension === 'query' && previous === duplicatePrevious
+          ? [{ ...row, clicks: 100, ctr: 0.5 }, { ...row, clicks: 10, ctr: 0.05 }]
+          : [row] });
+      },
+      () => assert.rejects(generateWeeklyDigest(
+        { getAccessToken: async () => 'mock-access-token' }, 'mock-user',
+        'sc-domain:example.com', '2026-09-20', undefined, '2026-09-24',
+      ), /duplicate dimension tuple/i),
+    );
+    assert.equal(calls, 5, 'the guard must not introduce additional provider calls');
+  }
+});
+
 test('weekly digest withholds comparisons for inconsistent concrete aggregation modes', async () => {
   const { generateWeeklyDigest } = await import('../src/digest');
   const cases: Array<{ group: 'totals' | 'queries'; current: string; previous?: string; rejects: boolean; emptyPrevious?: boolean }> = [
