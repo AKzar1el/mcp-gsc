@@ -1,0 +1,101 @@
+{
+    "manifest_version":  "0.3",
+    "name":  "digestseo-gsc-desktop",
+    "display_name":  "DigestSEO Search Console Desktop (Read-only)",
+    "version":  "0.1.0",
+    "description":  "Local read-only Google Search Console research with user-provided OAuth credentials.",
+    "author":  {
+                   "name":  "AKzar1el",
+                   "url":  "https://github.com/AKzar1el"
+               },
+    "repository":  {
+                       "type":  "git",
+                       "url":  "https://github.com/AKzar1el/mcp-gsc"
+                   },
+    "homepage":  "https://digestseo.com/gsc-mcp/",
+    "license":  "MIT",
+    "server":  {
+                   "type":  "node",
+                   "entry_point":  "dist/server.mjs",
+                   "mcp_config":  {
+                                      "command":  "node",
+                                      "args":  [
+                                                   "${__dirname}/dist/server.mjs"
+                                               ],
+                                      "env":  {
+                                                  "GSC_GOOGLE_CLIENT_ID":  "${user_config.google_client_id}",
+                                                  "GSC_GOOGLE_CLIENT_SECRET":  "${user_config.google_client_secret}",
+                                                  "GSC_GOOGLE_REFRESH_TOKEN":  "${user_config.google_refresh_token}"
+                                              }
+                                  }
+               },
+    "tools":  [
+                  {
+                      "name":  "server.capabilities",
+                      "description":  "Inspect local read-only adapter configuration without making a network request."
+                  },
+                  {
+                      "name":  "sites.list",
+                      "description":  "List authorized Search Console properties with bounded pagination."
+                  },
+                  {
+                      "name":  "sites.get",
+                      "description":  "Read metadata for an authorized Search Console property."
+                  },
+                  {
+                      "name":  "analytics.query",
+                      "description":  "Read bounded Search Console search performance data."
+                  },
+                  {
+                      "name":  "urls.inspect",
+                      "description":  "Read Google URL Inspection index data for an authorized property."
+                  },
+                  {
+                      "name":  "sitemaps.list",
+                      "description":  "List sitemaps reported for an authorized property."
+                  },
+                  {
+                      "name":  "sitemaps.get",
+                      "description":  "Read a specific sitemap record."
+                  }
+              ],
+    "user_config":  {
+                        "google_client_id":  {
+                                                 "type":  "string",
+                                                 "title":  "Google OAuth client ID",
+                                                 "description":  "Configure locally; never paste into a conversation.",
+                                                 "required":  true,
+                                                 "sensitive":  true
+                                             },
+                        "google_client_secret":  {
+                                                     "type":  "string",
+                                                     "title":  "Google OAuth client secret",
+                                                     "description":  "Configure locally; never paste into a conversation.",
+                                                     "required":  true,
+                                                     "sensitive":  true
+                                                 },
+                        "google_refresh_token":  {
+                                                     "type":  "string",
+                                                     "title":  "Google OAuth read-only refresh token",
+                                                     "description":  "Configure locally; never paste into a conversation.",
+                                                     "required":  true,
+                                                     "sensitive":  true
+                                                 }
+                    },
+    "compatibility":  {
+                          "platforms":  [
+                                            "win32",
+                                            "darwin",
+                                            "linux"
+                                        ],
+                          "runtimes":  {
+                                           "node":  "\u003e=22.18.0"
+                                       }
+                      },
+    "documentation":  "https://github.com/AKzar1el/mcp-gsc/tree/main/desktop",
+    "support":  "https://github.com/AKzar1el/mcp-gsc/issues",
+    "privacy_policies":  [
+                             "https://github.com/AKzar1el/mcp-gsc/blob/main/desktop/PRIVACY.md",
+                             "https://policies.google.com/privacy"
+                         ]
+}

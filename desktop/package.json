@@ -1,0 +1,22 @@
+{
+  "name": "@digestseo/gsc-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only local Google Search Console desktop adapter",
+  "license": "MIT",
+  "engines": {
+    "node": "^22.18.0 || >=24.11.0"
+  },
+  "scripts": {
+    "build": "esbuild server.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server.mjs",
+    "test": "node --test test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "2.3.1",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  }
+}
